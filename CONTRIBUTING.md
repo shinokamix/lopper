@@ -83,10 +83,11 @@ are squashed away, so don't worry about polishing them.
 
 Before opening a PR:
 
-1. `task check` passes.
+1. `task check` passes (the pre-push hook runs it).
 2. The description follows the PR template: the **problem** in a sentence or
    two, then the **change**, then the **test plan** — what you ran by hand and
-   what you saw.
+   what you saw. If the change affects what counts as safe, the test plan names
+   the test that covers it.
 3. One concern per PR. If the description needs the word "also", split it.
 
 ## AI-assisted contributions

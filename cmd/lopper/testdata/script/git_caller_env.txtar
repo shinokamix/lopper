@@ -1,0 +1,20 @@
+# Inside a git hook or `git rebase --exec`, git exports GIT_DIR and friends.
+# lopper must still inspect the worktrees it found, not the caller's repo:
+# otherwise this dirty worktree would look like the clean caller.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b wip ../scanned/wt
+cp dirty.txt scanned/wt/dirty.txt
+exec git init -q caller
+exec git -C caller commit -q --allow-empty -m init
+
+env GIT_DIR=$WORK/caller/.git
+env GIT_WORK_TREE=$WORK/caller
+exec lopper scan --json $WORK/scanned
+stdout '"branch": "wip"'
+stdout '"verdict": "keep"'
+stdout '"dirty": 1'
+
+-- dirty.txt --
+not committed yet

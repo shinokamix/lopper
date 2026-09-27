@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -86,7 +87,9 @@ func TestExecIgnoresRepoCommands(t *testing.T) {
 	repo := filepath.Join(work, "repo")
 	git := func(args ...string) {
 		t.Helper()
-		if out, err := exec.Command("git", append([]string{"-C", work}, args...)...).CombinedOutput(); err != nil {
+		cmd := exec.Command("git", append([]string{"-C", work}, args...)...)
+		cmd.Env = Environ()
+		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
@@ -122,6 +125,53 @@ func TestExecIgnoresRepoCommands(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("Exec ran a command from repository config")
+	}
+}
+
+// TestExecIgnoresCallerRepo checks that git runs in the directory it is
+// given even when the caller points git elsewhere, as git does for hooks.
+// Otherwise status would describe the wrong repository.
+func TestExecIgnoresCallerRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	work := t.TempDir()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(work, ".gitconfig"))
+	scanned, caller := filepath.Join(work, "scanned"), filepath.Join(work, "caller")
+	for _, repo := range []string{scanned, caller} {
+		if _, err := (Exec{}).Run(t.Context(), work, "init", "-q", repo); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(scanned, "dirty.txt"), "work\n")
+
+	t.Setenv("GIT_DIR", filepath.Join(caller, ".git"))
+	t.Setenv("GIT_WORK_TREE", caller)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(caller, ".git", "index"))
+	out, err := (Exec{}).Run(t.Context(), scanned, "status", "--porcelain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "?? dirty.txt" {
+		t.Errorf("status in %s = %q, want its untracked dirty.txt", scanned, out)
+	}
+}
+
+// TestRepoVarsCoverGit fails when the installed git knows a repository
+// variable that repoVars misses.
+func TestRepoVarsCoverGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	out, err := exec.Command("git", "rev-parse", "--local-env-vars").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range strings.FieldsSeq(string(out)) {
+		if !repoVars[name] && name != "GIT_CONFIG_PARAMETERS" && name != "GIT_CONFIG_COUNT" {
+			t.Errorf("git reports %s as local to a repository, but Environ keeps it", name)
+		}
 	}
 }
 

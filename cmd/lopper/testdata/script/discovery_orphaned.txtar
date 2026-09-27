@@ -66,3 +66,27 @@ exec lopper scan $WORK/smwt
 stdout -count=2 '^\w+\s'
 stdout '^review\s+.*smwt[/\\]one$'
 stdout '^\w+\s+two\s'
+
+# git reuses a free admin directory name: after a prune, a new worktree can
+# take .git/worktrees/wt while an old folder still points at it. The old
+# folder is not tracked anymore.
+exec git init -q $WORK/reuse/repo
+exec git -C $WORK/reuse/repo commit -q --allow-empty -m init
+exec git -C $WORK/reuse/repo worktree add -q -b first $WORK/reuse/old/wt
+mv $WORK/reuse/old $WORK/reuse/away
+exec git -C $WORK/reuse/repo worktree prune
+exec git -C $WORK/reuse/repo worktree add -q -b second $WORK/reuse/new/wt
+mv $WORK/reuse/away $WORK/reuse/old
+
+exec lopper scan $WORK/reuse/old
+stdout '^review\s+.*old[/\\]wt$'
+
+# A superproject with its git directory elsewhere (--separate-git-dir) keeps
+# submodule repositories there too: still not a worktree.
+exec git -C $WORK/sub/lib init -q
+exec git init -q --separate-git-dir=$WORK/sep/metadata $WORK/sep/super
+exec git -C $WORK/sep/super -c protocol.file.allow=always submodule add -q $WORK/sub/lib worktrees/lib
+rm $WORK/sep/metadata/modules
+
+exec lopper scan $WORK/sep/super
+! stdout .

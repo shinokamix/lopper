@@ -208,7 +208,31 @@ func readGitFile(dotGit string) (gitFile, bool) {
 	if info, err := os.Stat(common); err != nil || !info.IsDir() { //nolint:gosec // G703: see above
 		return gitFile{}, false
 	}
-	return gitFile{commonDir: common}, true
+	// The admin directory may now belong to another worktree (git reuses a
+	// name freed by a prune), or this one was moved away from where git
+	// expects it. Either way the repository no longer tracks this directory.
+	return gitFile{commonDir: common, orphaned: !pointsBack(admin, dotGit)}, true
+}
+
+// pointsBack reports whether the admin directory's gitdir file names
+// dotGit, the link `git worktree repair` checks. When that cannot be read
+// for any reason other than being gone, the link is assumed intact.
+func pointsBack(admin, dotGit string) bool {
+	content, err := os.ReadFile(filepath.Join(admin, "gitdir")) //nolint:gosec // G703: paths git wrote, see readGitFile
+	if err != nil {
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+	target := strings.TrimSpace(string(content))
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(admin, target) // worktree.useRelativePaths
+	}
+	want, err := os.Stat(target) //nolint:gosec // G703: paths git wrote, see readGitFile
+	if err != nil {
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+	got, err := os.Stat(dotGit)
+	// SameFile, not path equality: symlinks, and case on Windows and macOS.
+	return err != nil || os.SameFile(want, got)
 }
 
 // orphanGitFile explains a .git file whose admin directory is gone. It
@@ -237,10 +261,12 @@ func orphanGitFile(admin string) (gitFile, bool) {
 	return gitFile{commonDir: common, orphaned: true}, true
 }
 
-// insideGitDir reports whether path lies below a .git directory.
+// insideGitDir reports whether path lies below a git directory: one named
+// .git, even if it is gone, or any existing one, such as a superproject's
+// --separate-git-dir.
 func insideGitDir(path string) bool {
 	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-		if filepath.Base(dir) == ".git" {
+		if filepath.Base(dir) == ".git" || isGitDir(dir) {
 			return true
 		}
 		if filepath.Dir(dir) == dir {
@@ -249,9 +275,15 @@ func insideGitDir(path string) bool {
 	}
 }
 
+// isGitDir mirrors git's own test (is_git_directory in setup.c): a
+// repository has HEAD, objects and refs.
 func isGitDir(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "HEAD")) //nolint:gosec // G703: paths git wrote, see readGitFile
-	return err == nil
+	for _, name := range []string{"HEAD", "objects", "refs"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil { //nolint:gosec // G703: paths git wrote, see readGitFile
+			return false
+		}
+	}
+	return true
 }
 
 // orphanWorktree describes a worktree from its directory alone: with the

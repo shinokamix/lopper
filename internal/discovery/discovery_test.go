@@ -62,6 +62,7 @@ func linkWorktree(t *testing.T, main, wt string) {
 	t.Helper()
 	admin := filepath.Join(main, ".git", "worktrees", filepath.Base(wt))
 	write(t, filepath.Join(admin, "commondir"), "../..\n")
+	write(t, filepath.Join(admin, "gitdir"), filepath.Join(wt, ".git")+"\n")
 	write(t, filepath.Join(wt, ".git"), "gitdir: "+admin+"\n")
 }
 
@@ -127,6 +128,8 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	gone := filepath.Join(dir, "gone")
 	orphan := filepath.Join(dir, "agent", "orphan")
 	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(gone, ".git", "worktrees", "orphan")+"\n")
+	// A stray file named HEAD above the repository does not make a git directory.
+	write(t, filepath.Join(dir, "HEAD"), "")
 	// A submodule whose repository is gone is not a worktree.
 	write(t, filepath.Join(dir, "agent", "sub", ".git"), "gitdir: "+filepath.Join(gone, ".git", "modules", "sub")+"\n")
 	// A repository moved after `git worktree add`: the worktree's .git file

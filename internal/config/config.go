@@ -82,13 +82,15 @@ func (c Config) withTemps(roots, temps []string) []string {
 // root it cannot is a fatal error, which only a path the user chose
 // deserves.
 func readableDir(dir string) bool {
+	// Stat first: opening a FIFO blocks until something writes to it.
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return false
+	}
 	f, err := os.Open(dir)
 	if err != nil {
 		return false
 	}
-	defer f.Close()
-	info, err := f.Stat()
-	return err == nil && info.IsDir()
+	return f.Close() == nil
 }
 
 // walkReaches reports whether a walk of root descends into dir, which is

@@ -1,0 +1,14 @@
+# A linked worktree is found even when its main repository lies outside
+# the scanned directory.
+
+exec git init -q main
+exec git -C main commit -q --allow-empty -m init
+exec git -C main worktree add -q -b feature ../elsewhere/wt
+
+exec lopper scan $WORK/elsewhere
+stdout '\sfeature\s.*elsewhere[/\\]wt$'
+! stderr .
+
+# Scanning both does not list it twice.
+exec lopper scan --json $WORK
+stdout -count=1 '"branch": "feature"'

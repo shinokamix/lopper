@@ -1,0 +1,11 @@
+/bin/
+/.bin/
+/.tmp/
+/dist/
+coverage.out
+*.test
+.DS_Store
+/.task/
+/lopper
+/.vscode/
+/.idea/

@@ -1,0 +1,25 @@
+# A worktree whose status cannot be read is never reported as safe, even
+# when its branch is merged: the reason says what is unknown and why.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b merged ../wt-merged
+
+# Corrupt the worktree's index: `git status` fails, history stays readable.
+cp garbage.txt repo/.git/worktrees/wt-merged/index
+! exec git -C wt-merged status --porcelain
+
+exec lopper scan --json $WORK
+stdout '"verdict": "review"'
+! stdout '"verdict": "safe"'
+stdout '"rule": "incomplete"'
+stdout 'unknown: uncommitted changes \(could not read status: '
+stdout '"errors": \['
+stdout '"merged": "ancestor"'
+! stdout '"dirty"'
+
+exec lopper scan $WORK
+stdout '^review\s+merged\s'
+
+-- garbage.txt --
+not an index

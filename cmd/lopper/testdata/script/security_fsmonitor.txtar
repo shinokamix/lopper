@@ -1,0 +1,20 @@
+# A repository-local core.fsmonitor must never be executed: lopper scans
+# untrusted repositories, and `git status` would otherwise run the hook.
+# Git runs the hook through a shell (Git for Windows uses its bundled sh),
+# so a plain command line works on every platform. It runs in the worktree
+# root, so ../marker lands in $WORK for both worktrees.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b wip ../wt
+exec git -C repo config core.fsmonitor 'touch ../marker'
+exec git -C wt config core.fsmonitor 'touch ../marker'
+
+# Sanity check: git itself does run the hook.
+exec git -C wt status --porcelain
+exists marker
+rm marker
+
+exec lopper scan $WORK
+stdout 'wip'
+! exists marker

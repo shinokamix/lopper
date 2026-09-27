@@ -1,0 +1,125 @@
+# https://taskfile.dev — run `task` (or `go tool -modfile=tools/go.mod task`) to list tasks.
+version: "3"
+
+vars:
+  TOOL: go tool -modfile=tools/go.mod
+  BIN: bin/lopper{{exeExt}}
+  LINT: .bin/golangci-lint{{exeExt}}
+
+tasks:
+  default:
+    silent: true
+    cmds:
+      - "{{.TASK_EXE}} --list"
+
+  setup:
+    desc: Build dev tools and install git hooks into this repository only
+    cmds:
+      - task: tools
+      # Pin hooks to this repository: with a global core.hooksPath set,
+      # lefthook would otherwise write into the shared hooks directory.
+      # --force is safe because the effective target is now .git/hooks.
+      - git config --local core.hooksPath .git/hooks
+      - .bin/lefthook{{exeExt}} install --force
+
+  tools:
+    desc: Build pinned dev tools into .bin/ (hooks and editors call them by path)
+    sources: [tools/go.mod, tools/go.sum]
+    generates: [".bin/*"]
+    cmds:
+      - go build -modfile=tools/go.mod -o .bin/ github.com/golangci/golangci-lint/v2/cmd/golangci-lint github.com/evilmartians/lefthook/v2
+
+  build:
+    desc: Build the lopper binary into bin/
+    sources: ["**/*.go", go.mod, go.sum]
+    generates: ["{{.BIN}}"]
+    cmds:
+      - go build -o {{.BIN}} ./cmd/lopper
+
+  run:
+    desc: "Run lopper, e.g. task run -- ~/code"
+    cmds:
+      - go run ./cmd/lopper {{.CLI_ARGS}}
+
+  fmt:
+    desc: Format code (gofumpt + gci)
+    cmds:
+      - "{{.TOOL}} golangci-lint fmt"
+
+  lint:
+    desc: Run linters and formatting checks for every target OS
+    deps: [tools]
+    cmds:
+      - for: [darwin, linux, windows]
+        cmd: GOOS={{.ITEM}} {{.LINT}} run
+
+  lint:fix:
+    desc: Run linters and apply automatic fixes
+    deps: [tools]
+    cmds:
+      - "{{.LINT}} run --fix"
+
+  arch:
+    desc: Check architecture layering
+    cmds:
+      - go test -count=1 ./internal/archtest
+
+  test:
+    desc: Run all tests with the race detector
+    cmds:
+      - "{{.TOOL}} gotestsum --format pkgname-and-test-fails -- -race ./... {{.CLI_ARGS}}"
+
+  test:cover:
+    desc: Run tests and open the coverage report
+    cmds:
+      - "{{.TOOL}} gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./..."
+      - go tool cover -html=coverage.out
+
+  fuzz:
+    desc: Fuzz the git output parser
+    cmds:
+      - go test ./internal/gitx -run '^$' -fuzz FuzzParseWorktreeList -fuzztime {{.FUZZTIME | default "30s"}}
+
+  vuln:
+    desc: Check dependencies for known vulnerabilities
+    cmds:
+      - "{{.TOOL}} govulncheck ./..."
+
+  tidy:
+    desc: Tidy both go.mod files
+    cmds:
+      - go mod tidy
+      - cmd: go mod tidy
+        dir: tools
+
+  tidy:check:
+    desc: Fail if either go.mod needs tidying
+    cmds:
+      - go mod tidy -diff
+      - cmd: go mod tidy -diff
+        dir: tools
+
+  check:
+    desc: Everything CI checks — run before pushing
+    cmds:
+      - task: tidy:check
+      - task: lint
+      - task: test
+      - task: vuln
+
+  fixture:
+    desc: Create a sandbox with sample worktrees in .tmp/fixture
+    vars:
+      DIR: .tmp/fixture
+    # rm/mkdir/touch are Task's Go builtins on Windows (TASK_CORE_UTILS), echo is a shell builtin.
+    cmds:
+      - rm -rf {{.DIR}} && mkdir -p {{.DIR}}
+      - git -C {{.DIR}} init -q -b main repo
+      - git -C {{.DIR}}/repo commit -q --allow-empty -m init
+      - git -C {{.DIR}}/repo worktree add -q -b merged ../wt-merged
+      - git -C {{.DIR}}/repo worktree add -q -b wip .claude/worktrees/wip
+      - git -C {{.DIR}}/repo/.claude/worktrees/wip commit -q --allow-empty -m wip
+      - touch {{.DIR}}/repo/.claude/worktrees/wip/dirty.txt
+      - git -C {{.DIR}}/repo worktree add -q -b unpushed ../wt-unpushed
+      - git -C {{.DIR}}/wt-unpushed commit -q --allow-empty -m work
+      - echo "fixture ready — try task run -- {{.DIR}}"

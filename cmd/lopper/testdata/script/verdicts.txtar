@@ -1,0 +1,30 @@
+# Each kind of worktree gets the expected verdict, in text and JSON.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+# merged: branch tip is already in main
+exec git -C repo worktree add -q -b merged ../wt-merged
+
+# unpushed: a commit that exists nowhere else
+exec git -C repo worktree add -q -b unpushed ../wt-unpushed
+exec git -C wt-unpushed commit -q --allow-empty -m work
+
+# dirty: created by Claude Code, with an uncommitted file
+exec git -C repo worktree add -q -b wip .claude/worktrees/wip
+cp dirty.txt repo/.claude/worktrees/wip/dirty.txt
+
+exec lopper scan $WORK
+stdout '^safe\s+merged\s'
+stdout '^keep\s+unpushed\s'
+stdout '^keep\s+wip\s'
+! stderr .
+
+# --json exposes origin and the reasons behind each verdict.
+exec lopper scan --json $WORK
+stdout '"origin": "claude-code"'
+stdout '"rule": "dirty"'
+stdout '"dirty": 1'
+
+-- dirty.txt --
+not committed yet

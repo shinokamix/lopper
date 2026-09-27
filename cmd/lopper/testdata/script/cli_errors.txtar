@@ -1,0 +1,17 @@
+# Bad path arguments fail up front with a clear message.
+# (fang capitalizes and wraps errors, hence relative paths and (?i).)
+
+! exec lopper scan /nonexistent
+stderr '(?i)nonexistent: no such directory'
+! stdout .
+
+! exec lopper scan nonexistent
+stderr '(?i)nonexistent: no such directory'
+! stdout .
+
+! exec lopper scan file.txt
+stderr '(?i)file.txt: not a directory'
+! stdout .
+
+-- file.txt --
+not a directory

@@ -1,0 +1,18 @@
+version: 2
+builds:
+  - main: ./cmd/lopper
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    # Reproducible builds: no local paths, file mtimes pinned to the commit.
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+checksum:
+  name_template: checksums.txt
+# TODO: homebrew_casks, scoops, winget, nfpms (deb/rpm)

@@ -12,7 +12,7 @@ import (
 // Evaluate applies rules and picks the strictest level among the reasons.
 func Evaluate(wt lopper.Worktree, f lopper.Facts) lopper.Verdict {
 	rules := [...]func(lopper.Worktree, lopper.Facts) *lopper.Reason{
-		prunable, orphaned, locked, incomplete, dirty, unpushed, merged, notMerged,
+		prunable, orphaned, moved, locked, incomplete, dirty, unpushed, merged, notMerged,
 	}
 	var v lopper.Verdict
 	for _, rule := range rules {
@@ -42,6 +42,18 @@ func orphaned(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
 	return &lopper.Reason{
 		Rule: "orphaned", Level: lopper.LevelReview,
 		Message: fmt.Sprintf("not tracked by %s anymore: git cannot check it for unsaved work", wt.Repo.Path),
+	}
+}
+
+// moved is never safe: git cannot remove the worktree where it is now,
+// and removing it by hand leaves git a record of it at the old path.
+func moved(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
+	if wt.MovedFrom == "" {
+		return nil
+	}
+	return &lopper.Reason{
+		Rule: "moved", Level: lopper.LevelReview,
+		Message: fmt.Sprintf("moved from %s: run `git worktree repair` in it", wt.MovedFrom),
 	}
 }
 

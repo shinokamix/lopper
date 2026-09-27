@@ -1,0 +1,68 @@
+# A worktree moved with mv is reported once, where it is now, and never as
+# safe: git still expects it at the old path and cannot remove it until
+# `git worktree repair` relinks the two.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../old/wt
+mv old/wt moved
+
+exec lopper scan $WORK
+stdout -count=1 '^\w+\s'
+stdout '^review\s+feature\s+.*moved$'
+
+exec lopper scan --json $WORK
+stdout '"rule": "moved"'
+stdout '"message": "moved from .*old'
+stdout '"rule": "merged"'
+! stdout '"rule": "(prunable|orphaned)"'
+! stderr .
+
+# git still works inside it, so its work is checked as usual.
+cp dirty.txt moved/dirty.txt
+exec lopper scan $WORK
+stdout '^keep\s+feature\s+.*moved$'
+rm moved/dirty.txt
+
+# After the repair lopper suggests, it is an ordinary worktree again.
+exec git -C moved worktree repair
+exec lopper scan $WORK
+stdout -count=1 '^\w+\s'
+stdout '^safe\s+feature\s+.*moved$'
+
+# git does not call a locked worktree prunable, but a moved one is still
+# found where it is now, and stays locked.
+exec git -C repo worktree add -q -b pinned ../old/locked
+exec git -C repo worktree lock ../old/locked
+mv old/locked $WORK/lockmoved
+exec lopper scan $WORK/lockmoved
+stdout '^keep\s+pinned\s+.*lockmoved$'
+! stdout 'old[/\\]locked$'
+exec lopper scan --json $WORK/lockmoved
+stdout '"rule": "moved"'
+stdout '"rule": "locked"'
+
+# ...even when a directory appears at the old path again.
+mkdir old/locked
+exec lopper scan $WORK/lockmoved
+stdout '^keep\s+pinned\s+.*lockmoved$'
+! stdout 'old[/\\]locked$'
+
+# Two repositories may each have left a worktree moved away from the same
+# path: each is matched with its own repository.
+exec git init -q a
+exec git -C a commit -q --allow-empty -m init
+exec git init -q b
+exec git -C b commit -q --allow-empty -m init
+mkdir same
+exec git -C a worktree add -q -b from-a ../shared/wt
+mv shared/wt $WORK/same/moved-a
+exec git -C b worktree add -q -b from-b ../shared/wt
+mv shared/wt $WORK/same/moved-b
+exec lopper scan $WORK/same
+stdout -count=2 '^\w+\s'
+stdout '^review\s+from-a\s+.*moved-a$'
+stdout '^review\s+from-b\s+.*moved-b$'
+
+-- dirty.txt --
+not committed yet

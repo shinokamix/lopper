@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -28,18 +30,34 @@ type Options struct {
 }
 
 // Scan walks opts.Roots and calls emit for every linked worktree found,
-// including orphaned ones that no repository tracks anymore.
+// including orphaned ones that no repository tracks anymore, and moved
+// ones at the path they were moved to.
 // emit may be called concurrently. A missing or unreadable root is an
 // error; unreadable directories below a root are skipped.
 func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.Worktree)) error {
 	gitDirs := make(chan string, 64)
 	var listed sync.Map // real paths of worktrees reported by their repository
 
+	var (
+		mu      sync.Mutex
+		missing = map[string]lopper.Worktree{} // .git file gone, by recordKey
+		orphans = map[string]orphan{}          // by real path
+	)
+
 	var wg sync.WaitGroup
 	for range max(opts.Listers, 1) {
 		wg.Go(func() {
 			for gitDir := range gitDirs {
 				listRepo(ctx, git, gitDir, func(wt lopper.Worktree) {
+					// Unless it was moved, see below. git does not call a
+					// locked worktree prunable, so its .git file is checked,
+					// as backLink does: the directory may have been recreated.
+					if wt.Prunable || isGone(filepath.Join(wt.Path, ".git")) {
+						mu.Lock()
+						defer mu.Unlock()
+						missing[recordKey(gitDir, wt.Path)] = wt
+						return
+					}
 					listed.Store(realPath(wt.Path), struct{}{})
 					emit(wt)
 				})
@@ -47,31 +65,64 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		})
 	}
 
-	var (
-		mu      sync.Mutex
-		orphans = map[string]lopper.Worktree{} // by real path
-	)
 	err := findRepos(ctx, opts,
 		func(gitDir string) { gitDirs <- gitDir },
-		func(wt lopper.Worktree) {
+		func(dir string, gf gitFile) {
+			wt := orphanWorktree(dir, gf.commonDir)
 			mu.Lock()
 			defer mu.Unlock()
-			orphans[realPath(wt.Path)] = wt
+			orphans[realPath(wt.Path)] = orphan{wt, gf}
 		})
 	close(gitDirs)
 	wg.Wait()
 
 	// A worktree whose .git file points to a moved repository still shows up
 	// in that repository's list when the walk reached it; only the rest are
-	// orphans. Hence they wait for every repository to be listed.
+	// orphans. A worktree moved to another directory shows up in the list as
+	// a missing one, and is reported once, where it is now. Hence both wait
+	// for every repository to be listed.
 	if ctx.Err() == nil {
-		for key, wt := range orphans {
-			if _, ok := listed.Load(key); !ok {
-				emit(wt)
+		// Sorted, so that when copies of one worktree claim the same
+		// missing entry, the same one wins every time.
+		for _, key := range slices.Sorted(maps.Keys(orphans)) {
+			o := orphans[key]
+			if _, ok := listed.Load(key); ok {
+				continue
 			}
+			if o.gf.movedFrom != "" {
+				// Another repository may have used and left the same path.
+				from := recordKey(o.gf.commonDir, o.gf.movedFrom)
+				if stale, ok := missing[from]; ok {
+					delete(missing, from)
+					emit(movedWorktree(stale, o.wt.Path))
+					continue
+				}
+			}
+			emit(o.wt)
+		}
+		for _, key := range slices.Sorted(maps.Keys(missing)) {
+			emit(missing[key])
 		}
 	}
 	return err
+}
+
+// orphan is a linked worktree that its repository does not track at its
+// path, and what its .git file tells about that repository.
+type orphan struct {
+	wt lopper.Worktree
+	gf gitFile
+}
+
+// recordKey identifies a repository's record of a worktree at path.
+func recordKey(gitDir, path string) string {
+	return realPath(gitDir) + "\x00" + realPath(path)
+}
+
+// isGone reports whether path definitely does not exist.
+func isGone(path string) bool {
+	_, err := os.Lstat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // findRepos reports the common git directory of every repository met
@@ -80,8 +131,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 // the roots: that of a linked worktree's main repository, a submodule,
 // or a --separate-git-dir or ".bare" layout. Bare repositories have no
 // .git at all and are recognized by their worktrees directory. A linked
-// worktree whose repository no longer tracks it also goes to orphan.
-func findRepos(ctx context.Context, opts Options, found func(gitDir string), orphan func(lopper.Worktree)) error {
+// worktree whose repository no longer tracks it at its path also goes to
+// orphan, with what its .git file tells about the repository.
+func findRepos(ctx context.Context, opts Options, found func(gitDir string), orphan func(dir string, gf gitFile)) error {
 	var seen sync.Map
 	report := func(gitDir string) {
 		// The same repo may be reached via a symlinked path.
@@ -116,7 +168,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 				if d.Type().IsRegular() {
 					gf, ok := readGitFile(path)
 					if ok && gf.orphaned {
-						orphan(orphanWorktree(filepath.Dir(path), gf.commonDir))
+						orphan(filepath.Dir(path), gf)
 					}
 					if ok && !gf.repoGone {
 						// Even without this worktree, the repository may have others.
@@ -142,12 +194,17 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 }
 
 // realPath resolves symlinks so that one directory reached by two paths
-// is recognised; a path that cannot be resolved is used as is.
+// is recognised. Of a path that is gone, what is left is resolved: git
+// may record a missing worktree through a symlink the walk does not use.
 func realPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		return resolved
 	}
-	return path
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(realPath(parent), filepath.Base(path))
 }
 
 func checkRoot(root string) error {
@@ -166,7 +223,8 @@ func checkRoot(root string) error {
 // gitFile is what a .git file tells about its repository.
 type gitFile struct {
 	commonDir string // the repository's common git directory
-	orphaned  bool   // commonDir no longer tracks this worktree
+	orphaned  bool   // commonDir no longer tracks this worktree here
+	movedFrom string // where commonDir expects this worktree instead
 	repoGone  bool   // commonDir does not exist at all
 }
 
@@ -219,28 +277,35 @@ func readGitFile(dotGit string) (gitFile, bool) {
 	// The admin directory may now belong to another worktree (git reuses a
 	// name freed by a prune), or this one was moved away from where git
 	// expects it. Either way the repository no longer tracks this directory.
-	return gitFile{commonDir: common, orphaned: !pointsBack(admin, dotGit)}, true
+	intact, movedFrom := backLink(admin, dotGit)
+	return gitFile{commonDir: common, orphaned: !intact, movedFrom: movedFrom}, true
 }
 
-// pointsBack reports whether the admin directory's gitdir file names
-// dotGit, the link `git worktree repair` checks. When that cannot be read
-// for any reason other than being gone, the link is assumed intact.
-func pointsBack(admin, dotGit string) bool {
+// backLink checks the admin directory's gitdir file, the link `git
+// worktree repair` fixes: whether it names dotGit and, when it names a
+// .git file that is gone, the directory git still expects the worktree
+// in. When the link cannot be read for any reason other than being gone,
+// it is assumed intact.
+func backLink(admin, dotGit string) (intact bool, movedFrom string) {
 	content, err := os.ReadFile(filepath.Join(admin, "gitdir")) //nolint:gosec // G703: paths git wrote, see readGitFile
 	if err != nil {
-		return !errors.Is(err, fs.ErrNotExist)
+		return !errors.Is(err, fs.ErrNotExist), ""
 	}
 	target := strings.TrimSpace(string(content))
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(admin, target) // worktree.useRelativePaths
 	}
+	target = filepath.Clean(target)
 	want, err := os.Stat(target) //nolint:gosec // G703: paths git wrote, see readGitFile
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, filepath.Dir(target)
+	}
 	if err != nil {
-		return !errors.Is(err, fs.ErrNotExist)
+		return true, ""
 	}
 	got, err := os.Stat(dotGit)
 	// SameFile, not path equality: symlinks, and case on Windows and macOS.
-	return err != nil || os.SameFile(want, got)
+	return err != nil || os.SameFile(want, got), ""
 }
 
 // orphanGitFile explains a .git file whose admin directory is gone. It
@@ -305,6 +370,17 @@ func orphanWorktree(dir, commonDir string) lopper.Worktree {
 		Orphaned: true,
 		Origin:   classifyOrigin(path),
 	}
+}
+
+// movedWorktree is a worktree that git lists as missing because it now
+// lives in dir: what git knows about it, at the path it has now.
+func movedWorktree(stale lopper.Worktree, dir string) lopper.Worktree {
+	wt := stale
+	wt.ID, wt.Path = lopper.ID(dir), dir
+	wt.Prunable = false
+	wt.MovedFrom = stale.Path
+	wt.Origin = classifyOrigin(dir)
+	return wt
 }
 
 // repoPath is the main worktree of a repository, or the git directory

@@ -90,3 +90,7 @@ Before opening a PR:
 
 Using AI tools is fine. You are still the author: review every line, run it
 yourself, and make sure the PR description reflects what you actually tested.
+
+If an agent wrote a meaningful part of the change, end the PR description with
+one plain line naming the model and the tool — `Model: Claude Opus 5.5 (Claude Code)`
+— instead of the tool's own banner. Co-author trailers in commits are fine.

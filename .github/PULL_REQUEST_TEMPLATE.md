@@ -33,3 +33,10 @@ change manually, write "Not tested" and say why.
       behavior is covered by a `verdict` test or a testscript in `cmd/lopper/testdata/script`.
       <!-- Leave unchecked and delete this item if it doesn't apply. -->
 - [ ] `task check` passes locally.
+
+<!--
+If an AI agent wrote a meaningful part of this PR, end the description with one
+plain line naming the model and the tool, and nothing else — no banners or links:
+
+Model: Claude Opus 5.5 (Claude Code)
+-->

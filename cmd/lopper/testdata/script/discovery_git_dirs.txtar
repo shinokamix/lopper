@@ -1,0 +1,29 @@
+# Worktrees are found through repositories that have no .git directory
+# inside the scanned directory, even when the worktrees themselves lie
+# outside it.
+
+exec git init -q src
+exec git -C src commit -q --allow-empty -m init
+
+# A bare repository.
+exec git clone -q --bare src scanned/bare.git
+exec git -C scanned/bare.git worktree add -q -b from-bare ../../outside/bare
+
+# The ".bare" layout: a .git file pointing at a bare repository beside it.
+exec git clone -q --bare src scanned/proj/.bare
+cp dotbare scanned/proj/.git
+exec git -C scanned/proj worktree add -q -b from-dotbare ../../outside/dotbare
+
+# A checkout whose git directory was moved away with --separate-git-dir.
+exec git init -q --separate-git-dir outside/sep.git scanned/sep
+exec git -C scanned/sep commit -q --allow-empty -m init
+exec git -C scanned/sep worktree add -q -b from-separate ../../outside/separate
+
+exec lopper scan $WORK/scanned
+stdout '\sfrom-bare\s.*outside[/\\]bare$'
+stdout '\sfrom-dotbare\s.*outside[/\\]dotbare$'
+stdout '\sfrom-separate\s.*outside[/\\]separate$'
+! stderr .
+
+-- dotbare --
+gitdir: ./.bare

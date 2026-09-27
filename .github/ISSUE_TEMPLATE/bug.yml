@@ -1,0 +1,59 @@
+name: Bug report
+description: Something doesn't work, or lopper gave a wrong verdict
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issue (lopper deleting outside a worktree, running code from a scanned repository)?
+        Don't file it here — see [SECURITY.md](https://github.com/shinokamix/lopper/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what lopper did instead. Include the full error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: |
+        The git commands that set up the worktree, then the lopper command.
+        A script we can paste into an empty directory is ideal.
+      render: sh
+    validations:
+      required: true
+
+  - type: textarea
+    id: scan-json
+    attributes:
+      label: "`lopper scan --json` output"
+      description: For the affected worktree(s). Redact paths if you need to.
+      render: json
+
+  - type: input
+    id: version
+    attributes:
+      label: lopper version
+      description: "`lopper --version`"
+    validations:
+      required: true
+
+  - type: input
+    id: git-version
+    attributes:
+      label: git version
+      description: "`git --version`"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: macOS 15 arm64, Windows 11 x86_64 (Git Bash), Ubuntu 24.04 amd64
+    validations:
+      required: true

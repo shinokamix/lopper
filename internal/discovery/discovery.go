@@ -76,8 +76,10 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 
 // findRepos reports the common git directory of every repository met
 // during the walk, once. A .git directory belongs to a main worktree; a
-// .git file belongs to a linked worktree (or a submodule) and leads to
-// its main repository, which may live outside the roots. A linked
+// .git file leads to a git directory elsewhere, which may live outside
+// the roots: that of a linked worktree's main repository, a submodule,
+// or a --separate-git-dir or ".bare" layout. Bare repositories have no
+// .git at all and are recognized by their worktrees directory. A linked
 // worktree whose repository no longer tracks it also goes to orphan.
 func findRepos(ctx context.Context, opts Options, found func(gitDir string), orphan func(lopper.Worktree)) error {
 	var seen sync.Map
@@ -123,6 +125,10 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 				}
 				return nil
 			}
+			if name == "worktrees" && d.IsDir() && isGitDir(filepath.Dir(path)) {
+				report(filepath.Dir(path)) // a bare repository
+				return fs.SkipDir
+			}
 			if d.IsDir() && path != root && (opts.SkipNames[name] || opts.SkipPaths[path]) {
 				return fs.SkipDir
 			}
@@ -157,18 +163,17 @@ func checkRoot(root string) error {
 	return nil
 }
 
-// gitFile is what a linked worktree's .git file tells about its repository.
+// gitFile is what a .git file tells about its repository.
 type gitFile struct {
 	commonDir string // the repository's common git directory
 	orphaned  bool   // commonDir no longer tracks this worktree
 	repoGone  bool   // commonDir does not exist at all
 }
 
-// readGitFile resolves a linked worktree's .git file ("gitdir: <admin>")
-// to the common git directory of its main repository. Submodules also
-// use a .git file, but their admin directory is a whole repository
-// rather than a linked worktree; they are ignored, as is anything else
-// that is not a linked worktree.
+// readGitFile resolves a .git file ("gitdir: <dir>") to the common git
+// directory of the repository it belongs to. For a linked worktree <dir>
+// is its admin directory inside the main repository; for a submodule or
+// a --separate-git-dir checkout it is the whole git directory.
 func readGitFile(dotGit string) (gitFile, bool) {
 	content, err := os.ReadFile(dotGit)
 	if err != nil {
@@ -193,9 +198,13 @@ func readGitFile(dotGit string) (gitFile, bool) {
 
 	// `git worktree add` always writes commondir, and git finds the common
 	// directory through it. An admin directory without one is a whole
-	// repository, a submodule's, even at worktrees/<name>.
+	// repository, even at worktrees/<name>: a submodule's, or one moved
+	// away with --separate-git-dir.
 	c, err := os.ReadFile(filepath.Join(admin, "commondir")) //nolint:gosec // G703: see above
 	if err != nil {
+		if isGitDir(admin) {
+			return gitFile{commonDir: admin}, true
+		}
 		return gitFile{}, false
 	}
 	common := strings.TrimSpace(string(c))

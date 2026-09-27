@@ -107,8 +107,11 @@ func TestScanFollowsLinkedWorktreeToMainRepo(t *testing.T) {
 	elsewhere := filepath.Join(dir, "elsewhere")
 	wt := filepath.Join(elsewhere, "wt")
 	linkWorktree(t, main, wt)
-	// A submodule's .git file points at a whole repository: not a worktree.
-	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "worktrees", "x"))
+	// A submodule's .git file points at a whole repository, which has no
+	// linked worktrees of its own: no git process for it.
+	write(t, filepath.Join(main, ".git", "modules", "sub", "HEAD"), "ref: refs/heads/main\n")
+	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "objects"))
+	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "refs"))
 	write(t, filepath.Join(elsewhere, "sub", ".git"), "gitdir: ../../main/.git/modules/sub\n")
 
 	for _, roots := range [][]string{{elsewhere}, {dir}, {elsewhere, main}} {

@@ -32,35 +32,13 @@ internal/
   tui             Bubble Tea UI: app, list screen, store, theme, keys
 ```
 
-Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx` → `lopper`.
-The rules live in [`internal/archtest`](internal/archtest/arch_test.go) and run with the tests:
-a new package must be assigned a layer there, and `os/exec`, Charm and cobra are
-allowed only in the packages that need them.
+Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx` → `lopper`,
+enforced by [`internal/archtest`](internal/archtest/arch_test.go).
 
-## Development
+## Contributing
 
-The only requirement is Go. Every other tool (task, golangci-lint, gotestsum,
-govulncheck, lefthook) is pinned in [`tools/go.mod`](tools/go.mod) and runs via `go tool`.
-
-```sh
-alias task='go tool -modfile=tools/go.mod task'   # or: brew install go-task
-
-task setup    # build tools into .bin/, install git hooks (repo-local)
-task          # list all tasks
-task check    # what CI runs: tidy, lint (all OSes), tests, govulncheck
-task fixture  # sandbox with sample worktrees in .tmp/fixture
-task run -- .tmp/fixture
-```
-
-Tests:
-
-- unit tests next to the code; `verdict` rules are table-driven;
-- end-to-end scenarios in [`cmd/lopper/testdata/script`](cmd/lopper/testdata/script)
-  are [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript) files
-  that build real repositories and run `lopper` against them;
-- `task fuzz` fuzzes the `git worktree list` parser.
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org) (checked by a hook).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and PR conventions.
+Security issues: [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -29,7 +29,7 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		f.Errors = append(f.Errors, "could not "+what+": "+firstLine(err.Error()))
 	}
 
-	if out, err := in.Git.Run(ctx, wt.Path, "status", "--porcelain"); err != nil {
+	if out, err := in.Git.Run(ctx, wt.Path, "status", "--porcelain", "--untracked-files=normal"); err != nil {
 		fail("read status", err)
 	} else {
 		f.Dirty = new(countLines(out))
@@ -61,23 +61,36 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 }
 
 // Slow gathers expensive facts that require walking the directory.
+// Size excludes unreadable or vanished entries below the root. A root
+// error or cancellation leaves the size unknown.
 // TODO: LastTouched from non-ignored files, busy processes.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
 	if wt.Prunable {
 		return f
 	}
 	var size int64
-	_ = filepath.WalkDir(wt.Path, func(_ string, d fs.DirEntry, err error) error {
+	f.SizeBytes = nil
+	err := filepath.WalkDir(wt.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err == nil && d.Type().IsRegular() {
+		if err != nil {
+			if path == wt.Path {
+				return err
+			}
+			return nil
+		}
+		if d.Type().IsRegular() {
 			if info, err := d.Info(); err == nil {
 				size += info.Size()
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		f.Errors = append(f.Errors, "could not measure size: "+firstLine(err.Error()))
+		return f
+	}
 	f.SizeBytes = &size
 	return f
 }

@@ -37,7 +37,7 @@ type Worktree struct {
 // progressively; a nil pointer means "not known". A fact that could not
 // be observed stays nil and the cause is recorded in Errors.
 type Facts struct {
-	Dirty     *int       `json:"dirty,omitempty"`    // number of modified/untracked files
+	Dirty     *int       `json:"dirty,omitempty"`    // status entries; an untracked directory counts as one
 	Unpushed  *int       `json:"unpushed,omitempty"` // commits neither on a remote nor in base
 	Merged    *MergeKind `json:"merged,omitempty"`   // how (if at all) the work reached the base branch
 	SizeBytes *int64     `json:"size_bytes,omitempty"`

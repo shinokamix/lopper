@@ -67,6 +67,9 @@ the scope, if any, is a package name). Describe the outcome in plain language â€
 fix(discovery): worktrees under a symlinked home are no longer missed
 ```
 
+See [commit](.agents/skills/commit/SKILL.md) for how to word titles, commits and
+branch names.
+
 Fill in the PR template, and keep one concern per PR: if the description needs
 the word "also", split it.
 

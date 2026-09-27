@@ -42,6 +42,12 @@ exec lopper scan --json $WORK/lockmoved
 stdout '"rule": "moved"'
 stdout '"rule": "locked"'
 
+# ...even when a directory appears at the old path again.
+mkdir old/locked
+exec lopper scan $WORK/lockmoved
+stdout '^keep\s+pinned\s+.*lockmoved$'
+! stdout 'old[/\\]locked$'
+
 # Two repositories may each have left a worktree moved away from the same
 # path: each is matched with its own repository.
 exec git init -q a

@@ -40,7 +40,7 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 
 	var (
 		mu      sync.Mutex
-		missing = map[string]lopper.Worktree{} // directory gone, by recordKey
+		missing = map[string]lopper.Worktree{} // .git file gone, by recordKey
 		orphans = map[string]orphan{}          // by real path
 	)
 
@@ -50,8 +50,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 			for gitDir := range gitDirs {
 				listRepo(ctx, git, gitDir, func(wt lopper.Worktree) {
 					// Unless it was moved, see below. git does not call a
-					// locked worktree prunable, so the directory is checked.
-					if wt.Prunable || isGone(wt.Path) {
+					// locked worktree prunable, so its .git file is checked,
+					// as backLink does: the directory may have been recreated.
+					if wt.Prunable || isGone(filepath.Join(wt.Path, ".git")) {
 						mu.Lock()
 						defer mu.Unlock()
 						missing[recordKey(gitDir, wt.Path)] = wt

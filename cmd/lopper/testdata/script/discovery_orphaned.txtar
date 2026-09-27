@@ -7,7 +7,8 @@ exec git -C repo worktree add -q -b feature ../agent/wt
 rm repo
 
 exec lopper scan --json $WORK
-stdout '"path": ".*agent[/\\\\]wt"'
+# JSON escapes the Windows separator as \\.
+stdout '"path": ".*agent(/|\\\\)wt"'
 stdout '"verdict": "review"'
 stdout '"rule": "orphaned"'
 stdout '"size_bytes": '

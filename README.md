@@ -11,7 +11,7 @@ and removes them without losing work.
 ## Usage
 
 ```sh
-lopper              # interactive TUI, scans your home directory
+lopper              # interactive TUI, scans your home and temporary directories
 lopper ~/code       # scan specific paths
 lopper scan --json  # machine-readable output for scripts
 ```

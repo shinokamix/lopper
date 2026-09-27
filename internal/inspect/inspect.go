@@ -22,7 +22,7 @@ type Inspector struct {
 // in Facts.Errors, so verdict can refuse to call the worktree safe.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
 	var f lopper.Facts
-	if wt.Prunable {
+	if wt.Prunable || wt.Orphaned {
 		return f
 	}
 	fail := func(what string, err error) {

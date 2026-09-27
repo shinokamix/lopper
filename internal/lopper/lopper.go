@@ -30,6 +30,10 @@ type Worktree struct {
 	Head     string // commit SHA
 	Locked   bool
 	Prunable bool // git reports the directory as missing
+	// Orphaned: the directory is still there, but its repository no longer
+	// tracks it (deleted, or the worktree was pruned), so git cannot inspect
+	// it. Repo.Path is where the repository used to be.
+	Orphaned bool
 	Origin   Origin
 }
 

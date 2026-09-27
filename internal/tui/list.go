@@ -47,6 +47,8 @@ func (l *list) view(t theme, s *store, width, height int) string {
 	status := "done"
 	if s.scanning {
 		status = "scanning…"
+	} else if s.err != nil {
+		status = "failed: " + s.err.Error()
 	}
 	fmt.Fprintf(&b, "%s  %s\n", t.title.Render("lopper"), t.subtle.Render(status))
 	fmt.Fprintf(&b, "%s  %s  %s  %s\n\n",
@@ -62,8 +64,10 @@ func (l *list) view(t theme, s *store, width, height int) string {
 		return b.String()
 	}
 
-	// TODO: viewport scrolling, detail pane, grouping by repo.
-	for i, r := range rows[:min(len(rows), max(height-6, 1))] {
+	// TODO: detail pane, grouping by repo.
+	visible := max(height-6, 1)
+	start := max(0, l.cursor-visible+1)
+	for i, r := range rows[start:min(len(rows), start+visible)] {
 		mark := "  "
 		if l.selected[r.worktree.ID] {
 			mark = t.selected.Render("✓ ")
@@ -74,7 +78,7 @@ func (l *list) view(t theme, s *store, width, height int) string {
 		}
 		line := fmt.Sprintf("%s%s %-32.32s %9s  %s", mark, badge(t, r.verdict.Level),
 			name, formatBytes(r.facts.SizeBytes), t.subtle.Render(r.worktree.Path))
-		if i == l.cursor {
+		if start+i == l.cursor {
 			line = t.cursor.Width(width).Render(line)
 		}
 		b.WriteString(line + "\n")

@@ -11,17 +11,13 @@ func TestDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)        // Unix
 	t.Setenv("USERPROFILE", home) // Windows
-	tmp := realDir(t, t.TempDir())
-	t.Setenv("TMPDIR", tmp) // Unix
-	t.Setenv("TMP", tmp)    // Windows
-	t.Setenv("TEMP", tmp)
 
 	cfg, err := Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Roots) == 0 || cfg.Roots[0] != home || !slices.Contains(cfg.Roots, tmp) {
-		t.Errorf("Roots = %v, want %s first, and %s", cfg.Roots, home, tmp)
+	if len(cfg.Roots) == 0 || cfg.Roots[0] != home {
+		t.Errorf("Roots = %v, want %s first", cfg.Roots, home)
 	}
 	if !cfg.SkipPaths[filepath.Join(home, "Library")] || !cfg.SkipPaths[filepath.Join(home, "go", "pkg")] {
 		t.Errorf("SkipPaths = %v, want ~/Library and ~/go/pkg", cfg.SkipPaths)
@@ -41,6 +37,19 @@ func TestDefaultWithoutHome(t *testing.T) {
 	t.Setenv("USERPROFILE", "")
 	if _, err := Default(); err == nil {
 		t.Error("Default() succeeded without a home directory")
+	}
+}
+
+// TestTempDirs checks that the temporary directory the environment names
+// is a candidate. Whether it becomes a root is up to TestTempRoots' rules:
+// under /tmp, as t.TempDir is on Linux, it does not.
+func TestTempDirs(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "tmp")
+	t.Setenv("TMPDIR", dir) // Unix
+	t.Setenv("TMP", dir)    // Windows
+	t.Setenv("TEMP", dir)
+	if got := tempDirs(); !slices.Contains(got, dir) {
+		t.Errorf("tempDirs() = %v, want it to contain %s", got, dir)
 	}
 }
 

@@ -37,7 +37,11 @@ type Worktree struct {
 	// MovedFrom: the directory was moved here from this path, where git
 	// still expects it; `git worktree repair` run inside it relinks them.
 	MovedFrom string
-	Origin    Origin
+	// Unconfirmed: the directory's .git file makes it a linked worktree of
+	// Repo, but the repository could not confirm that it still tracks it
+	// here; this says why. git may or may not still work inside it.
+	Unconfirmed string
+	Origin      Origin
 }
 
 // Facts are observations about a worktree. Inspect fills them in

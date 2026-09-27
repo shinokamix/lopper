@@ -19,6 +19,7 @@ import (
 type fakeGit struct {
 	mu    sync.Mutex
 	lists map[string][]string // repo dir -> linked worktree paths
+	fail  map[string]error    // repo dir -> error of git
 	calls []string
 }
 
@@ -29,6 +30,9 @@ func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, er
 		return "", errors.New("unsupported")
 	}
 	f.calls = append(f.calls, dir)
+	if err := f.fail[dir]; err != nil {
+		return "", err
+	}
 	// Records work for both plain and -z porcelain output.
 	sep := "\n"
 	if slices.Contains(args, "-z") {
@@ -177,6 +181,29 @@ func TestScanWalksEveryDirectory(t *testing.T) {
 	}
 }
 
+// A worktree found through its .git file stays in the results when its
+// repository cannot be listed, marked as unconfirmed and with the branch
+// its admin directory names.
+func TestScanKeepsWorktreesGitCannotList(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	wt := filepath.Join(root, "wt")
+	linkWorktree(t, repo, wt)
+	write(t, filepath.Join(repo, ".git", "worktrees", "wt", "HEAD"), "ref: refs/heads/feature\n")
+
+	git := &fakeGit{fail: map[string]error{repo: errors.New("git worktree list: exit status 128: fatal: bad config line 1\nhint: more")}}
+	found := scan(t, git, Options{Roots: []string{root}})
+
+	want := lopper.Worktree{
+		ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: repo}, Branch: "feature",
+		Unconfirmed: "could not list its worktrees: git worktree list: exit status 128: fatal: bad config line 1",
+		Origin:      lopper.OriginManual,
+	}
+	if len(found) != 1 || found[0] != want {
+		t.Errorf("found %+v, want %+v", found, want)
+	}
+}
+
 func symlink(t *testing.T, target, link string) {
 	t.Helper()
 	mkdir(t, filepath.Dir(link))
@@ -204,7 +231,10 @@ func TestScanFollowsSymlinkedDirectories(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	git := &fakeGit{lists: map[string][]string{}}
+	// Reached through the link, the repository lists its worktree.
+	git := &fakeGit{lists: map[string][]string{
+		filepath.Join(root, "code", "repo"): {filepath.Join(outside, "repo-wt")},
+	}}
 	var found []lopper.Worktree
 	var mu sync.Mutex
 	err := Scan(ctx, git, Options{Roots: []string{root}}, func(wt lopper.Worktree) {
@@ -218,8 +248,14 @@ func TestScanFollowsSymlinkedDirectories(t *testing.T) {
 	if len(git.calls) != 1 || realPath(git.calls[0]) != realPath(repo) {
 		t.Errorf("git worktree list ran in %v, want once in %s", git.calls, repo)
 	}
-	if len(found) != 1 || found[0].Path != orphan || !found[0].Orphaned {
-		t.Errorf("found %+v, want only orphan %s", found, orphan)
+	var orphans []string
+	for _, wt := range found {
+		if wt.Orphaned {
+			orphans = append(orphans, wt.Path)
+		}
+	}
+	if len(found) != 2 || !slices.Equal(orphans, []string{orphan}) {
+		t.Errorf("found %+v, want repo-wt and orphan %s", found, orphan)
 	}
 }
 

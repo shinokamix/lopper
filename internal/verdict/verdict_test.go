@@ -30,6 +30,7 @@ func TestEvaluate(t *testing.T) {
 		{"unmerged but pushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.NotMerged)}, lopper.LevelReview, []string{"not-merged"}},
 		{"locked", locked, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelKeep, []string{"locked", "merged"}},
 		{"prunable", lopper.Worktree{Prunable: true}, lopper.Facts{}, lopper.LevelSafe, []string{"prunable"}},
+		{"orphaned", lopper.Worktree{Orphaned: true}, lopper.Facts{SizeBytes: new(int64(4096))}, lopper.LevelReview, []string{"orphaned"}},
 		{"status failed but merged", repo, lopper.Facts{Unpushed: n(0), Merged: m(lopper.MergedFF), Errors: []string{"could not read status: boom"}}, lopper.LevelReview, []string{"incomplete", "merged"}},
 		{"no base branch", noBase, lopper.Facts{Dirty: n(0), Unpushed: n(0)}, lopper.LevelReview, []string{"incomplete"}},
 		{"nothing known", repo, lopper.Facts{}, lopper.LevelReview, []string{"incomplete"}},

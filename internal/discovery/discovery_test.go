@@ -109,8 +109,6 @@ func TestScanFollowsLinkedWorktreeToMainRepo(t *testing.T) {
 	// A submodule's .git file points at a whole repository: not a worktree.
 	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "worktrees", "x"))
 	write(t, filepath.Join(elsewhere, "sub", ".git"), "gitdir: ../../main/.git/modules/sub\n")
-	// An orphaned worktree whose main repository is gone.
-	write(t, filepath.Join(elsewhere, "orphan", ".git"), "gitdir: "+filepath.Join(dir, "gone", ".git", "worktrees", "orphan")+"\n")
 
 	for _, roots := range [][]string{{elsewhere}, {dir}, {elsewhere, main}} {
 		git := &fakeGit{lists: map[string][]string{main: {wt}}}
@@ -120,6 +118,38 @@ func TestScanFollowsLinkedWorktreeToMainRepo(t *testing.T) {
 		}
 		if len(found) != 1 || found[0].Path != wt {
 			t.Errorf("roots %v: found %+v, want %s", roots, found, wt)
+		}
+	}
+}
+
+func TestScanReportsOrphanedWorktrees(t *testing.T) {
+	dir := t.TempDir()
+	gone := filepath.Join(dir, "gone")
+	orphan := filepath.Join(dir, "agent", "orphan")
+	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(gone, ".git", "worktrees", "orphan")+"\n")
+	// A submodule whose repository is gone is not a worktree.
+	write(t, filepath.Join(dir, "agent", "sub", ".git"), "gitdir: "+filepath.Join(gone, ".git", "modules", "sub")+"\n")
+	// A repository moved after `git worktree add`: the worktree's .git file
+	// is stale, but the repository still tracks it.
+	moved := filepath.Join(dir, "moved")
+	mkdir(t, filepath.Join(moved, ".git", "worktrees", "wt"))
+	wt := filepath.Join(dir, "agent", "wt")
+	write(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(dir, "old", ".git", "worktrees", "wt")+"\n")
+
+	// Overlapping roots must not report the orphan twice.
+	git := &fakeGit{lists: map[string][]string{moved: {wt}}}
+	found := scan(t, git, Options{Roots: []string{dir, filepath.Join(dir, "agent")}})
+
+	want := map[string]lopper.Worktree{
+		orphan: {ID: lopper.ID(orphan), Path: orphan, Repo: lopper.Repo{Path: gone}, Orphaned: true, Origin: lopper.OriginManual},
+		wt:     {ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: moved}, Branch: "wt", Head: "1", Origin: lopper.OriginManual},
+	}
+	if len(found) != len(want) {
+		t.Fatalf("found %+v, want %d worktrees", found, len(want))
+	}
+	for _, got := range found {
+		if got != want[got.Path] {
+			t.Errorf("found %+v, want %+v", got, want[got.Path])
 		}
 	}
 }

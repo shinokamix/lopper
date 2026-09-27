@@ -12,7 +12,7 @@ import (
 // Evaluate applies rules and picks the strictest level among the reasons.
 func Evaluate(wt lopper.Worktree, f lopper.Facts) lopper.Verdict {
 	rules := [...]func(lopper.Worktree, lopper.Facts) *lopper.Reason{
-		prunable, locked, incomplete, dirty, unpushed, merged, notMerged,
+		prunable, orphaned, locked, incomplete, dirty, unpushed, merged, notMerged,
 	}
 	var v lopper.Verdict
 	for _, rule := range rules {
@@ -33,6 +33,18 @@ func prunable(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
 	return &lopper.Reason{Rule: "prunable", Level: lopper.LevelSafe, Message: "directory is already gone"}
 }
 
+// orphaned is never safe: without git there is no way to tell whether the
+// files hold work that exists nowhere else.
+func orphaned(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
+	if !wt.Orphaned {
+		return nil
+	}
+	return &lopper.Reason{
+		Rule: "orphaned", Level: lopper.LevelReview,
+		Message: fmt.Sprintf("not tracked by %s anymore: git cannot check it for unsaved work", wt.Repo.Path),
+	}
+}
+
 func locked(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
 	if !wt.Locked {
 		return nil
@@ -44,7 +56,7 @@ func locked(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
 // never safe unless every safety-critical fact is known. Without it a failed
 // `git status` would silently skip the dirty rule and let merged say "safe".
 func incomplete(wt lopper.Worktree, f lopper.Facts) *lopper.Reason {
-	if wt.Prunable {
+	if wt.Prunable || wt.Orphaned { // no git facts to expect; their own rules explain why
 		return nil
 	}
 	var unknown []string

@@ -1,0 +1,67 @@
+# A worktree whose repository was deleted is still found. git can no longer
+# check it for unsaved work, so it is never reported as safe.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../agent/wt
+rm repo
+
+exec lopper scan --json $WORK
+stdout '"path": ".*agent[/\\\\]wt"'
+stdout '"verdict": "review"'
+stdout '"rule": "orphaned"'
+stdout '"size_bytes": '
+! stdout '"verdict": "safe"'
+! stdout '"rule": "incomplete"'
+! stderr .
+
+exec lopper scan $WORK/agent
+stdout '^review\s+.*agent[/\\]wt$'
+
+# A worktree pruned from a repository that still exists is an orphan too,
+# and it still leads to the repository's other worktrees.
+exec git init -q $WORK/outside/kept
+exec git -C $WORK/outside/kept commit -q --allow-empty -m init
+exec git -C $WORK/outside/kept worktree add -q -b pruned $WORK/tree/pruned
+exec git -C $WORK/outside/kept worktree add -q -b other $WORK/elsewhere/other
+rm $WORK/outside/kept/.git/worktrees/pruned
+
+exec lopper scan $WORK/tree
+stdout -count=2 '^\w+\s'
+stdout '^review\s+.*tree[/\\]pruned$'
+stdout '^\w+\s+other\s'
+
+# A submodule is not a worktree, even at a path named worktrees/ and with
+# its git directory gone.
+exec git init -q $WORK/sub/lib
+exec git -C $WORK/sub/lib commit -q --allow-empty -m init
+exec git init -q $WORK/sub/super
+exec git -C $WORK/sub/super -c protocol.file.allow=always submodule add -q ../lib worktrees/lib
+rm $WORK/sub/super/.git/modules/worktrees/lib
+
+exec lopper scan $WORK/sub
+! stdout .
+
+# ...nor with all of the superproject's submodule repositories gone.
+rm $WORK/sub/super/.git/modules
+
+exec lopper scan $WORK/sub
+! stdout .
+
+# A submodule's own repository lives inside the superproject's .git and can
+# have linked worktrees too: a pruned one is an orphan and still leads to
+# the others.
+exec git init -q $WORK/sm/lib
+exec git -C $WORK/sm/lib commit -q --allow-empty -m init
+exec git init -q $WORK/sm/super
+exec git -C $WORK/sm/super -c protocol.file.allow=always submodule add -q ../lib lib
+exec git -C $WORK/sm/super/lib worktree add -q -b one $WORK/smwt/one
+exec git -C $WORK/sm/super/lib worktree add -q -b two $WORK/smwt/two
+mv $WORK/smwt/one $WORK/away
+exec git -C $WORK/sm/super/lib worktree prune
+mv $WORK/away $WORK/smwt/one
+
+exec lopper scan $WORK/smwt
+stdout -count=2 '^\w+\s'
+stdout '^review\s+.*smwt[/\\]one$'
+stdout '^\w+\s+two\s'

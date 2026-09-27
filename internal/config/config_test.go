@@ -20,17 +20,6 @@ func TestDefault(t *testing.T) {
 	if len(cfg.Roots) == 0 || cfg.Roots[0] != home {
 		t.Errorf("Roots = %v, want %s first", cfg.Roots, home)
 	}
-	if !cfg.SkipPaths[filepath.Join(home, "Library")] || !cfg.SkipPaths[filepath.Join(home, "go", "pkg")] {
-		t.Errorf("SkipPaths = %v, want ~/Library and ~/go/pkg", cfg.SkipPaths)
-	}
-	for _, name := range []string{"Library", "venv", "go", "pkg"} {
-		if cfg.SkipNames[name] {
-			t.Errorf("SkipNames contains %q: it would hide projects of that name", name)
-		}
-	}
-	if !cfg.SkipNames["node_modules"] {
-		t.Error("SkipNames misses node_modules")
-	}
 }
 
 func TestDefaultWithoutHome(t *testing.T) {
@@ -59,9 +48,8 @@ func TestTempRoots(t *testing.T) {
 	out := realDir(t, t.TempDir())
 	appTemp := filepath.Join(home, "AppData", "Local", "Temp") // Windows' %TEMP%
 	inHome := filepath.Join(home, "tmp")
-	inSkippedName := filepath.Join(home, "code", "node_modules", "tmp")
 	nested := filepath.Join(out, "sub")
-	for _, dir := range []string{appTemp, inHome, inSkippedName, nested} {
+	for _, dir := range []string{appTemp, inHome, nested} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -83,9 +71,7 @@ func TestTempRoots(t *testing.T) {
 	}{
 		{"outside home", []string{out}, []string{home, out}},
 		{"unset or missing", []string{"", filepath.Join(out, "missing")}, []string{home}},
-		{"under skipped AppData", []string{appTemp}, []string{home, appTemp}},
-		{"under a skipped name", []string{inSkippedName}, []string{home, inSkippedName}},
-		{"reached from home", []string{inHome}, []string{home}},
+		{"reached from home", []string{inHome, appTemp}, []string{home}},
 		{"inner first", []string{nested, out}, []string{home, out}},
 		{"outer first", []string{out, nested}, []string{home, out}},
 	}

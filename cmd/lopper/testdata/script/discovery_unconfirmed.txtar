@@ -1,0 +1,24 @@
+# A worktree found through its .git file is reported even when its
+# repository cannot be listed, and never as safe: nothing confirms that
+# the repository still tracks it.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../wt
+exec lopper scan $WORK
+stdout '^safe\s+feature\s+.*wt$'
+
+# A config git cannot parse makes every git command in the repository fail.
+cp badconfig repo/.git/config
+! exec git -C repo worktree list
+
+exec lopper scan $WORK
+stdout -count=1 '^\w+\s'
+stdout '^review\s+feature\s+.*wt$'
+exec lopper scan --json $WORK
+stdout '"rule": "unconfirmed"'
+stdout 'cannot confirm this worktree: could not list its worktrees: git worktree list'
+! stdout '"verdict": "safe"'
+
+-- badconfig --
+[core

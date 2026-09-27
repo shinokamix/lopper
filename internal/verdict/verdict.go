@@ -12,7 +12,7 @@ import (
 // Evaluate applies rules and picks the strictest level among the reasons.
 func Evaluate(wt lopper.Worktree, f lopper.Facts) lopper.Verdict {
 	rules := [...]func(lopper.Worktree, lopper.Facts) *lopper.Reason{
-		prunable, orphaned, moved, locked, incomplete, dirty, unpushed, merged, notMerged,
+		prunable, orphaned, moved, unconfirmed, locked, incomplete, dirty, unpushed, merged, notMerged,
 	}
 	var v lopper.Verdict
 	for _, rule := range rules {
@@ -54,6 +54,18 @@ func moved(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
 	return &lopper.Reason{
 		Rule: "moved", Level: lopper.LevelReview,
 		Message: fmt.Sprintf("moved from %s: run `git worktree repair` in it", wt.MovedFrom),
+	}
+}
+
+// unconfirmed is never safe: even when git works inside the directory,
+// its repository may not know about it, or know it under another name.
+func unconfirmed(wt lopper.Worktree, _ lopper.Facts) *lopper.Reason {
+	if wt.Unconfirmed == "" {
+		return nil
+	}
+	return &lopper.Reason{
+		Rule: "unconfirmed", Level: lopper.LevelReview,
+		Message: fmt.Sprintf("%s cannot confirm this worktree: %s", wt.Repo.Path, wt.Unconfirmed),
 	}
 }
 

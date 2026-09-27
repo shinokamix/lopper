@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -99,9 +100,16 @@ var repoVars = map[string]bool{
 // Environ is os.Environ without the variables that tie git to the
 // caller's repository.
 func Environ() []string {
-	env := os.Environ()
+	// Windows matches variable names regardless of case: git_dir is GIT_DIR.
+	return withoutRepoVars(runtime.GOOS == "windows", os.Environ())
+}
+
+func withoutRepoVars(caseInsensitive bool, env []string) []string {
 	return slices.DeleteFunc(env, func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
+		if caseInsensitive {
+			name = strings.ToUpper(name)
+		}
 		return repoVars[name]
 	})
 }

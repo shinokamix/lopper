@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -146,15 +147,37 @@ func TestExecIgnoresCallerRepo(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(scanned, "dirty.txt"), "work\n")
 
-	t.Setenv("GIT_DIR", filepath.Join(caller, ".git"))
-	t.Setenv("GIT_WORK_TREE", caller)
-	t.Setenv("GIT_INDEX_FILE", filepath.Join(caller, ".git", "index"))
+	// Windows ignores the case of variable names, and so does git there.
+	dir, workTree, index := "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"
+	if runtime.GOOS == "windows" {
+		dir, workTree, index = "git_dir", "Git_Work_Tree", "git_INDEX_file"
+	}
+	t.Setenv(dir, filepath.Join(caller, ".git"))
+	t.Setenv(workTree, caller)
+	t.Setenv(index, filepath.Join(caller, ".git", "index"))
 	out, err := (Exec{}).Run(t.Context(), scanned, "status", "--porcelain")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out != "?? dirty.txt" {
 		t.Errorf("status in %s = %q, want its untracked dirty.txt", scanned, out)
+	}
+}
+
+func TestWithoutRepoVars(t *testing.T) {
+	env := []string{"PATH=/bin", "GIT_DIR=/a", "git_dir=/b", "Git_Work_Tree=/c", "GIT_CONFIG_COUNT=1", "=C:=C:\\"}
+	for _, tc := range []struct {
+		caseInsensitive bool
+		want            []string
+	}{
+		// Elsewhere git_dir is a different variable that git never reads.
+		{false, []string{"PATH=/bin", "git_dir=/b", "Git_Work_Tree=/c", "GIT_CONFIG_COUNT=1", "=C:=C:\\"}},
+		{true, []string{"PATH=/bin", "GIT_CONFIG_COUNT=1", "=C:=C:\\"}},
+	} {
+		got := withoutRepoVars(tc.caseInsensitive, slices.Clone(env))
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("withoutRepoVars(caseInsensitive=%v) = %q, want %q", tc.caseInsensitive, got, tc.want)
+		}
 	}
 }
 

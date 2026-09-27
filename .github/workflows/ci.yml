@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# pwsh on Windows splits `-modfile=tools/go.mod` at the dot; use bash everywhere.
+defaults:
+  run:
+    shell: bash
+
 # Jobs call the same Task entry points as `task check` locally.
 jobs:
   lint:

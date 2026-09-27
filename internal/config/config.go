@@ -65,7 +65,7 @@ func (c Config) withTemps(roots, temps []string) []string {
 		if err != nil {
 			continue // missing, or not ours to read: nothing to find there
 		}
-		if info, err := os.Stat(resolved); err != nil || !info.IsDir() {
+		if !readableDir(resolved) {
 			continue
 		}
 		reached := func(root string) bool { return c.walkReaches(root, resolved) }
@@ -76,6 +76,19 @@ func (c Config) withTemps(roots, temps []string) []string {
 		added = append(added, resolved)
 	}
 	return append(roots, added...)
+}
+
+// readableDir reports whether dir is a directory the walk can list: a
+// root it cannot is a fatal error, which only a path the user chose
+// deserves.
+func readableDir(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	return err == nil && info.IsDir()
 }
 
 // walkReaches reports whether a walk of root descends into dir, which is

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -65,6 +66,13 @@ func TestTempRoots(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	locked := filepath.Join(out, "locked")
+	if err := os.Mkdir(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) }) // or t.TempDir cannot remove it
+	// Windows ignores the mode bits, and root reads everything.
+	unreadable := runtime.GOOS != "windows" && os.Geteuid() != 0
 	link := filepath.Join(t.TempDir(), "link")
 	linked := os.Symlink(out, link) == nil // needs a privilege on Windows
 
@@ -80,6 +88,13 @@ func TestTempRoots(t *testing.T) {
 		{"reached from home", []string{inHome}, []string{home}},
 		{"inner first", []string{nested, out}, []string{home, out}},
 		{"outer first", []string{out, nested}, []string{home, out}},
+	}
+	if unreadable {
+		cases = append(cases, struct {
+			name  string
+			temps []string
+			want  []string
+		}{"unreadable", []string{locked}, []string{home}})
 	}
 	if linked {
 		cases = append(cases, struct {

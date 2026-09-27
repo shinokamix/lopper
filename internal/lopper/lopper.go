@@ -34,7 +34,10 @@ type Worktree struct {
 	// tracks it (deleted, or the worktree was pruned), so git cannot inspect
 	// it. Repo.Path is where the repository used to be.
 	Orphaned bool
-	Origin   Origin
+	// MovedFrom: the directory was moved here from this path, where git
+	// still expects it; `git worktree repair` run inside it relinks them.
+	MovedFrom string
+	Origin    Origin
 }
 
 // Facts are observations about a worktree. Inspect fills them in

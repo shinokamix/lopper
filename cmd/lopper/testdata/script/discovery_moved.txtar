@@ -1,0 +1,34 @@
+# A worktree moved with mv is reported once, where it is now, and never as
+# safe: git still expects it at the old path and cannot remove it until
+# `git worktree repair` relinks the two.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../old/wt
+mv old/wt moved
+
+exec lopper scan $WORK
+stdout -count=1 '^\w+\s'
+stdout '^review\s+feature\s+.*moved$'
+
+exec lopper scan --json $WORK
+stdout '"rule": "moved"'
+stdout '"message": "moved from .*old'
+stdout '"rule": "merged"'
+! stdout '"rule": "(prunable|orphaned)"'
+! stderr .
+
+# git still works inside it, so its work is checked as usual.
+cp dirty.txt moved/dirty.txt
+exec lopper scan $WORK
+stdout '^keep\s+feature\s+.*moved$'
+rm moved/dirty.txt
+
+# After the repair lopper suggests, it is an ordinary worktree again.
+exec git -C moved worktree repair
+exec lopper scan $WORK
+stdout -count=1 '^\w+\s'
+stdout '^safe\s+feature\s+.*moved$'
+
+-- dirty.txt --
+not committed yet

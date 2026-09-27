@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -51,10 +53,14 @@ type Runner interface {
 // credential helpers are never reached. Future commands that print diffs
 // must pass --no-ext-diff --no-textconv. Global config is left intact so
 // safe.directory keeps working.
+//
+// git runs in dir and nowhere else: variables such as GIT_DIR that the
+// caller exported (a git hook, `git rebase --exec`) are dropped, see
+// [Environ].
 type Exec struct{}
 
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
-	env := append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 	if readsFiles(args) {
 		drivers, err := run(ctx, dir, env, "config", "-z", "--name-only",
 			"--get-regexp", `^filter\..+\.(clean|smudge|process)$`)
@@ -68,6 +74,44 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 		env = blankFilters(env, drivers)
 	}
 	return run(ctx, dir, env, args...)
+}
+
+// repoVars are the variables `git rev-parse --local-env-vars` lists, which
+// tie git to one repository: they would override -C. GIT_CONFIG_PARAMETERS
+// and GIT_CONFIG_COUNT are on that list too but carry the user's
+// `git -c` config rather than a location, so they are kept, as git itself
+// does when it runs a command in a submodule.
+var repoVars = map[string]bool{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_CONFIG":                       true,
+	"GIT_OBJECT_DIRECTORY":             true,
+	"GIT_DIR":                          true,
+	"GIT_WORK_TREE":                    true,
+	"GIT_IMPLICIT_WORK_TREE":           true,
+	"GIT_GRAFT_FILE":                   true,
+	"GIT_INDEX_FILE":                   true,
+	"GIT_NO_REPLACE_OBJECTS":           true,
+	"GIT_REPLACE_REF_BASE":             true,
+	"GIT_PREFIX":                       true,
+	"GIT_SHALLOW_FILE":                 true,
+	"GIT_COMMON_DIR":                   true,
+}
+
+// Environ is os.Environ without the variables that tie git to the
+// caller's repository.
+func Environ() []string {
+	// Windows matches variable names regardless of case: git_dir is GIT_DIR.
+	return withoutRepoVars(runtime.GOOS == "windows", os.Environ())
+}
+
+func withoutRepoVars(caseInsensitive bool, env []string) []string {
+	return slices.DeleteFunc(env, func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		if caseInsensitive {
+			name = strings.ToUpper(name)
+		}
+		return repoVars[name]
+	})
 }
 
 // readsFiles reports whether the git command may hash working tree files

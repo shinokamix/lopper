@@ -131,6 +131,10 @@ func isGone(path string) bool {
 // .git at all and are recognized by their worktrees directory. A linked
 // worktree whose repository no longer tracks it at its path also goes to
 // orphan, with what its .git file tells about the repository.
+//
+// Symbolic links to directories are followed. Every physical directory
+// is walked once, whichever path reaches it first, so neither a link
+// back to an ancestor nor overlapping roots make the walk repeat itself.
 func findRepos(ctx context.Context, opts Options, found func(gitDir string), orphan func(dir string, gf gitFile)) error {
 	var seen sync.Map
 	report := func(gitDir string) {
@@ -139,6 +143,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 			found(gitDir)
 		}
 	}
+	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
 
@@ -157,16 +162,27 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 				}
 				return nil // unreadable entries below a root are skipped, not fatal
 			}
+			typ, link := d.Type(), d.Type()&fs.ModeSymlink != 0
+			if link {
+				info, err := fastwalk.StatDirEntry(path, d)
+				if err != nil {
+					return nil //nolint:nilerr // dangling, or a loop of links: nothing to walk
+				}
+				typ = info.Mode().Type()
+			}
+			if typ.IsDir() && visited.Entry(path, d) {
+				return fs.SkipDir
+			}
 			name := d.Name()
 			if name == ".git" {
-				if d.IsDir() {
+				if typ.IsDir() {
 					report(path)
 					return fs.SkipDir
 				}
-				if d.Type().IsRegular() {
+				if typ.IsRegular() {
 					gf, ok := readGitFile(path)
 					if ok && gf.orphaned {
-						orphan(filepath.Dir(path), gf)
+						orphan(physical(opts.Roots, filepath.Dir(path)), gf)
 					}
 					if ok && !gf.repoGone {
 						// Even without this worktree, the repository may have others.
@@ -175,9 +191,12 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 				}
 				return nil
 			}
-			if name == "worktrees" && d.IsDir() && isGitDir(filepath.Dir(path)) {
+			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
 				report(filepath.Dir(path)) // a bare repository
 				return fs.SkipDir
+			}
+			if link && typ.IsDir() {
+				return fastwalk.ErrTraverseLink
 			}
 			return nil
 		})
@@ -186,6 +205,20 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 		}
 	}
 	return nil
+}
+
+// physical is where dir really is, so that a directory the walk may reach
+// by several paths is reported the same way every time: its resolved
+// path, but below the first root that contains it, as that root is given.
+func physical(roots []string, dir string) string {
+	resolved := realPath(dir)
+	for _, root := range roots {
+		rel, err := filepath.Rel(realPath(root), resolved)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.Join(filepath.Clean(root), rel)
+		}
+	}
+	return resolved
 }
 
 // realPath resolves symlinks so that one directory reached by two paths

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/shinokamix/lopper/internal/lopper"
 )
@@ -173,6 +174,52 @@ func TestScanWalksEveryDirectory(t *testing.T) {
 	scan(t, git, Options{Roots: []string{root}})
 	if got, want := slices.Sorted(slices.Values(git.calls)), []string{lib, dep}; !slices.Equal(got, want) {
 		t.Errorf("git worktree list ran in %v, want %v", got, want)
+	}
+}
+
+func symlink(t *testing.T, target, link string) {
+	t.Helper()
+	mkdir(t, filepath.Dir(link))
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err) // a privilege on Windows
+	}
+}
+
+func TestScanFollowsSymlinkedDirectories(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	repo := filepath.Join(outside, "repo")
+	linkWorktree(t, repo, filepath.Join(outside, "repo-wt"))
+	symlink(t, outside, filepath.Join(root, "code"))
+	// A worktree whose repository is gone, reached by two paths. The walk
+	// meets the link first, yet reports where the worktree really is.
+	target := filepath.Join(root, "deep", "er", "real")
+	orphan := filepath.Join(target, "orphan")
+	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(outside, "gone", ".git", "worktrees", "orphan")+"\n")
+	symlink(t, target, filepath.Join(root, "alias"))
+	// Two links back to an ancestor: without loop detection, the number
+	// of paths doubles with every level.
+	symlink(t, root, filepath.Join(root, "deep", "up"))
+	symlink(t, root, filepath.Join(target, "up"))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	git := &fakeGit{lists: map[string][]string{}}
+	var found []lopper.Worktree
+	var mu sync.Mutex
+	err := Scan(ctx, git, Options{Roots: []string{root}}, func(wt lopper.Worktree) {
+		mu.Lock()
+		defer mu.Unlock()
+		found = append(found, wt)
+	})
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(git.calls) != 1 || realPath(git.calls[0]) != realPath(repo) {
+		t.Errorf("git worktree list ran in %v, want once in %s", git.calls, repo)
+	}
+	if len(found) != 1 || found[0].Path != orphan || !found[0].Orphaned {
+		t.Errorf("found %+v, want only orphan %s", found, orphan)
 	}
 }
 

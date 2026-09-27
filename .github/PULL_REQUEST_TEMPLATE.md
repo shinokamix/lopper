@@ -3,19 +3,26 @@ Thanks for contributing to lopper! Please read CONTRIBUTING.md first.
 
 Security issue? Don't open a PR — report it privately, see SECURITY.md.
 
-The PR title becomes the commit on main, so write it as a Conventional Commit:
-  feat(tui): add detail pane
-  fix(discovery): skip unreadable directories
+The PR title becomes the commit on main. Write it as a Conventional Commit in
+plain language, describing the outcome rather than the implementation:
+  fix(discovery): worktrees under a symlinked home are no longer missed
+  feat(tui): show why a worktree is kept
+
+One concern per PR: if the description needs the word "also", split it.
 -->
 
 Closes #
 
-## Summary
+## Problem
 
 <!--
-What does this change and why? Write for a reviewer who hasn't worked in this
-part of the codebase.
+One or two sentences: what was wrong or missing, and who notices. Write for a
+reviewer who hasn't worked in this part of the codebase.
 -->
+
+## Change
+
+<!-- How you fixed it, and anything a reviewer would otherwise have to guess: tradeoffs, rejected alternatives. -->
 
 ## Test plan
 

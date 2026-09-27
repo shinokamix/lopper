@@ -63,8 +63,8 @@ PRs are squash-merged, and the **PR title becomes the commit message** on
 ```
 <type>(<scope>): <summary in lowercase>
 
-feat(tui): add detail pane
-fix(discovery): skip unreadable directories
+fix(discovery): worktrees under a symlinked home are no longer missed
+feat(tui): show why a worktree is kept
 docs: explain verdict reasons
 ```
 
@@ -73,8 +73,10 @@ docs: explain verdict reasons
 - **Scopes** are optional and match the package names: `cli`, `config`,
   `discovery`, `engine`, `gitx`, `inspect`, `lopper`, `tui`, `verdict`;
   `deps` is used by Dependabot.
-- `feat`, `fix` and `perf` commits appear in the release notes, so write their
-  titles for users.
+- Write the summary in plain language and describe the **outcome**, not the
+  implementation: "worktrees under a symlinked home are no longer missed", not
+  "call EvalSymlinks in walk". `feat`, `fix` and `perf` titles go straight into
+  the release notes.
 
 Commits inside your branch are checked by the `commit-msg` hook too, but they
 are squashed away, so don't worry about polishing them.
@@ -82,9 +84,10 @@ are squashed away, so don't worry about polishing them.
 Before opening a PR:
 
 1. `task check` passes.
-2. The PR template is filled in — especially the **Test plan**: what you ran by
-   hand and what you saw.
-3. Keep PRs focused; unrelated cleanups go in a separate PR.
+2. The description follows the PR template: the **problem** in a sentence or
+   two, then the **change**, then the **test plan** — what you ran by hand and
+   what you saw.
+3. One concern per PR. If the description needs the word "also", split it.
 
 ## AI-assisted contributions
 

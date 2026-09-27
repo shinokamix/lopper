@@ -11,8 +11,9 @@ import (
 )
 
 // state is how the list presents a verdict: a fact the user can check
-// instead of a judgement. It is derived from the verdict level, so a row
-// shows merged exactly when the verdict calls it safe.
+// instead of a judgement. A state is only as safe as the verdict level
+// it comes from, and merged also needs the merged rule to have decided:
+// safe alone does not mean merged.
 type state int
 
 const (
@@ -21,10 +22,11 @@ const (
 	stateNotMerged              // review only because the work is not merged
 	stateLocalWork              // keep: work exists only in this worktree
 	stateUnknown                // review for any other reason: lopper cannot tell
+	stateGone                   // safe: the directory is already gone, only git's record is left
 )
 
 // states lists the settled states in display order.
-var states = [...]state{stateMerged, stateNotMerged, stateLocalWork, stateUnknown}
+var states = [...]state{stateMerged, stateNotMerged, stateLocalWork, stateUnknown, stateGone}
 
 func (s state) String() string {
 	switch s {
@@ -36,6 +38,8 @@ func (s state) String() string {
 		return "local work"
 	case stateUnknown:
 		return "unknown"
+	case stateGone:
+		return "folder gone"
 	default:
 		return "checking"
 	}
@@ -49,19 +53,28 @@ func classify(r *row) (state, string) {
 	// reasons, not being merged is a known fact; any other means lopper
 	// cannot vouch for the worktree.
 	var decisive, unsure []string
+	rules := map[string]bool{}
 	for _, reason := range v.Reasons {
 		if reason.Level != v.Level {
 			continue
 		}
 		label := reasonLabel(reason, r.facts)
 		decisive = append(decisive, label)
+		rules[reason.Rule] = true
 		if reason.Rule != "not-merged" {
 			unsure = append(unsure, label)
 		}
 	}
 	switch v.Level {
 	case lopper.LevelSafe:
-		return stateMerged, strings.Join(decisive, " · ")
+		switch {
+		case rules["prunable"]:
+			return stateGone, strings.Join(decisive, " · ")
+		case rules["merged"]:
+			return stateMerged, strings.Join(decisive, " · ")
+		default: // a safe rule the list does not know: claim nothing
+			return stateUnknown, strings.Join(decisive, " · ")
+		}
 	case lopper.LevelKeep:
 		return stateLocalWork, strings.Join(decisive, " · ")
 	case lopper.LevelReview:

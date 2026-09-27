@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -90,23 +91,23 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	a.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // from chore/deps in api to fix/login in app
 	lines := plainLines(a)
 	i := lineWith(t, lines, "fix/login")
-	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), "app  ~/code ") {
+	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), filepath.FromSlash("app  ~/code ")) {
 		t.Errorf("row is not under its repository header: %q", lines[i-1])
 	}
 	j := lineWith(t, lines, "chore/deps")
-	if !strings.HasPrefix(strings.TrimSpace(lines[j-1]), "api  ~/code ") {
+	if !strings.HasPrefix(strings.TrimSpace(lines[j-1]), filepath.FromSlash("api  ~/code ")) {
 		t.Errorf("row of another repository is not under its own header: %q", lines[j-1])
 	}
 	if !strings.Contains(lines[i], "3 uncommitted · 2 unpushed") {
 		t.Errorf("row under the cursor does not show its facts: %q", lines[i])
 	}
-	if got := statusLine(lines); got != "~/code/app/.claude/worktrees/fix-login-redirect" {
+	if got := statusLine(lines); got != filepath.FromSlash("~/code/app/.claude/worktrees/fix-login-redirect") {
 		t.Errorf("status line does not show the path of the row under the cursor: %q", got)
 	}
 
 	a.Update(tea.WindowSizeMsg{Width: 30, Height: 20})
 	lines = plainLines(a)
-	if path := statusLine(lines); path != "~/…/fix-login-redirect" {
+	if path := statusLine(lines); path != filepath.FromSlash("~/…/fix-login-redirect") {
 		t.Errorf("narrow path does not keep whole trailing directories: %q", path)
 	}
 }
@@ -130,16 +131,16 @@ func TestLongPathsFitTheScreen(t *testing.T) {
 		}
 	}
 	i := lineWith(t, lines, "c3-dotbare")
-	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), "proj  tmp/…/") {
+	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), filepath.FromSlash("proj  tmp/…/")) {
 		t.Errorf("bare repository header is not named after its project with a short path: %q", lines[i-1])
 	}
-	if path := statusLine(lines); path != "tmp/…/scratchpad/lab/outside/c3" {
+	if path := statusLine(lines); path != filepath.FromSlash("tmp/…/scratchpad/lab/outside/c3") {
 		t.Errorf("worktree path is not shortened by directories: %q", path)
 	}
 }
 
-// A row reads "merged" only for a safe verdict: a user will delete
-// merged rows without looking closer.
+// A row reads "merged" only when the merged rule decided a safe verdict:
+// a user will delete merged rows without looking closer.
 func TestClassifyShowsMergedOnlyWhenSafe(t *testing.T) {
 	merged := lopper.Reason{Rule: "merged", Level: lopper.LevelSafe}
 	notMerged := lopper.Reason{Rule: "not-merged", Level: lopper.LevelReview}
@@ -150,6 +151,12 @@ func TestClassifyShowsMergedOnlyWhenSafe(t *testing.T) {
 		label   string
 	}{
 		{"merged", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{merged}}, stateMerged, "merged"},
+		{"folder gone", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
+			{Rule: "prunable", Level: lopper.LevelSafe},
+		}}, stateGone, "folder gone"},
+		{"safe for a reason the list does not know", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
+			{Rule: "future-rule", Level: lopper.LevelSafe},
+		}}, stateUnknown, "future-rule"},
 		{"merged but moved", lopper.Verdict{Level: lopper.LevelReview, Reasons: []lopper.Reason{
 			{Rule: "moved", Level: lopper.LevelReview}, merged,
 		}}, stateUnknown, "moved by hand"},
@@ -180,7 +187,7 @@ func TestCursorStaysOnWorktreeWhenOneSortsAbove(t *testing.T) {
 	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Path: "/w/alpha", Branch: "alpha"}}})
 
-	if got := statusLine(plainLines(a)); got != "/w/zulu" {
+	if got := statusLine(plainLines(a)); got != filepath.FromSlash("/w/zulu") {
 		t.Errorf("cursor left zulu when alpha sorted above it: status line shows %q", got)
 	}
 }
@@ -260,5 +267,51 @@ func TestLargestWorktreesComeFirst(t *testing.T) {
 	zeta, two, one := lineWith(t, lines, "zeta"), lineWith(t, lines, "a-two"), lineWith(t, lines, "a-one")
 	if zeta >= two || two >= one {
 		t.Errorf("want repo zeta (1 kB) above alpha (400 B), and a-two (300 B) above a-one (100 B):\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// A worktree whose directory is gone is safe to drop but was never
+// checked for merging; the tally must not count it as merged.
+func TestFolderGoneIsNotCountedAsMerged(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: "g", Path: "/w/gone", Branch: "gone", Prunable: true}}})
+	a.Update(eventMsg{engine.FactsUpdated{ID: "g", Verdict: lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
+		{Rule: "prunable", Level: lopper.LevelSafe, Message: "directory is already gone"},
+	}}}})
+
+	tally := plainLines(a)[3]
+	if !strings.Contains(tally, "0 merged") || !strings.Contains(tally, "1 folder gone") {
+		t.Errorf("tally counts a gone folder as merged: %q", tally)
+	}
+}
+
+// Scrolling assumes one screen line per line of the view, so on a narrow
+// terminal every line must still fit, and a row must keep its size.
+func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	repo := lopper.Repo{Path: "/home/me/code/a-repository-with-a-long-name"}
+	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: repo.Path + "/.claude/worktrees/x", Branch: "feature/a-branch-name-longer-than-the-screen", Repo: repo,
+	}}})
+	dirty, unpushed, size := 3, 2, int64(1_200_000_000)
+	a.Update(eventMsg{engine.FactsUpdated{
+		ID:    "wt",
+		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed, SizeBytes: &size},
+		Verdict: lopper.Verdict{Level: lopper.LevelKeep, Reasons: []lopper.Reason{
+			{Rule: "dirty", Level: lopper.LevelKeep}, {Rule: "unpushed", Level: lopper.LevelKeep},
+		}},
+	}})
+	a.Update(tea.KeyPressMsg{Code: ' '})
+
+	lines := plainLines(a)
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > 40 {
+			t.Errorf("line is %d cells wide on a 40-cell screen: %q", w, l)
+		}
+	}
+	if row := lines[lineWith(t, lines, "feature/")]; !strings.Contains(row, "1.2 GB") || !strings.Contains(row, "3 uncom") {
+		t.Errorf("narrow row lost its status or size: %q", row)
 	}
 }

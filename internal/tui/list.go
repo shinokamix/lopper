@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -87,6 +88,8 @@ const (
 	rowIndent  = 3
 	labelWidth = 26
 	sizeWidth  = 9
+	// minNameWidth is how much of a branch a narrow screen still shows.
+	minNameWidth = 12
 )
 
 // header renders the title, the scan status and the tally per state.
@@ -101,10 +104,15 @@ func header(t theme, s *store, spin string, width int) string {
 	default:
 		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(len(s.order), "worktree"), plural(len(s.groups()), "repository")))
 	}
+	// The tally narrows in steps: tighter spacing, then only the states
+	// that have worktrees; the view truncates what still does not fit.
 	tallies := s.summary()
-	var parts []string
+	var all, present []string
 	for _, st := range states {
 		tl := tallies[st]
+		if st == stateGone && tl.count == 0 {
+			continue // rare, and nothing to act on when absent
+		}
 		text := fmt.Sprintf("%d %s", tl.count, st)
 		if st == stateMerged && tl.bytes > 0 {
 			text += " · " + formatBytes(&tl.bytes)
@@ -113,14 +121,24 @@ func header(t theme, s *store, spin string, width int) string {
 		if tl.count == 0 {
 			style = t.subtle
 		}
-		parts = append(parts, style.Render(text))
+		all = append(all, style.Render(text))
+		if tl.count > 0 {
+			present = append(present, style.Render(text))
+		}
 	}
-	return spread(title, status+" ", width) + "\n\n " + strings.Join(parts, "    ")
+	tally := " " + strings.Join(all, "    ")
+	for _, try := range [][]string{all, present} {
+		if ansi.StringWidth(tally) > width {
+			tally = " " + strings.Join(try, "  ")
+		}
+	}
+	return spread(title, status+" ", width) + "\n\n" + tally
 }
 
 // footer renders the status line, which shows where the worktree under
-// the cursor is, and below it what is selected and the key help.
-func (l *list) footer(t theme, s *store, help string, width int) string {
+// the cursor is, and below it what is selected and the key help, which
+// drops the keys that do not fit.
+func (l *list) footer(t theme, s *store, h help.Model, k keyMap, width int) string {
 	where := ""
 	if order := ids(s); len(order) > 0 {
 		wt := s.byID[order[l.current(order)]].worktree
@@ -136,7 +154,8 @@ func (l *list) footer(t theme, s *store, help string, width int) string {
 	if len(picked) > 0 {
 		left = " " + t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), formatBytes(totalSize(picked))))
 	}
-	return where + "\n" + spread(left, help+" ", width)
+	h.SetWidth(max(width-ansi.StringWidth(left)-2, 0))
+	return where + "\n" + spread(left, h.View(k)+" ", width)
 }
 
 // view renders the grouped rows into height lines, scrolling just enough
@@ -229,9 +248,14 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, width int) string 
 	if r.facts.SizeBytes != nil && *r.facts.SizeBytes < 1_000_000 {
 		sizeStyle = sizeStyle.Faint(true) // too small to matter for space
 	}
-	nameWidth := min(names, max(width-rowIndent-2-labelWidth-sizeWidth-1, 8))
-	branch, label := fit(branchName(r.worktree), nameWidth), fit(why, labelWidth)
-	gap := max(width-rowIndent-ansi.StringWidth(branch)-2-labelWidth-ansi.StringWidth(size), 1)
+	// The branch and the status share what the size leaves. A long branch
+	// gives way first, down to what keeps it recognizable, then the
+	// status; the size always stays.
+	room := width - rowIndent - 2 - len(size) - 1
+	labelW := max(min(labelWidth, max(room-names, room-minNameWidth)), 0)
+	nameW := max(min(names, room-labelW), 0)
+	branch, label := fit(branchName(r.worktree), nameW), fit(why, labelW)
+	gap := max(width-rowIndent-nameW-2-labelW-len(size), 1)
 	return seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  ") +
 		seg(t.state[st], label) + seg(plain, strings.Repeat(" ", gap)) + seg(sizeStyle, size)
 }

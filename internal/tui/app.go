@@ -15,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/shinokamix/lopper/internal/engine"
 )
@@ -106,9 +107,14 @@ func (a *app) View() tea.View {
 	w := max(a.width-2*margin, 1)
 	body := a.list.view(a.theme, a.store, w, max(a.height-chromeLines, 1))
 	screen := header(a.theme, a.store, a.spin.View(), w) + "\n\n" +
-		body + "\n\n" + a.list.footer(a.theme, a.store, a.help.View(a.keys), w)
-	pad := strings.Repeat(" ", margin)
-	v := tea.NewView("\n" + pad + strings.ReplaceAll(screen, "\n", "\n"+pad))
+		body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, w)
+	// Scrolling counts one screen line per line: a line wider than the
+	// screen would wrap and push the list down, so none may be.
+	lines := strings.Split(screen, "\n")
+	for i, l := range lines {
+		lines[i] = strings.Repeat(" ", margin) + ansi.Truncate(l, w, "…")
+	}
+	v := tea.NewView("\n" + strings.Join(lines, "\n"))
 	v.AltScreen = true
 	return v
 }

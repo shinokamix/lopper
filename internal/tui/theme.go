@@ -47,6 +47,7 @@ func newTheme(isDark bool) theme {
 			stateNotMerged: subtle,
 			stateLocalWork: plain.Foreground(c("#9A6700", "#D29922")),
 			stateUnknown:   subtle,
+			stateGone:      subtle,
 		},
 	}
 }

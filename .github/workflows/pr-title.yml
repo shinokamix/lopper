@@ -1,0 +1,53 @@
+name: pr-title
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# PRs are squash-merged with the title as the commit message, so the title must
+# pass the same Conventional Commits rules as the commit-msg hook (lefthook.yml).
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            test
+            docs
+            build
+            ci
+            chore
+            style
+            revert
+          # Package names, plus deps (Dependabot) and deps-dev.
+          scopes: |
+            cli
+            config
+            discovery
+            engine
+            gitx
+            inspect
+            lopper
+            tui
+            verdict
+            deps
+            deps-dev
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The summary "{subject}" in "{title}" must start with a lowercase letter,
+            e.g. "fix(discovery): skip unreadable directories".

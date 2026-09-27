@@ -4,34 +4,49 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
-
-	"github.com/shinokamix/lopper/internal/lopper"
 )
 
 // theme is the only place where colors and styles are defined.
+//
+// Color carries meaning only, taken from GitHub's Primer palette so it
+// reads as it does on GitHub: purple for merged work, yellow for work
+// that exists only locally, red for failures. ANSI palette slots would
+// follow the terminal theme, but many themes make magenta look red.
+// Everything else, including the cursor and the selection, is told apart
+// by brightness: faint, normal, bold, and a neutral background.
 type theme struct {
-	title    lipgloss.Style
-	subtle   lipgloss.Style
-	cursor   lipgloss.Style
-	selected lipgloss.Style
-	level    map[lopper.Level]lipgloss.Style
+	title  lipgloss.Style
+	subtle lipgloss.Style
+	repo   lipgloss.Style
+	cursor lipgloss.Style // band under the cursor row
+	picked lipgloss.Style // fainter band under selected rows
+	// pickedCursor is the band under the cursor when its row is selected.
+	pickedCursor lipgloss.Style
+	selected     lipgloss.Style // text of selected rows
+	failure      lipgloss.Style
+	state        map[state]lipgloss.Style
 }
 
 func newTheme(isDark bool) theme {
 	ld := lipgloss.LightDark(isDark)
 	c := func(light, dark string) color.Color { return ld(lipgloss.Color(light), lipgloss.Color(dark)) }
-
-	accent := c("#2F7D4F", "#7FD1A0")
+	plain := lipgloss.NewStyle()
+	subtle := plain.Faint(true)
 	return theme{
-		title:    lipgloss.NewStyle().Bold(true).Foreground(accent),
-		subtle:   lipgloss.NewStyle().Foreground(c("#8A8A8A", "#6C6C6C")),
-		cursor:   lipgloss.NewStyle().Background(c("#ECECEC", "#262626")),
-		selected: lipgloss.NewStyle().Foreground(accent),
-		level: map[lopper.Level]lipgloss.Style{
-			lopper.LevelSafe:    lipgloss.NewStyle().Foreground(c("#1E8E3E", "#5FD787")),
-			lopper.LevelReview:  lipgloss.NewStyle().Foreground(c("#B26B00", "#FFB454")),
-			lopper.LevelKeep:    lipgloss.NewStyle().Foreground(c("#C62828", "#FF6B6B")),
-			lopper.LevelUnknown: lipgloss.NewStyle().Foreground(c("#8A8A8A", "#6C6C6C")),
+		title:        plain.Bold(true),
+		subtle:       subtle,
+		repo:         plain.Bold(true),
+		cursor:       plain.Background(c("#DCDCDC", "#3A3A3A")),
+		picked:       plain.Background(c("#EEEEEE", "#2A2A2A")),
+		pickedCursor: plain.Background(c("#C8C8C8", "#4C4C4C")),
+		selected:     plain.Bold(true),
+		failure:      plain.Foreground(c("#CF222E", "#F85149")),
+		state: map[state]lipgloss.Style{
+			stateChecking:  subtle,
+			stateMerged:    plain.Foreground(c("#8250DF", "#A371F7")),
+			stateNotMerged: subtle,
+			stateLocalWork: plain.Foreground(c("#9A6700", "#D29922")),
+			stateUnknown:   subtle,
 		},
 	}
 }

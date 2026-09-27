@@ -26,6 +26,9 @@ type fakeGit struct {
 func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if len(args) > 0 && args[0] == "--work-tree="+dir {
+		args = args[1:] // as git does, for a repository without a checkout
+	}
 	if len(args) < 2 || args[0] != "worktree" || args[1] != "list" {
 		return "", errors.New("unsupported")
 	}
@@ -211,6 +214,27 @@ func TestScanKeepsWorktreesGitCannotList(t *testing.T) {
 	}
 	if len(found) != 1 || found[0] != want {
 		t.Errorf("found %+v, want %+v", found, want)
+	}
+}
+
+// The repository of a nested submodule lives in the modules directory of
+// its parent submodule's repository. Its worktrees are found even when no
+// checkout of either submodule is left.
+func TestScanFindsNestedSubmoduleRepos(t *testing.T) {
+	root := t.TempDir()
+	superGit := filepath.Join(root, "super", ".git")
+	gitDir(t, superGit)
+	outer := filepath.Join(superGit, "modules", "vendor", "outer")
+	gitDir(t, outer)
+	inner := filepath.Join(outer, "modules", "inner")
+	gitDir(t, inner)
+	wt := filepath.Join(t.TempDir(), "wt")
+	mkdir(t, filepath.Join(inner, "worktrees", "wt"))
+
+	git := &fakeGit{lists: map[string][]string{inner: {wt}}}
+	found := scan(t, git, Options{Roots: []string{filepath.Join(root, "super")}})
+	if len(found) != 1 || found[0].Path != wt || found[0].Repo.Path != inner {
+		t.Errorf("found %+v, want %s of %s", found, wt, inner)
 	}
 }
 

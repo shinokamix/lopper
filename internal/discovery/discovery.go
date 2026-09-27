@@ -173,19 +173,23 @@ func isGone(path string) bool {
 // .git file leads to a git directory elsewhere, which may live outside
 // the roots: that of a linked worktree's main repository, a submodule,
 // or a --separate-git-dir or ".bare" layout. Bare repositories have no
-// .git at all and are recognized by their worktrees directory. Every
-// linked worktree met also goes to linked, with what its .git file tells
-// about the repository.
+// .git at all and are recognized by their worktrees directory. The
+// repositories of submodules live inside another git directory, where the
+// walk does not go, and are looked up there: their checkout may be gone
+// while their worktrees are not. Every linked worktree met also goes to
+// linked, with what its .git file tells about the repository.
 //
 // Symbolic links to directories are followed. Every physical directory
 // is walked once, whichever path reaches it first, so neither a link
 // back to an ancestor nor overlapping roots make the walk repeat itself.
 func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) error {
 	var seen sync.Map
-	report := func(gitDir string) {
+	var report func(gitDir string)
+	report = func(gitDir string) {
 		// The same repo may be reached via a symlinked path.
 		if _, dup := seen.LoadOrStore(realPath(gitDir), struct{}{}); !dup {
 			found(gitDir)
+			submodules(gitDir, report)
 		}
 	}
 	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
@@ -250,6 +254,37 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		}
 	}
 	return nil
+}
+
+// submodules calls found for every submodule repository kept in gitDir:
+// in modules/<submodule path>, in modules/ of those for nested ones (via
+// found), and in worktrees/<id>/modules for those of linked worktrees.
+func submodules(gitDir string, found func(gitDir string)) {
+	modules(filepath.Join(gitDir, "modules"), found)
+	ids, _ := os.ReadDir(filepath.Join(gitDir, "worktrees"))
+	for _, id := range ids {
+		if id.IsDir() {
+			modules(filepath.Join(gitDir, "worktrees", id.Name(), "modules"), found)
+		}
+	}
+}
+
+// modules finds the repositories below dir. A submodule path has several
+// components when the submodule is not at the top of its superproject.
+// Symbolic links are not followed: git creates none there.
+func modules(dir string, found func(gitDir string)) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if isGitDir(path) {
+			found(path)
+		} else {
+			modules(path, found)
+		}
+	}
 }
 
 // physical is where dir really is, so that a directory the walk may reach
@@ -545,6 +580,9 @@ func listRepo(ctx context.Context, git gitx.Runner, gitDir string, emit func(lop
 	}
 	// Run git from the main worktree when there is one.
 	dir := repoPath(gitDir)
+	if dir == gitDir {
+		git = gitx.OwnWorkTree{Runner: git} // its checkout, if any, may be gone
+	}
 	entries, err := gitx.ListWorktrees(ctx, git, dir)
 	if err != nil {
 		return lopper.Repo{}, err

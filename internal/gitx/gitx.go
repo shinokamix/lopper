@@ -114,9 +114,23 @@ func withoutRepoVars(caseInsensitive bool, env []string) []string {
 	})
 }
 
+// OwnWorkTree runs git in a git directory, such as a submodule's or a
+// --separate-git-dir repository, as if it were its own work tree. Such a
+// repository names its checkout in core.worktree, and git refuses to run
+// at all once that checkout is gone. Only for commands that do not touch
+// the work tree: worktree list, symbolic-ref, rev-parse.
+type OwnWorkTree struct{ Runner }
+
+func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
+}
+
 // readsFiles reports whether the git command may hash working tree files
 // (status, and worktree remove/move, which run status internally).
 func readsFiles(args []string) bool {
+	for len(args) > 0 && strings.HasPrefix(args[0], "--work-tree=") {
+		args = args[1:] // from OwnWorkTree
+	}
 	return len(args) > 0 && (args[0] == "status" ||
 		args[0] == "worktree" && len(args) > 1 && args[1] != "list")
 }

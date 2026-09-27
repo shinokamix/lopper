@@ -42,9 +42,7 @@ func (ScanDone) isEvent()      {}
 
 // Options control a scan.
 type Options struct {
-	Roots     []string
-	SkipNames map[string]bool // directory base names never descended into, at any depth
-	SkipPaths map[string]bool // absolute directories never descended into
+	Roots []string
 	// Concurrency caps the git processes a scan runs at once;
 	// 0 means runtime.GOMAXPROCS(0). See [budget].
 	Concurrency int
@@ -102,10 +100,8 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 
 	go func() {
 		dopts := discovery.Options{
-			Roots:     opts.Roots,
-			SkipNames: opts.SkipNames,
-			SkipPaths: opts.SkipPaths,
-			Listers:   listers,
+			Roots:   opts.Roots,
+			Listers: listers,
 		}
 		err := discovery.Scan(ctx, e.Git, dopts, func(wt lopper.Worktree) {
 			// Inspect only what the consumer was told about, or it would

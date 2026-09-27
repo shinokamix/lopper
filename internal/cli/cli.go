@@ -70,5 +70,5 @@ func scanOptions(args []string) (engine.Options, error) {
 			roots = append(roots, abs)
 		}
 	}
-	return engine.Options{Roots: roots, SkipNames: cfg.SkipNames, SkipPaths: cfg.SkipPaths}, nil
+	return engine.Options{Roots: roots}, nil
 }

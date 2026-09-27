@@ -23,10 +23,8 @@ import (
 
 // Options control a discovery run.
 type Options struct {
-	Roots     []string
-	SkipNames map[string]bool // directory base names never descended into, at any depth
-	SkipPaths map[string]bool // absolute, cleaned directory paths never descended into
-	Listers   int             // concurrent `git worktree list` processes; at least 1
+	Roots   []string // walked in full: no directory below them is skipped
+	Listers int      // concurrent `git worktree list` processes; at least 1
 }
 
 // Scan walks opts.Roots and calls emit for every linked worktree found,
@@ -142,7 +140,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 		}
 	}
 	conf := fastwalk.DefaultConfig
-	conf.ToSlash = false // keep native separators under MSYS/Git Bash, or SkipPaths never match
+	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
 
 	for _, root := range opts.Roots {
 		root = filepath.Clean(root)
@@ -179,9 +177,6 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), orp
 			}
 			if name == "worktrees" && d.IsDir() && isGitDir(filepath.Dir(path)) {
 				report(filepath.Dir(path)) // a bare repository
-				return fs.SkipDir
-			}
-			if d.IsDir() && path != root && (opts.SkipNames[name] || opts.SkipPaths[path]) {
 				return fs.SkipDir
 			}
 			return nil

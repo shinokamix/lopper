@@ -160,30 +160,19 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	}
 }
 
-func TestScanSkipDirs(t *testing.T) {
+// Caches and dependency trees are walked too: agents and tools create
+// worktrees there, and a worktree nobody sees is never cleaned up.
+func TestScanWalksEveryDirectory(t *testing.T) {
 	root := t.TempDir()
-	repos := map[string]bool{ // repo -> expected to be listed
-		filepath.Join(root, "Library", "repo"):                  false, // anchored path
-		filepath.Join(root, "code", "Library", "repo"):          true,  // same name elsewhere
-		filepath.Join(root, "code", "node_modules", "dep"):      false, // skipped name
-		filepath.Join(root, "code", "app", "node_modules", "d"): false,
-	}
-	git := &fakeGit{}
-	var want []string
-	for repo, listed := range repos {
-		linkWorktree(t, repo, repo+"-wt")
-		if listed {
-			want = append(want, repo)
-		}
-	}
+	lib := filepath.Join(root, "Library", "Caches", "repo")
+	dep := filepath.Join(root, "code", "node_modules", "dep")
+	linkWorktree(t, lib, lib+"-wt")
+	linkWorktree(t, dep, dep+"-wt")
 
-	scan(t, git, Options{
-		Roots:     []string{root},
-		SkipNames: map[string]bool{"node_modules": true},
-		SkipPaths: map[string]bool{filepath.Join(root, "Library"): true},
-	})
-	if !slices.Equal(git.calls, want) {
-		t.Errorf("git worktree list ran in %v, want %v", git.calls, want)
+	git := &fakeGit{}
+	scan(t, git, Options{Roots: []string{root}})
+	if got, want := slices.Sorted(slices.Values(git.calls)), []string{lib, dep}; !slices.Equal(got, want) {
+		t.Errorf("git worktree list ran in %v, want %v", got, want)
 	}
 }
 

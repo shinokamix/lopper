@@ -9,22 +9,11 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// Rule inspects a worktree and its facts; it returns nil when it does not apply.
-type Rule func(wt lopper.Worktree, f lopper.Facts) *lopper.Reason
-
-// DefaultRules are evaluated in order; all matching reasons are kept.
-var DefaultRules = []Rule{
-	prunable,
-	locked,
-	incomplete,
-	dirty,
-	unpushed,
-	merged,
-	notMerged,
-}
-
 // Evaluate applies rules and picks the strictest level among the reasons.
-func Evaluate(wt lopper.Worktree, f lopper.Facts, rules []Rule) lopper.Verdict {
+func Evaluate(wt lopper.Worktree, f lopper.Facts) lopper.Verdict {
+	rules := [...]func(lopper.Worktree, lopper.Facts) *lopper.Reason{
+		prunable, locked, incomplete, dirty, unpushed, merged, notMerged,
+	}
 	var v lopper.Verdict
 	for _, rule := range rules {
 		if r := rule(wt, f); r != nil {
@@ -88,7 +77,7 @@ func dirty(_ lopper.Worktree, f lopper.Facts) *lopper.Reason {
 	}
 	return &lopper.Reason{
 		Rule: "dirty", Level: lopper.LevelKeep,
-		Message: fmt.Sprintf("%d uncommitted file(s)", *f.Dirty),
+		Message: fmt.Sprintf("%d uncommitted change(s)", *f.Dirty),
 	}
 }
 

@@ -93,9 +93,9 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		workers.Go(func() {
 			for wt := range found {
 				f := insp.Quick(ctx, wt)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f, verdict.DefaultRules)})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f)})
 				f = insp.Slow(ctx, wt, f)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f, verdict.DefaultRules), Final: true})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f), Final: true})
 			}
 		})
 	}

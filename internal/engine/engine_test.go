@@ -18,8 +18,9 @@ import (
 // command fails at once or, when block is set and it runs inside a
 // worktree, waits for cancellation like a slow git process would.
 type fakeGit struct {
-	n     int
-	block bool
+	n       int
+	block   bool
+	started chan<- struct{}
 }
 
 func (f fakeGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
@@ -40,6 +41,10 @@ func (f fakeGit) Run(ctx context.Context, dir string, args ...string) (string, e
 		return b.String(), nil
 	}
 	if f.block && filepath.Base(filepath.Dir(dir)) == "wt" {
+		select {
+		case f.started <- struct{}{}:
+		default:
+		}
 		<-ctx.Done()
 		return "", ctx.Err()
 	}
@@ -122,17 +127,19 @@ func TestScanReportsRootError(t *testing.T) {
 // Cancelling while the consumer keeps reading must neither break the
 // event order nor leave goroutines behind (synctest fails on leaks).
 func TestScanCancelMidScan(t *testing.T) {
-	for range 20 { // the race being guarded against is random
-		synctest.Test(t, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			c := newChecker(t)
-			for ev := range New().withGit(fakeGit{n: 500, block: true}).Scan(ctx, Options{Roots: []string{newRepo(t)}}) {
-				c.see(ev)
-				cancel()
-			}
-		})
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		started := make(chan struct{}, 1)
+		c := newChecker(t)
+		events := New().withGit(fakeGit{n: 500, block: true, started: started}).Scan(ctx, Options{Roots: []string{newRepo(t)}})
+		c.see(<-events)
+		<-started
+		cancel()
+		for ev := range events {
+			c.see(ev)
+		}
+	})
 }
 
 // A consumer that stops reading after cancelling must not leak the

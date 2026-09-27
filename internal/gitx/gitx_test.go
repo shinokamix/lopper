@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 )
@@ -17,23 +16,20 @@ func TestParseWorktreeList(t *testing.T) {
 		"worktree /repo/.claude/worktrees/x\x00HEAD bbb\x00branch refs/heads/feat/x\x00locked\x00\x00" +
 		"worktree /tmp/gone\x00HEAD ccc\x00detached\x00prunable gitdir file points to non-existent location\x00\x00" +
 		"worktree /tmp/new\nline\x00HEAD ddd\x00detached\x00locked multi\nline reason\x00\x00" +
-		"worktree /tmp/with spaces\x00HEAD eee\x00branch refs/heads/s\x00\x00"
+		"worktree /tmp/with spaces\x00HEAD eee\x00branch refs/heads/s\x00\x00" +
+		"worktree /bare.git\x00bare\x00\x00"
 
 	got := parseWorktreeList(out)
-	if len(got) != 5 {
-		t.Fatalf("want 5 entries, got %d: %+v", len(got), got)
+	want := []WorktreeEntry{
+		{Path: "/repo", Head: "aaa", Branch: "main"},
+		{Path: "/repo/.claude/worktrees/x", Head: "bbb", Branch: "feat/x", Locked: true},
+		{Path: "/tmp/gone", Head: "ccc", Prunable: true},
+		{Path: "/tmp/new\nline", Head: "ddd", Locked: true},
+		{Path: "/tmp/with spaces", Head: "eee", Branch: "s"},
+		{Path: "/bare.git", Bare: true},
 	}
-	if got[1].Branch != "feat/x" || !got[1].Locked {
-		t.Errorf("entry 1 = %+v", got[1])
-	}
-	if got[2].Branch != "" || !got[2].Prunable {
-		t.Errorf("entry 2 = %+v", got[2])
-	}
-	if got[3].Path != "/tmp/new\nline" || got[3].Head != "ddd" || !got[3].Locked {
-		t.Errorf("entry 3 = %+v", got[3])
-	}
-	if got[4].Path != "/tmp/with spaces" || got[4].Branch != "s" {
-		t.Errorf("entry 4 = %+v", got[4])
+	if !slices.Equal(got, want) {
+		t.Errorf("parseWorktreeList = %+v, want %+v", got, want)
 	}
 }
 
@@ -42,22 +38,9 @@ func FuzzParseWorktreeList(f *testing.F) {
 	f.Add("worktree /a\x00bare\x00\x00worktree /b\x00HEAD b\x00detached\x00locked reason\x00prunable\x00\x00")
 	f.Add("worktree /a\nb\x00\x00worktree\x00\x00")
 	f.Add("HEAD without worktree\x00\x00")
-	f.Fuzz(func(t *testing.T, out string) {
-		var paths []string
-		for field := range strings.SplitSeq(out, "\x00") {
-			if key, val, _ := strings.Cut(field, " "); key == "worktree" {
-				paths = append(paths, val)
-			}
-		}
-		got := parseWorktreeList(out)
-		if len(got) != len(paths) {
-			t.Fatalf("got %d entries for %d worktree fields", len(got), len(paths))
-		}
-		for i, e := range got {
-			if e.Path != paths[i] {
-				t.Errorf("entry %d path = %q, want %q", i, e.Path, paths[i])
-			}
-		}
+	f.Fuzz(func(_ *testing.T, out string) {
+		// Malformed input must not panic. The fixture test checks parsed values.
+		parseWorktreeList(out)
 	})
 }
 

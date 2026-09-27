@@ -2,9 +2,12 @@ package inspect
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -103,7 +106,13 @@ func TestQuickCleanMerged(t *testing.T) {
 func TestQuickDirtyUntracked(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "wip")
-	writeFile(t, filepath.Join(wt.Path, "new.txt"), "x\n")
+	git(t, repo, "config", "status.showUntrackedFiles", "no")
+	dir := filepath.Join(wt.Path, "new")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "a.txt"), "x\n")
+	writeFile(t, filepath.Join(dir, "b.txt"), "y\n")
 	wantFacts(t, quick(t, wt), 1, 0, lopper.MergedFF)
 }
 
@@ -163,14 +172,76 @@ func TestQuickStatusFails(t *testing.T) {
 }
 
 func TestSlowSize(t *testing.T) {
-	repo := setup(t)
-	wt := addWorktree(t, repo, "-b", "merged")
-	in := Inspector{Git: gitx.Exec{}}
-	f := in.Slow(context.Background(), wt, in.Quick(context.Background(), wt))
-	if f.SizeBytes == nil || *f.SizeBytes <= 0 {
-		t.Errorf("SizeBytes = %v, want > 0", ptr(f.SizeBytes))
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "nested"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if f.Dirty == nil {
-		t.Error("Slow dropped quick facts")
+	writeFile(t, filepath.Join(dir, "a"), "abc")
+	writeFile(t, filepath.Join(dir, "nested", "b"), "12345")
+	facts := lopper.Facts{Dirty: new(1), Unpushed: new(2), Merged: new(lopper.NotMerged)}
+	got := (Inspector{}).Slow(t.Context(), lopper.Worktree{Path: dir}, facts)
+	want := lopper.Facts{Dirty: new(1), Unpushed: new(2), Merged: new(lopper.NotMerged), SizeBytes: new(int64(8))}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Slow = %+v, want %+v; size = %v, want 8", got, want, ptr(got.SizeBytes))
+	}
+}
+
+func TestSlowSizeUnavailable(t *testing.T) {
+	for _, name := range []string{"missing directory", "cancelled"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if name == "cancelled" {
+				writeFile(t, filepath.Join(dir, "a"), "abc")
+				cancel()
+			} else {
+				dir = filepath.Join(dir, "missing")
+			}
+			f := (Inspector{}).Slow(ctx, lopper.Worktree{Path: dir}, lopper.Facts{})
+			if f.SizeBytes != nil {
+				t.Errorf("SizeBytes = %d, want unknown", *f.SizeBytes)
+			}
+			if len(f.Errors) != 1 || !strings.HasPrefix(f.Errors[0], "could not measure size: ") {
+				t.Errorf("Errors = %q, want size error", f.Errors)
+			}
+		})
+	}
+}
+
+func TestSlowSizeSkipsUnreadableDirectory(t *testing.T) {
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "blocked")
+	if err := os.Mkdir(blocked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "a"), "abc")
+	writeFile(t, filepath.Join(blocked, "hidden"), "not counted")
+	writeFile(t, filepath.Join(dir, "z"), "12345")
+	if err := os.Chmod(blocked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(blocked, 0o700); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := os.ReadDir(blocked); err == nil {
+		t.Skip("directory permissions do not prevent reads on this system")
+	} else if !errors.Is(err, fs.ErrPermission) {
+		t.Fatal(err)
+	}
+
+	f := (Inspector{}).Slow(t.Context(), lopper.Worktree{Path: dir}, lopper.Facts{})
+	if f.SizeBytes == nil || *f.SizeBytes != 8 {
+		t.Errorf("SizeBytes = %v, want 8 from files before and after unreadable directory", ptr(f.SizeBytes))
+	}
+	if len(f.Errors) != 0 {
+		t.Errorf("Errors = %q, want no scan failure for an unreadable child", f.Errors)
+	}
+
+	f = (Inspector{}).Slow(t.Context(), lopper.Worktree{Path: blocked}, lopper.Facts{})
+	if f.SizeBytes != nil || len(f.Errors) != 1 {
+		t.Errorf("unreadable root: size = %v, errors = %q, want unknown size and one error", ptr(f.SizeBytes), f.Errors)
 	}
 }

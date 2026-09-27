@@ -37,7 +37,7 @@ func TestEvaluate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := Evaluate(tc.wt, tc.facts, DefaultRules)
+			got := Evaluate(tc.wt, tc.facts)
 			if got.Level != tc.want {
 				t.Errorf("level = %v, want %v (reasons: %+v)", got.Level, tc.want, got.Reasons)
 			}
@@ -57,10 +57,11 @@ func TestIncompleteMessage(t *testing.T) {
 	n := func(v int) *int { return &v }
 
 	f := lopper.Facts{Unpushed: n(0), Errors: []string{"could not read status: fatal: bad index"}}
-	r := incomplete(lopper.Worktree{}, f)
-	if r == nil {
-		t.Fatal("incomplete: want a reason")
+	v := Evaluate(lopper.Worktree{}, f)
+	if len(v.Reasons) != 1 || v.Reasons[0].Rule != "incomplete" {
+		t.Fatalf("Evaluate = %+v, want one incomplete reason", v)
 	}
+	r := v.Reasons[0]
 	for _, want := range []string{"uncommitted changes", "merge status", "no base branch found", "could not read status: fatal: bad index"} {
 		if !strings.Contains(r.Message, want) {
 			t.Errorf("message %q lacks %q", r.Message, want)
@@ -68,8 +69,5 @@ func TestIncompleteMessage(t *testing.T) {
 	}
 	if strings.Contains(r.Message, "unpushed") {
 		t.Errorf("message %q mentions a known fact", r.Message)
-	}
-	if len(f.Errors) != 1 {
-		t.Errorf("incomplete modified Facts.Errors: %q", f.Errors)
 	}
 }

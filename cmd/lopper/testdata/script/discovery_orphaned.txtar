@@ -32,12 +32,15 @@ stdout -count=2 '^\w+\s'
 stdout '^review\s+.*tree[/\\]pruned$'
 stdout '^\w+\s+other\s'
 
-# A submodule is not a worktree, even at a path named worktrees/ and with
-# its git directory gone.
+# A submodule is not a worktree, even at a path named worktrees/: neither
+# intact nor with its git directory gone.
 exec git init -q $WORK/sub/lib
 exec git -C $WORK/sub/lib commit -q --allow-empty -m init
 exec git init -q $WORK/sub/super
 exec git -C $WORK/sub/super -c protocol.file.allow=always submodule add -q ../lib worktrees/lib
+exec lopper scan $WORK/sub
+! stdout .
+
 rm $WORK/sub/super/.git/modules/worktrees/lib
 
 exec lopper scan $WORK/sub

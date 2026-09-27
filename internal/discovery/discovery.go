@@ -183,7 +183,6 @@ func readGitFile(dotGit string) (gitFile, bool) {
 		admin = filepath.Join(filepath.Dir(dotGit), admin)
 	}
 	admin = filepath.Clean(admin)
-	inWorktrees := filepath.Base(filepath.Dir(admin)) == "worktrees"
 
 	// Following the paths git wrote is the point: they may lead anywhere.
 	// Only a definite "does not exist" makes an orphan: a permission error
@@ -192,18 +191,18 @@ func readGitFile(dotGit string) (gitFile, bool) {
 		return orphanGitFile(admin)
 	}
 
-	var common string
-	if c, err := os.ReadFile(filepath.Join(admin, "commondir")); err == nil { //nolint:gosec // G703: see above
-		common = strings.TrimSpace(string(c))
-		if !filepath.IsAbs(common) {
-			common = filepath.Join(admin, common)
-		}
-		common = filepath.Clean(common)
-	} else if inWorktrees {
-		common = filepath.Dir(filepath.Dir(admin))
-	} else {
-		return gitFile{}, false // a submodule, not a linked worktree
+	// `git worktree add` always writes commondir, and git finds the common
+	// directory through it. An admin directory without one is a whole
+	// repository, a submodule's, even at worktrees/<name>.
+	c, err := os.ReadFile(filepath.Join(admin, "commondir")) //nolint:gosec // G703: see above
+	if err != nil {
+		return gitFile{}, false
 	}
+	common := strings.TrimSpace(string(c))
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(admin, common)
+	}
+	common = filepath.Clean(common)
 
 	if info, err := os.Stat(common); err != nil || !info.IsDir() { //nolint:gosec // G703: see above
 		return gitFile{}, false

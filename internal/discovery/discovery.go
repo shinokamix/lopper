@@ -517,13 +517,16 @@ func orphanWorktree(dir, commonDir string) lopper.Worktree {
 }
 
 // unconfirmedWorktree describes a worktree from its directory and its
-// admin directory, which tells the branch or commit it has checked out.
+// admin directory, which tells the branch or commit it has checked out and
+// whether it is locked. A lock that cannot be ruled out is assumed: it is
+// the user's explicit wish to keep the worktree.
 func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper.Worktree {
 	path := filepath.Clean(dir)
 	wt := lopper.Worktree{
 		ID:          lopper.ID(path),
 		Path:        path,
 		Repo:        repo,
+		Locked:      !isGone(filepath.Join(admin, "locked")),
 		Unconfirmed: why,
 		Origin:      classifyOrigin(path),
 	}

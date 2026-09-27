@@ -62,6 +62,17 @@ exec lopper scan --json $WORK/d
 stdout 'gitdir is empty in '
 stdout '"verdict": "review"'
 
+# A lock is kept, too: the user asked for the worktree to stay.
+exec git init -q l/repo
+exec git -C l/repo commit -q --allow-empty -m init
+exec git -C l/repo worktree add -q -b pinned $WORK/l/wt
+exec git -C l/repo worktree lock $WORK/l/wt
+rm l/repo/.git/worktrees/wt/gitdir
+exec lopper scan --json $WORK/l
+stdout '"verdict": "keep"'
+stdout '"rule": "locked"'
+stdout 'gitdir is missing from '
+
 # No HEAD in the admin directory: listed, but git cannot open it.
 exec git init -q e/repo
 exec git -C e/repo commit -q --allow-empty -m init

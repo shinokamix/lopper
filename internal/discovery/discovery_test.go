@@ -65,10 +65,20 @@ func mkdir(t *testing.T, path string) {
 // linkWorktree lays out what `git worktree add` leaves on disk.
 func linkWorktree(t *testing.T, main, wt string) {
 	t.Helper()
+	gitDir(t, filepath.Join(main, ".git"))
 	admin := filepath.Join(main, ".git", "worktrees", filepath.Base(wt))
+	write(t, filepath.Join(admin, "HEAD"), "ref: refs/heads/"+filepath.Base(wt)+"\n")
 	write(t, filepath.Join(admin, "commondir"), "../..\n")
 	write(t, filepath.Join(admin, "gitdir"), filepath.Join(wt, ".git")+"\n")
 	write(t, filepath.Join(wt, ".git"), "gitdir: "+admin+"\n")
+}
+
+// gitDir makes dir a repository as far as git's is_git_directory is concerned.
+func gitDir(t *testing.T, dir string) {
+	t.Helper()
+	write(t, filepath.Join(dir, "HEAD"), "ref: refs/heads/main\n")
+	mkdir(t, filepath.Join(dir, "objects"))
+	mkdir(t, filepath.Join(dir, "refs"))
 }
 
 func scan(t *testing.T, git *fakeGit, opts Options) []lopper.Worktree {

@@ -64,6 +64,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string)) err
 		}
 	}
 	conf := fastwalk.DefaultConfig
+	conf.ToSlash = false // keep native separators under MSYS/Git Bash, or SkipPaths never match
 
 	for _, root := range opts.Roots {
 		root = filepath.Clean(root)

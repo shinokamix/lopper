@@ -6,7 +6,7 @@ Security issue? Don't open a PR — report it privately, see SECURITY.md.
 The PR title becomes the commit on main. Write it as a Conventional Commit in
 plain language, describing the outcome rather than the implementation:
   fix(discovery): worktrees under a symlinked home are no longer missed
-  feat(tui): show why a worktree is kept
+  feat(tui): the detail pane explains why a worktree is kept
 
 One concern per PR: if the description needs the word "also", split it.
 -->

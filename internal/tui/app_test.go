@@ -187,7 +187,7 @@ func TestCursorStaysOnWorktreeWhenOneSortsAbove(t *testing.T) {
 	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Path: "/w/alpha", Branch: "alpha"}}})
 
-	if got := statusLine(plainLines(a)); got != filepath.FromSlash("/w/zulu") {
+	if got := statusLine(plainLines(a)); got != "/w/zulu" { // matches no alias, so shown exactly as given
 		t.Errorf("cursor left zulu when alpha sorted above it: status line shows %q", got)
 	}
 }

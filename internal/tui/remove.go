@@ -157,13 +157,11 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 // with the keys that lead on from it.
 func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) string {
 	var removed, failed, left []*item
-	repos := map[string]bool{}
 	for _, it := range rm.items {
 		switch {
 		case !it.done:
 		case it.removed():
 			removed = append(removed, it)
-			repos[it.row.worktree.Repo.Path] = true
 			if it.err != nil {
 				left = append(left, it)
 			}
@@ -172,20 +170,15 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		}
 	}
 
+	count := plural(len(removed), "worktree") + " removed"
 	var lines []string
-	from := "from " + plural(len(repos), "repository")
 	switch size := totalSize(rowsOf(removed)); {
 	case len(removed) == 0:
 		lines = append(lines, t.title.Render("nothing removed"))
 	case size != nil:
-		lines = append(lines, t.title.Render("✂  "+formatBytes(size)+" freed"), "",
-			t.subtle.Render(plural(len(removed), "worktree")+" removed "+from))
+		lines = append(lines, t.title.Render(formatBytes(size)+" freed"), t.subtle.Render(count))
 	default: // some sizes were still being measured
-		lines = append(lines, t.title.Render("✂  "+plural(len(removed), "worktree")+" removed"), "",
-			t.subtle.Render(from))
-	}
-	if len(removed) > 0 {
-		lines = append(lines, t.subtle.Render("branches are kept"))
+		lines = append(lines, t.title.Render(count))
 	}
 
 	// Each list shows what fits, and how many more there are.

@@ -102,7 +102,7 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	if want := []string{"clean", "wip forced"}; !slices.Equal(rm.calls, want) {
 		t.Errorf("removed %v, want %v", rm.calls, want)
 	}
-	if v := view(a); !strings.Contains(v, "3.0 GB freed") || !strings.Contains(v, "2 worktrees removed from 1 repository") ||
+	if v := view(a); !strings.Contains(v, "3.0 GB freed") || !strings.Contains(v, "2 worktrees removed") ||
 		strings.Contains(v, "not removed") {
 		t.Errorf("summary does not tell what was removed:\n%s", v)
 	}

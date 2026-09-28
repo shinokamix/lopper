@@ -332,6 +332,35 @@ func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	}
 }
 
+// When many worktrees were not removed, the summary scrolls through why,
+// still saying how many there are.
+func TestSummaryScrollsThroughFailures(t *testing.T) {
+	a, rm := removalApp(t)
+	a.Update(tea.WindowSizeMsg{Width: 90, Height: 12})
+	found(a, "gone", 2000, true, lopper.Facts{})
+	rm.fail = map[lopper.ID]error{}
+	for i := range 8 {
+		id := fmt.Sprintf("kept%d", i)
+		found(a, id, int64(100-i), true, lopper.Facts{})
+		rm.fail[lopper.ID(id)] = errors.New("permission denied")
+	}
+	for range 9 {
+		press(a, ' ')
+	}
+	press(a, 'd')
+	settle(a, press(a, tea.KeyEnter))
+
+	if v := view(a); !strings.Contains(v, "kept0") || strings.Contains(v, "kept7") || !strings.Contains(v, "scroll") {
+		t.Fatalf("summary does not start at the first failure with a way to scroll to the rest:\n%s", v)
+	}
+	for range 20 {
+		press(a, tea.KeyDown)
+	}
+	if v := view(a); !strings.Contains(v, "kept7  permission denied") || !strings.Contains(v, "8 not removed") {
+		t.Errorf("scrolling does not reach the last failure, or loses the count:\n%s", v)
+	}
+}
+
 // Quitting in the middle waits for the worktree being removed, which git
 // could leave half deleted, and removes no more.
 func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {

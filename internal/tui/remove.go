@@ -171,9 +171,9 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	}
 	head := spread(title, t.subtle.Render(note)+" ", width)
 
-	lines := rm.lines(t, spin, width)
+	ls := rm.listing(t, spin, width)
 	body := max(height-4, 1) // the title, the key help and a blank line after each
-	shown, scrolls := lines.window(t, &rm.offset, rm.phase == removing, rm.next, body)
+	shown, scrolls := ls.window(t, &rm.offset, rm.phase == removing, rm.next, body)
 
 	var keys bindings
 	switch {
@@ -189,14 +189,15 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	return head + "\n\n" + strings.Join(shown, "\n") + "\n\n " + h.View(keys)
 }
 
-// lines are the worktrees of a removal as lines of the screen.
-type lines struct {
-	text []string
-	item []int // the item on each line, or -1
-	head []int // the heading over each line's section, or -1
+// listing is lines of the screen, some of them items in sections.
+type listing struct {
+	indent int // of the counts of lines out of sight
+	text   []string
+	item   []int // the item on each line, or -1
+	head   []int // the heading over each line's section, or -1
 }
 
-func (rm *removal) lines(t theme, spin string, width int) lines {
+func (rm *removal) listing(t theme, spin string, width int) listing {
 	names, notes := columns(rowsOf(rm.items))
 	// Unlike the list, rows are not grouped by repository, and branch
 	// names repeat across repositories: each row starts with its own.
@@ -210,7 +211,7 @@ func (rm *removal) lines(t theme, spin string, width int) lines {
 		checkingSection: t.subtle.Render("still checking"),
 	}
 	plain := lipgloss.NewStyle()
-	var ls lines
+	ls := listing{indent: rowIndent}
 	add := func(text string, item, head int) {
 		ls.text, ls.item, ls.head = append(ls.text, text), append(ls.item, item), append(ls.head, head)
 	}
@@ -248,7 +249,7 @@ func (rm *removal) lines(t theme, spin string, width int) lines {
 // just enough to show the line of item focus instead. Lines out of sight
 // are counted in their place, and a section's heading stays on top
 // while its rows are in sight.
-func (ls lines) window(t theme, offset *int, following bool, focus, height int) ([]string, bool) {
+func (ls listing) window(t theme, offset *int, following bool, focus, height int) ([]string, bool) {
 	all := len(ls.text)
 	if all <= height {
 		*offset = 0
@@ -299,7 +300,7 @@ func (ls lines) window(t theme, offset *int, following bool, focus, height int) 
 		return n
 	}
 	more := func(arrow string, n int) string {
-		return strings.Repeat(" ", rowIndent) + t.subtle.Render(fmt.Sprintf("%s %d more", arrow, n))
+		return strings.Repeat(" ", ls.indent) + t.subtle.Render(fmt.Sprintf("%s %d more", arrow, n))
 	}
 	var out []string
 	if off > 0 {
@@ -347,57 +348,67 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		lines = append(lines, t.title.Render(count))
 	}
 
-	// What was not removed, and what git still lists, go in a table:
-	// its lines are as wide as each other, so centering keeps them
-	// aligned, and never wider than the screen.
-	var table []string
+	// What was not removed, and what git still lists, go in a table
+	// that scrolls when it does not fit. Its lines are as wide as each
+	// other, so centering keeps them aligned, and never wider than the
+	// screen.
 	branchW := 0
 	for _, it := range append(failed, left...) {
 		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
 	}
 	branchW = min(branchW, width/3)
-	// Each list says how many it holds even when none of its rows fit:
-	// a summary without it would read as if everything went.
-	room := height - len(lines) - 2 // left by the key help and a blank line
-	list := func(title string, items []*item) {
+	var tbl listing
+	var titles []string
+	section := func(title string, items []*item) {
 		if len(items) == 0 {
 			return
 		}
-		if room >= 2 {
-			table = append(table, "")
-			room--
+		if len(tbl.text) > 0 {
+			tbl.text, tbl.item, tbl.head = append(tbl.text, ""), append(tbl.item, -1), append(tbl.head, -1)
 		}
-		table = append(table, title)
-		room--
+		head := len(tbl.text)
+		titles = append(titles, title)
+		tbl.text, tbl.item, tbl.head = append(tbl.text, title), append(tbl.item, -1), append(tbl.head, head)
 		for i, it := range items {
-			if room <= 0 {
-				return
-			}
-			if room == 1 && i < len(items)-1 {
-				table = append(table, t.subtle.Render(fmt.Sprintf("+%d more", len(items)-i)))
-				room--
-				return
-			}
-			table = append(table, fit(branchName(it.row.worktree), branchW)+"  "+t.subtle.Render(reason(it.err)))
-			room--
+			row := fit(branchName(it.row.worktree), branchW) + "  " + t.subtle.Render(reason(it.err))
+			tbl.text, tbl.item, tbl.head = append(tbl.text, row), append(tbl.item, i), append(tbl.head, head)
 		}
 	}
-	list(t.failure.Render(fmt.Sprintf("%d not removed", len(failed))), failed)
-	list(t.subtle.Render("git still lists "+plural(len(left), "removed worktree")), left)
+	section(t.failure.Render(fmt.Sprintf("%d not removed", len(failed))), failed)
+	section(t.subtle.Render("git still lists "+plural(len(left), "removed worktree")), left)
+
+	var table []string
+	scrolls := false
+	switch room := height - len(lines) - 3; { // left by a blank line, the key help and one above it
+	case len(tbl.text) == 0:
+	case room < 3:
+		// Too short to scroll: at least say how many, or the summary
+		// reads as if everything went.
+		table = titles[:min(len(titles), max(room, 1))]
+	default:
+		table, scrolls = tbl.window(t, &rm.offset, false, 0, room)
+	}
 	tableW := 0
 	for i, l := range table {
 		table[i] = ansi.Truncate(l, width, "…")
 		tableW = max(tableW, ansi.StringWidth(table[i]))
 	}
+	if len(table) > 0 {
+		lines = append(lines, "")
+	}
 	for _, l := range table {
 		lines = append(lines, l+strings.Repeat(" ", tableW-ansi.StringWidth(l)))
 	}
 
+	keys := bindings{k.rescan, k.back, k.quit}
+	if scrolls {
+		keys = append(bindings{k.scroll}, keys...)
+	}
 	h.SetWidth(max(width-2, 0))
 	for range min(max(height-len(lines)-1, 0), 2) {
 		lines = append(lines, "") // two blank lines above the key help when they fit
 	}
-	lines = append(lines, h.View(bindings{k.rescan, k.back, k.quit}))
+	lines = append(lines, h.View(keys))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(lines, "\n"))
 }
 

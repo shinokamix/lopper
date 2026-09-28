@@ -193,6 +193,10 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.removal = nil
 			a.startScan(a.ctx)
 			return tea.Batch(a.waitEvent(), a.spin.Tick)
+		case key.Matches(msg, a.keys.up):
+			rm.offset-- // View keeps it in range
+		case key.Matches(msg, a.keys.down):
+			rm.offset++
 		}
 	}
 	return nil
@@ -211,7 +215,7 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 	case rm.quitting:
 		return tea.Quit
 	case rm.next == len(rm.items):
-		rm.phase = finished
+		rm.phase, rm.offset = finished, 0 // the summary scrolls on its own
 		return rm.nextFrame()
 	}
 	return a.removeNext()

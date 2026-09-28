@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // release serves fixed responses by URL path, as GitHub serves a release.
@@ -257,5 +258,57 @@ func TestReleased(t *testing.T) {
 		if got := Released(v); got != want {
 			t.Errorf("Released(%q) = %v, want %v", v, got, want)
 		}
+	}
+}
+
+// The TUI waits for Check before scanning: it must not ask GitHub on
+// every start, offline least of all, yet must learn of a release
+// published since it last asked.
+func TestCheckAsksGitHubAtMostDaily(t *testing.T) {
+	latest := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
+	later := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.9.0")}
+	offline := release{}
+	for _, tc := range []struct {
+		name   string
+		cached string        // what the last check found
+		age    time.Duration // since it did
+		r      release
+		want   string
+	}{
+		{"asked an hour ago", "v0.3.0", time.Hour, offline, "v0.3.0"},
+		{"asked two days ago", "v0.3.0", 48 * time.Hour, latest, "v0.4.0"},
+		{"offline an hour ago", "", time.Hour, latest, ""},
+		{"offline two days ago", "", 48 * time.Hour, latest, "v0.4.0"},
+		{"offline now", "v0.3.0", 48 * time.Hour, offline, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := updater(t, "darwin", tc.r)
+			u.Cache = filepath.Join(t.TempDir(), "lopper", "latest-release")
+			if err := os.MkdirAll(filepath.Dir(u.Cache), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(u.Cache, []byte(tc.cached+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			then := time.Now().Add(-tc.age)
+			if err := os.Chtimes(u.Cache, then, then); err != nil {
+				t.Fatal(err)
+			}
+			if got := u.Check(context.Background(), "0.1.0"); got != tc.want {
+				t.Errorf("Check = %q, want %q", got, tc.want)
+			}
+			// What it found is what the next start trusts, without asking.
+			u.Client.Transport = later
+			if got := u.Check(context.Background(), "0.1.0"); got != tc.want {
+				t.Errorf("Check after that = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckIsQuietWhenUpToDate(t *testing.T) {
+	u := updater(t, "darwin", release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")})
+	if got := u.Check(context.Background(), "0.4.0"); got != "" {
+		t.Errorf("Check on the latest release = %q, want nothing", got)
 	}
 }

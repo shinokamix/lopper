@@ -32,6 +32,10 @@ lopper rm ../wt     # remove an existing worktree unless it holds work; --force 
 lopper update       # install the latest release over this one
 ```
 
+On start, `lopper` checks whether a newer release is out and, if so, offers
+it before scanning. It asks GitHub at most once a day, and `LOPPER_NO_UPDATE_CHECK=1`
+turns this off. Nothing else leaves your machine.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md).

@@ -41,7 +41,12 @@ type Updater struct {
 	Client   *http.Client
 	Exe      string
 	OS, Arch string
+	// Cache is the file Check keeps the latest release in; "" keeps none.
+	Cache string
 }
+
+// checkEvery is how long Check trusts the latest release it found.
+const checkEvery = 24 * time.Hour
 
 // New returns an Updater for the running binary.
 func New() (*Updater, error) {
@@ -52,13 +57,62 @@ func New() (*Updater, error) {
 	if exe, err = filepath.EvalSymlinks(exe); err != nil {
 		return nil, fmt.Errorf("locate lopper binary: %w", err)
 	}
-	return &Updater{
+	u := &Updater{
 		Repo:   Repo,
 		Client: &http.Client{Timeout: 5 * time.Minute},
 		Exe:    exe,
 		OS:     runtime.GOOS,
 		Arch:   runtime.GOARCH,
-	}, nil
+	}
+	if dir, err := os.UserCacheDir(); err == nil {
+		u.Cache = filepath.Join(dir, "lopper", "latest-release")
+	}
+	return u, nil
+}
+
+// Check returns the latest release if it is newer than current, and ""
+// otherwise. The TUI waits for it before scanning, so it asks GitHub at
+// most once a day and briefly: in between, and offline, it answers with
+// what it found last, which is nothing after a failed attempt.
+func (u *Updater) Check(ctx context.Context, current string) string {
+	latest, fresh := u.cached()
+	if !fresh {
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		latest, _ = u.Latest(ctx) // "" if offline: not asked again until tomorrow
+		u.remember(latest)
+	}
+	if latest == "" || !Newer(current, latest) {
+		return ""
+	}
+	return latest
+}
+
+// cached returns the release Check found, and whether it looked less
+// than checkEvery ago.
+func (u *Updater) cached() (tag string, fresh bool) {
+	if u.Cache == "" {
+		return "", false
+	}
+	info, err := os.Stat(u.Cache)
+	if err != nil || time.Since(info.ModTime()) >= checkEvery {
+		return "", false
+	}
+	data, err := os.ReadFile(u.Cache)
+	if tag := strings.TrimSpace(string(data)); err == nil && semver.IsValid(tag) {
+		return tag, true
+	}
+	return "", true
+}
+
+// remember caches what Check found; failing to only means asking again.
+func (u *Updater) remember(tag string) {
+	if u.Cache == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(u.Cache), 0o700); err == nil {
+		_ = os.WriteFile(u.Cache, []byte(tag+"\n"), 0o600)
+	}
 }
 
 // Released reports whether version names a release rather than "dev",

@@ -3,17 +3,20 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shinokamix/lopper/internal/config"
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/tui"
+	"github.com/shinokamix/lopper/internal/update"
 )
 
 // NewRoot returns the root command. releaseVersion is the installed
@@ -32,7 +35,7 @@ func NewRoot(releaseVersion string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return tui.Run(cmd.Context(), engine.New(), opts)
+			return tui.Run(cmd.Context(), engine.New(), opts, updates(releaseVersion))
 		},
 	}
 	root.AddCommand(newScanCmd(), newRmCmd(), newUpdateCmd(releaseVersion))
@@ -73,4 +76,22 @@ func scanOptions(args []string) (engine.Options, error) {
 		}
 	}
 	return engine.Options{Roots: roots}, nil
+}
+
+// updates lets the TUI offer a newer release, unless lopper was built
+// from source or LOPPER_NO_UPDATE_CHECK is set.
+func updates(version string) tui.Updates {
+	if !update.Released(version) || os.Getenv("LOPPER_NO_UPDATE_CHECK") != "" {
+		return tui.Updates{}
+	}
+	u, err := update.New()
+	if err != nil {
+		return tui.Updates{}
+	}
+	return tui.Updates{
+		Current: "v" + strings.TrimPrefix(version, "v"),
+		Repo:    update.Repo,
+		Check:   func(ctx context.Context) string { return u.Check(ctx, version) },
+		Install: u.Install,
+	}
 }

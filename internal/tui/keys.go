@@ -7,6 +7,8 @@ type keyMap struct {
 	up, down, toggle, remove, quit key.Binding
 	// On the removal screen.
 	scroll, confirm, stop, rescan, back key.Binding
+	// On the update screen.
+	install, skip, proceed key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -21,6 +23,9 @@ func defaultKeys() keyMap {
 		stop:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "stop after this one")),
 		rescan:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "scan again")),
 		back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		install: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "update")),
+		skip:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "skip")),
+		proceed: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "scan with this version")),
 	}
 }
 

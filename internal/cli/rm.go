@@ -7,14 +7,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/shinokamix/lopper/internal/config"
 	"github.com/shinokamix/lopper/internal/engine"
-	"github.com/shinokamix/lopper/internal/lopper"
 )
 
 func newRmCmd() *cobra.Command {
@@ -24,8 +20,9 @@ func newRmCmd() *cobra.Command {
 		Short: "Remove worktrees, refusing ones that are not safe unless forced",
 		Long: "rm removes each worktree at the given paths if it is safe to delete, checked " +
 			"just before removal; otherwise it is left alone and why is printed. --force " +
-			"removes it anyway, whatever it holds or however git lost track of it: any " +
-			"worktree lopper scan shows. The branch is always kept.",
+			"removes it anyway, whatever it holds or however git lost track of it. The " +
+			"branch is always kept. A worktree whose folder is gone has nothing left to " +
+			"remove: `git worktree prune` in its repository clears git's record of it.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rm := remover{eng: engine.New(), force: force}
@@ -62,8 +59,13 @@ func newRmCmd() *cobra.Command {
 type remover struct {
 	eng   *engine.Engine
 	force bool
-	roots []string // the default roots, loaded once, when a folder is gone
 }
+
+// errGone is returned for a path whose folder is gone. Only its repository
+// still knows it, and a path does not lead there: no folder is left to
+// remove, only git's record of it.
+var errGone = errors.New("no such directory; if a repository lists a worktree there, " +
+	"`git worktree prune` in it removes the record")
 
 // remove removes the worktree at path, found as lopper scan would find it.
 func (r *remover) remove(ctx context.Context, path string) error {
@@ -71,64 +73,12 @@ func (r *remover) remove(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	var wt lopper.Worktree
-	if _, statErr := os.Lstat(abs); errors.Is(statErr, fs.ErrNotExist) {
-		wt, err = r.findGone(ctx, abs)
-	} else {
-		wt, err = r.eng.Find(ctx, []string{abs}, abs)
+	if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
+		return errGone
 	}
+	wt, err := r.eng.Find(ctx, []string{abs}, abs)
 	if err != nil {
 		return err
 	}
 	return r.eng.Remove(ctx, wt, r.force)
-}
-
-// errGone is returned for a path whose folder is gone and that no
-// repository found near it lists as a worktree.
-var errGone = errors.New("no such directory, and no repository near it lists a worktree there; " +
-	"if one does, `git worktree prune` in it removes the record")
-
-// findGone finds the worktree at path, whose folder is gone: only its
-// repository still knows it, and only a walk that meets the repository
-// finds that. The default roots are walked first, as lopper scan does,
-// then the folders above path, nearest first, since a repository usually
-// sits near its worktrees. The climb ends at the first folder that holds a
-// default root, such as the one holding the home directory, and never
-// reaches the filesystem root: a repository further away is not near, and
-// the walk would take long.
-func (r *remover) findGone(ctx context.Context, path string) (lopper.Worktree, error) {
-	if r.roots == nil {
-		cfg, err := config.Default()
-		if err != nil {
-			return lopper.Worktree{}, err
-		}
-		r.roots = cfg.Roots
-	}
-	wt, err := r.eng.Find(ctx, r.roots, path)
-	if !errors.Is(err, engine.ErrNotFound) {
-		return wt, err
-	}
-	for dir := filepath.Dir(path); filepath.Dir(dir) != dir; dir = filepath.Dir(dir) {
-		resolved, err := filepath.EvalSymlinks(dir) // as the roots are: /tmp is /private/tmp on macOS
-		if err != nil {
-			continue // gone too
-		}
-		if slices.ContainsFunc(r.roots, func(root string) bool { return within(resolved, root) }) {
-			continue // walked already
-		}
-		wt, err := r.eng.Find(ctx, []string{dir}, path)
-		if !errors.Is(err, engine.ErrNotFound) {
-			return wt, err
-		}
-		if slices.ContainsFunc(r.roots, func(root string) bool { return within(root, resolved) }) {
-			break
-		}
-	}
-	return lopper.Worktree{}, errGone
-}
-
-// within reports whether path is dir or lies below it.
-func within(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

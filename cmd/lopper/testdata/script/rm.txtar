@@ -1,11 +1,6 @@
 # rm removes a worktree only when it is safe to delete, and keeps its
-# branch; --force removes any worktree lopper scan shows.
-
-# The default roots: a home that holds none of the repositories below.
-# Windows finds the home directory through USERPROFILE.
-mkdir home
-env HOME=$WORK/home
-env USERPROFILE=$WORK/home
+# branch; --force removes any worktree lopper scan shows whose folder is
+# still there.
 
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
@@ -56,29 +51,20 @@ stdout '^removed wt-other$'
 stderr '(?i)1 of 2 worktrees not removed'
 exists repo/.git
 
-# A worktree whose folder is gone is safe: git's record of it goes. Its
-# repository is found by a walk of the folder where it was. A path where
-# no worktree ever was does not stop the others.
+# A worktree whose folder is gone has nothing left for rm to remove: its
+# record stays for `git worktree prune`, even forced. A path where no
+# worktree ever was is told apart only by its repository, so it reads the
+# same. Neither stops the others.
 exec git -C repo worktree add -q -b gone ../wt-gone
 rm wt-gone
 exec git -C repo worktree add -q -b next ../wt-next
-! exec lopper rm missing wt-gone wt-next
-stderr '^missing: not removed: no such directory, and no repository near it lists a worktree there'
-stdout '^removed wt-gone$'
+! exec lopper rm --force missing wt-gone wt-next
+stderr '^missing: not removed: no such directory; if a repository lists a worktree there, `git worktree prune` in it removes the record$'
+stderr '^wt-gone: not removed: no such directory'
 stdout '^removed wt-next$'
+stderr '(?i)2 of 3 worktrees not removed'
 exec git -C repo worktree list --porcelain
-! stdout 'wt-gone'
-
-# The repository may sit higher up than the folder that is left: the walk
-# climbs until it meets it.
-exec git init -q data/app
-exec git -C data/app commit -q --allow-empty -m init
-exec git -C data/app worktree add -q -b deep ../temp/worktree
-rm data/temp/worktree
-exec lopper rm data/temp/worktree
-stdout '^removed data/temp/worktree$'
-exec git -C data/app worktree list --porcelain
-! stdout 'deep'
+stdout 'wt-gone'
 
 # Worktrees git lost track of are never safe, but forced they go, and so
 # does git's record of them when one still names them.

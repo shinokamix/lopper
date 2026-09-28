@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -112,11 +113,10 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	if size := totalSize(rowsOf(rm.items)); size != nil {
 		title += t.subtle.Render(" · " + formatBytes(size))
 	}
-	note := "branches are kept"
+	head := title
 	if rm.quitting {
-		note = "stopping after this one…"
+		head = spread(title, t.subtle.Render("stopping after this one…")+" ", width)
 	}
-	head := spread(title, t.subtle.Render(note)+" ", width)
 
 	rows := rm.rows(t, spin, width)
 	body := max(height-4, 1) // the title, the key help and a blank line after each
@@ -151,6 +151,13 @@ func (rm *removal) focus() int {
 
 func (rm *removal) rows(t theme, spin string, width int) []string {
 	names, notes := columns(rowsOf(rm.items))
+	// Worktrees of different repositories may share a branch name: then
+	// each row starts with its repository's.
+	repos, repoW := map[string]bool{}, 0
+	for _, it := range rm.items {
+		repos[it.row.worktree.Repo.Path] = true
+		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
+	}
 	plain := lipgloss.NewStyle()
 	var lines []string
 	for i, it := range rm.items {
@@ -159,7 +166,7 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 				lines = append(lines, "")
 			}
 			lines = append(lines, strings.Repeat(" ", rowIndent)+
-				t.failure.Render("not safe to delete · what they hold will be lost"))
+				t.failure.Render("work in these will be lost"))
 		}
 		mark := " "
 		switch {
@@ -170,7 +177,11 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 		case rm.phase == removing && i == rm.next:
 			mark = spin
 		}
-		lines = append(lines, rowLine(t, &it.row, " "+mark+" ", plain, plain, names, notes, width))
+		lead := " " + mark + " "
+		if len(repos) > 1 {
+			lead += t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
+		}
+		lines = append(lines, rowLine(t, &it.row, lead, plain, plain, names, notes, width))
 	}
 	if rm.unchecked > 0 {
 		lines = append(lines, "", strings.Repeat(" ", rowIndent)+
@@ -235,6 +246,14 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	h.SetWidth(max(width-2, 0))
 	lines = append(lines, "", "", h.View(bindings{k.rescan, k.back, k.quit}))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(lines, "\n"))
+}
+
+// repoLabel names a worktree's repository in a row.
+func repoLabel(repo lopper.Repo) string {
+	if repo.Path == "" {
+		return "unknown"
+	}
+	return repoName(repo.Path)
 }
 
 // reason says why a worktree was not removed, in the list's words.

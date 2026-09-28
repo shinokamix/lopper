@@ -90,7 +90,7 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	if !strings.Contains(v, "Remove 2 worktrees · 3.0 GB") || strings.Contains(v, "other") {
 		t.Errorf("confirmation does not show the two selected worktrees:\n%s", v)
 	}
-	if lines := plainLines(a); lineWith(t, lines, "not safe to delete") > lineWith(t, lines, "wip") ||
+	if lines := plainLines(a); lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "wip") ||
 		!strings.Contains(lines[lineWith(t, lines, "wip")], "3 uncommitted") {
 		t.Errorf("worktree that is not safe is not shown under the warning with what it holds:\n%s", v)
 	}
@@ -138,6 +138,28 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	press(a, tea.KeyEscape)
 	if v := view(a); !strings.Contains(v, "busy") || !strings.Contains(v, "big") {
 		t.Errorf("worktree that was not removed left the list:\n%s", v)
+	}
+}
+
+// Worktrees of different repositories may share a branch name: the
+// confirmation then tells them apart by repository.
+func TestConfirmationNamesRepositoriesWhenSeveral(t *testing.T) {
+	a, _ := removalApp(t)
+	for _, repo := range []string{"app", "api"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+			ID: lopper.ID(repo), Path: "/code/" + repo + "-fix", Branch: "fix", Repo: lopper.Repo{Path: "/code/" + repo},
+		}}})
+		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(repo), Safe: true}})
+	}
+	press(a, ' ')
+	press(a, ' ')
+
+	press(a, 'd')
+	lines := plainLines(a)
+	for _, want := range []string{"app  fix", "api  fix"} {
+		if !strings.HasPrefix(strings.TrimSpace(lines[lineWith(t, lines, want)]), want) {
+			t.Errorf("row does not start with its repository %q:\n%s", want, strings.Join(lines, "\n"))
+		}
 	}
 }
 

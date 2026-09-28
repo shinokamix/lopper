@@ -265,9 +265,9 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) 
 	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, names, notes, width)
 }
 
-// rowLine renders a worktree: lead, rowIndent cells wide, then its branch
-// and facts in columns names and notes wide, and its size at the right
-// end, on the background of base.
+// rowLine renders a worktree: lead, at least rowIndent cells wide, then
+// its branch and facts in columns names and notes wide, and its size at
+// the right end, on the background of base.
 func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, names, notes, width int) string {
 	// Every piece, spaces included, is rendered on the row background: an
 	// inner style's reset would otherwise cut the highlight short.
@@ -282,11 +282,12 @@ func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, names, not
 	// The branch and the facts share what the size leaves. A long branch
 	// gives way first, down to what keeps it recognizable, then the
 	// facts; the size always stays.
-	room := width - rowIndent - 2 - ansi.StringWidth(size) - 1
+	indent := ansi.StringWidth(lead)
+	room := width - indent - 2 - ansi.StringWidth(size) - 1
 	labelW := max(min(notes, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
 	branch := fit(branchName(r.worktree), nameW)
-	gap := max(width-rowIndent-nameW-2-labelW-ansi.StringWidth(size), 1)
+	gap := max(width-indent-nameW-2-labelW-ansi.StringWidth(size), 1)
 	var b strings.Builder
 	b.WriteString(lead + seg(name, branch) + seg(plain, "  "))
 	// The facts, each in its color, fill labelW cells. Those that do not

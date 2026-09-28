@@ -116,6 +116,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case removedMsg:
 		cmd := a.removed(msg)
 		return a, cmd
+	case frameMsg:
+		if rm := msg.rm; rm == a.removal && rm.frame < frames {
+			rm.frame++
+			return a, rm.nextFrame()
+		}
 	case spinner.TickMsg:
 		if !a.store.scanning && (a.removal == nil || a.removal.phase != removing) {
 			return a, nil // stop ticking
@@ -195,7 +200,7 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 		return tea.Quit
 	case rm.next == len(rm.items):
 		rm.phase = finished
-		return nil
+		return rm.nextFrame()
 	}
 	return a.removeNext()
 }

@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/shinokamix/lopper/internal/engine"
@@ -22,6 +24,7 @@ type removal struct {
 	phase     phase
 	next      int  // the item being removed
 	quitting  bool // quit once the item being removed is done
+	frame     int  // of the space freed counting up, once finished
 }
 
 type phase int
@@ -42,6 +45,29 @@ type item struct {
 type removedMsg struct {
 	i   int
 	err error
+}
+
+// The space freed counts up from zero in frames, slowing down as it
+// nears the total.
+const (
+	frames    = 48
+	frameTime = 25 * time.Millisecond
+)
+
+// frameMsg asks rm to show its next frame.
+type frameMsg struct{ rm *removal }
+
+func (rm *removal) nextFrame() tea.Cmd {
+	return tea.Tick(frameTime, func(time.Time) tea.Msg { return frameMsg{rm} })
+}
+
+// counted is how much of n the counter shows: all of it once done.
+func (rm *removal) counted(n int64) int64 {
+	if rm.frame >= frames {
+		return n
+	}
+	left := 1 - float64(rm.frame)/frames
+	return int64(float64(n) * (1 - left*left*left)) // ease out
 }
 
 func newRemoval(rows []*row, unchecked int) *removal {
@@ -176,7 +202,11 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	case len(removed) == 0:
 		lines = append(lines, t.title.Render("nothing removed"))
 	case size != nil:
-		lines = append(lines, t.title.Render(formatBytes(size)+" freed"), t.subtle.Render(count))
+		// Padded to the width of the total, so the line stays put as the
+		// counter goes through the units.
+		total := formatBytes(size)
+		now := fmt.Sprintf("%*s", len(total), formatBytes(new(rm.counted(*size))))
+		lines = append(lines, t.title.Render(now+" freed"), t.subtle.Render(count))
 	default: // some sizes were still being measured
 		lines = append(lines, t.title.Render(count))
 	}

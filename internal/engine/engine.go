@@ -145,6 +145,10 @@ func (e *NotSafeError) Error() string {
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 
+// ErrNotFound is returned by Find and Remove for a path where lopper finds
+// no linked worktree.
+var ErrNotFound = discovery.ErrNotFound
+
 // RecordLeftError is returned by Remove when a worktree's directory is
 // gone but git's record of it could not be removed: git cannot tell which
 // record is the worktree's.

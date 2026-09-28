@@ -7,11 +7,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shinokamix/lopper/internal/config"
 	"github.com/shinokamix/lopper/internal/engine"
+	"github.com/shinokamix/lopper/internal/lopper"
 )
 
 func newRmCmd() *cobra.Command {
@@ -59,7 +62,7 @@ func newRmCmd() *cobra.Command {
 type remover struct {
 	eng   *engine.Engine
 	force bool
-	roots []string // where to look for worktrees whose directory is gone; loaded once
+	roots []string // the default roots, loaded once, when a folder is gone
 }
 
 // remove removes the worktree at path, found as lopper scan would find it.
@@ -68,21 +71,64 @@ func (r *remover) remove(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	search := []string{abs}
-	if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
-		// Only its repository still knows it, and only a scan finds that.
-		if r.roots == nil {
-			cfg, err := config.Default()
-			if err != nil {
-				return err
-			}
-			r.roots = cfg.Roots
-		}
-		search = r.roots
+	var wt lopper.Worktree
+	if _, statErr := os.Lstat(abs); errors.Is(statErr, fs.ErrNotExist) {
+		wt, err = r.findGone(ctx, abs)
+	} else {
+		wt, err = r.eng.Find(ctx, []string{abs}, abs)
 	}
-	wt, err := r.eng.Find(ctx, search, abs)
 	if err != nil {
 		return err
 	}
 	return r.eng.Remove(ctx, wt, r.force)
+}
+
+// errGone is returned for a path whose folder is gone and that no
+// repository found near it lists as a worktree.
+var errGone = errors.New("no such directory, and no repository near it lists a worktree there; " +
+	"if one does, `git worktree prune` in it removes the record")
+
+// findGone finds the worktree at path, whose folder is gone: only its
+// repository still knows it, and only a walk that meets the repository
+// finds that. The default roots are walked first, as lopper scan does,
+// then the folders above path, nearest first, since a repository usually
+// sits near its worktrees. The climb ends at the first folder that holds a
+// default root, such as the one holding the home directory, and never
+// reaches the filesystem root: a repository further away is not near, and
+// the walk would take long.
+func (r *remover) findGone(ctx context.Context, path string) (lopper.Worktree, error) {
+	if r.roots == nil {
+		cfg, err := config.Default()
+		if err != nil {
+			return lopper.Worktree{}, err
+		}
+		r.roots = cfg.Roots
+	}
+	wt, err := r.eng.Find(ctx, r.roots, path)
+	if !errors.Is(err, engine.ErrNotFound) {
+		return wt, err
+	}
+	for dir := filepath.Dir(path); filepath.Dir(dir) != dir; dir = filepath.Dir(dir) {
+		resolved, err := filepath.EvalSymlinks(dir) // as the roots are: /tmp is /private/tmp on macOS
+		if err != nil {
+			continue // gone too
+		}
+		if slices.ContainsFunc(r.roots, func(root string) bool { return within(resolved, root) }) {
+			continue // walked already
+		}
+		wt, err := r.eng.Find(ctx, []string{dir}, path)
+		if !errors.Is(err, engine.ErrNotFound) {
+			return wt, err
+		}
+		if slices.ContainsFunc(r.roots, func(root string) bool { return within(root, resolved) }) {
+			break
+		}
+	}
+	return lopper.Worktree{}, errGone
+}
+
+// within reports whether path is dir or lies below it.
+func within(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

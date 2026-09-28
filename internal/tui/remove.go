@@ -22,13 +22,12 @@ type removal struct {
 	// items are safe ones first, then the ones that are not. Until the
 	// user confirms, they follow the scan; then they are what the user
 	// confirmed.
-	items     []*item
-	unchecked int // left out: their facts had not arrived yet
-	phase     phase
-	next      int  // the item being removed
-	quitting  bool // quit once the item being removed is done
-	frame     int  // of the space freed counting up, once finished
-	offset    int  // first visible line of the worktrees
+	items    []*item
+	phase    phase
+	next     int  // the item being removed
+	quitting bool // quit once the item being removed is done
+	frame    int  // of the space freed counting up, once finished
+	offset   int  // first visible line of the worktrees
 }
 
 type phase int
@@ -75,8 +74,8 @@ func (rm *removal) counted(n int64) int64 {
 	return int64(float64(n) * (1 - left*left*left)) // ease out
 }
 
-func newRemoval(rows []*row, unchecked int) *removal {
-	rm := &removal{unchecked: unchecked}
+func newRemoval(rows []*row) *removal {
+	rm := &removal{}
 	for _, r := range rows {
 		rm.items = append(rm.items, &item{row: r})
 	}
@@ -96,6 +95,18 @@ func (rm *removal) sort() {
 		}
 		return 1
 	})
+}
+
+// checked reports whether the facts of every item have arrived: until
+// then the user cannot see what would be lost, and cannot confirm. One
+// still being checked is shown as not safe until it is.
+func (rm *removal) checked() bool {
+	for _, it := range rm.items {
+		if !it.row.checked {
+			return false
+		}
+	}
+	return true
 }
 
 // confirm fixes the items as the user sees them now: the scan may still
@@ -170,14 +181,21 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	}
 
 	var keys bindings
+	wait := ""
 	if rm.phase == confirming {
 		if all > body {
 			keys = append(keys, k.scroll)
 		}
-		keys = append(keys, k.confirm, k.back)
+		if rm.checked() {
+			keys = append(keys, k.confirm)
+		} else {
+			// In place of enter, which waits for the facts.
+			wait = h.Styles.ShortDesc.Render("checking…") + h.Styles.ShortSeparator.Render(h.ShortSeparator)
+		}
+		keys = append(keys, k.back)
 	}
-	h.SetWidth(max(width-2, 0))
-	return head + "\n\n" + strings.Join(rows, "\n") + "\n\n " + h.View(keys)
+	h.SetWidth(max(width-2-ansi.StringWidth(wait), 0))
+	return head + "\n\n" + strings.Join(rows, "\n") + "\n\n " + wait + h.View(keys)
 }
 
 // focus is the line of the rows showing the item being removed.
@@ -220,10 +238,6 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
 		lines = append(lines, rowLine(t, it.row, lead, plain, plain, spin, names, notes, width))
-	}
-	if rm.unchecked > 0 {
-		lines = append(lines, "", strings.Repeat(" ", rowIndent)+
-			t.subtle.Render(plural(rm.unchecked, "worktree")+" still being checked left out"))
 	}
 	return lines
 }

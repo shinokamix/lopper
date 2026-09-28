@@ -76,26 +76,20 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 }
 
 // targets returns what the remove key acts on, in display order: the
-// selected rows, or the row under the cursor when none is selected. Rows
-// still being checked are left out, and counted: without their facts
-// there is nothing to show before removing them.
-func (l *list) targets(s *store) (rows []*row, unchecked int) {
+// selected rows, or the row under the cursor when none is selected.
+func (l *list) targets(s *store) (rows []*row) {
 	order := ids(s)
 	if len(order) == 0 {
-		return nil, 0
+		return nil
 	}
 	cursor := order[l.current(order)]
 	for _, id := range order {
 		if picked := l.selected[id] || len(l.selected) == 0 && id == cursor; !picked {
 			continue
 		}
-		if r := s.byID[id]; r.checked {
-			rows = append(rows, r)
-		} else {
-			unchecked++
-		}
+		rows = append(rows, s.byID[id])
 	}
-	return rows, unchecked
+	return rows
 }
 
 // drop takes a removed worktree off the list. The cursor moves to the

@@ -150,8 +150,8 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, a.keys.quit):
 			return a, tea.Quit
 		case key.Matches(msg, a.keys.remove):
-			if rows, unchecked := a.list.targets(a.store); len(rows) > 0 {
-				a.removal = newRemoval(rows, unchecked)
+			if rows := a.list.targets(a.store); len(rows) > 0 {
+				a.removal = newRemoval(rows)
 			}
 		default:
 			a.list.update(msg, a.keys, a.store)
@@ -169,7 +169,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		case key.Matches(msg, a.keys.back):
 			a.removal = nil
-		case key.Matches(msg, a.keys.confirm):
+		case key.Matches(msg, a.keys.confirm) && rm.checked():
 			rm.confirm()
 			return tea.Batch(a.removeNext(), a.spin.Tick)
 		case key.Matches(msg, a.keys.up):

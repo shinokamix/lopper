@@ -175,6 +175,27 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	}
 }
 
+// A worktree still being checked can be picked, but not confirmed until
+// its facts show what would be lost; until then it counts as not safe.
+func TestConfirmationWaitsForChecks(t *testing.T) {
+	a, rm := removalApp(t)
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
+	press(a, 'd')
+	press(a, tea.KeyEnter)
+	lines := plainLines(a)
+	if len(rm.calls) > 0 || lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "checking…") ||
+		!strings.Contains(lines[len(lines)-1], "checking…") || strings.Contains(lines[len(lines)-1], "remove") {
+		t.Fatalf("worktree still being checked is not shown as not safe, waiting (removed %v):\n%s",
+			rm.calls, strings.Join(lines, "\n"))
+	}
+
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{SizeBytes: new(int64(1))}, Safe: true}})
+	settle(a, press(a, tea.KeyEnter))
+	if want := []string{"wt"}; !slices.Equal(rm.calls, want) {
+		t.Errorf("removed %v once checked, want %v", rm.calls, want)
+	}
+}
+
 // A worktree the scan had not measured yet is measured before it goes,
 // so the summary still tells the space freed.
 func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {

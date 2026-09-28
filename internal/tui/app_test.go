@@ -197,6 +197,26 @@ func statusLine(lines []string) string {
 	return strings.TrimSpace(lines[len(lines)-2])
 }
 
+// The selection total sits at the right end of the status line, under
+// the size column, not among the key help.
+func TestSelectionIsShownBesideThePath(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	size := int64(2_000_000)
+	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Path: "/w/alpha", Branch: "alpha"}}})
+	a.Update(eventMsg{engine.FactsUpdated{ID: "a", Facts: lopper.Facts{SizeBytes: &size}}})
+	a.Update(tea.KeyPressMsg{Code: ' '})
+
+	lines := plainLines(a)
+	status := statusLine(lines)
+	if !strings.HasPrefix(status, "/w/alpha") || !strings.HasSuffix(status, "1 selected · 2.0 MB") {
+		t.Errorf("status line does not show the path and then the selection: %q", status)
+	}
+	if keys := lines[len(lines)-1]; strings.Contains(keys, "selected") {
+		t.Errorf("selection is shown among the key help: %q", keys)
+	}
+}
+
 // A size still being measured shows a one-cell placeholder; the status
 // column must stay where it is on rows with a known size.
 func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {

@@ -2,12 +2,18 @@
 //
 //	discovery → worktrees → inspect pool (quick, then slow) → events
 //
-// UIs (TUI, CLI) consume the event stream and never call the stages directly.
+// UIs (TUI, CLI) consume the event stream and never call the stages
+// directly; they remove worktrees through [Engine.Remove] too.
 package engine
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/shinokamix/lopper/internal/discovery"
@@ -122,6 +128,65 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 	}()
 
 	return events
+}
+
+// NotSafeError is returned by Remove, unless forced, for a worktree that
+// is not safe to delete.
+type NotSafeError struct {
+	Worktree lopper.Worktree
+	Facts    lopper.Facts
+}
+
+func (e *NotSafeError) Error() string {
+	var why []string
+	for _, n := range lopper.Notes(e.Worktree, e.Facts) {
+		why = append(why, n.Text)
+	}
+	return "not safe to delete: " + strings.Join(why, " · ")
+}
+
+// Remove removes the worktree at wt.Path through git, which keeps its
+// branch. Unless forced, the worktree is inspected again first and left
+// alone if it is not safe to delete, and git itself refuses if it holds
+// uncommitted work by then; forced, it goes with whatever it holds.
+// Either way, only a worktree its repository lists and can confirm at
+// this path is removed, and not the one the current directory is in.
+// wt.Repo may be empty when the directory still exists.
+func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) error {
+	now, err := discovery.Lookup(ctx, e.Git, wt.Repo.Path, wt.Path)
+	if err != nil {
+		return err
+	}
+	if now.Unconfirmed != "" {
+		return fmt.Errorf("%s cannot confirm it: %s", now.Repo.Path, now.Unconfirmed)
+	}
+	if inside(now.Path) {
+		return errors.New("the current directory is inside it")
+	}
+	if !force {
+		if f := (inspect.Inspector{Git: e.Git}).Quick(ctx, now); !verdict.Safe(now, f) {
+			return &NotSafeError{Worktree: now, Facts: f}
+		}
+	}
+	return gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, force)
+}
+
+// inside reports whether the current directory is dir or below it:
+// removing it would pull the directory from under the process, which
+// Windows does not even allow.
+func inside(dir string) bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return p
+	}
+	rel, err := filepath.Rel(resolve(dir), resolve(cwd))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // send delivers v unless ctx is cancelled, so an abandoned consumer

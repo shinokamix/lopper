@@ -33,7 +33,7 @@ func NewRoot() *cobra.Command {
 			return tui.Run(cmd.Context(), engine.New(), opts)
 		},
 	}
-	root.AddCommand(newScanCmd())
+	root.AddCommand(newScanCmd(), newRmCmd())
 	return root
 }
 

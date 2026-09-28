@@ -1,0 +1,73 @@
+# rm removes a worktree only when it is safe to delete, and keeps its branch.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+# merged: safe, so its directory and git's record of it go; the branch stays.
+exec git -C repo worktree add -q -b merged ../wt-merged
+exec lopper rm wt-merged
+stdout '^removed wt-merged$'
+! exists wt-merged
+exec git -C repo worktree list --porcelain
+! stdout 'wt-merged'
+exec git -C repo rev-parse --verify -q refs/heads/merged
+
+# locked, unpushed and dirty: without --force the worktree and its work
+# stay, and the error says why and how to remove it anyway.
+exec git -C repo worktree add -q -b unpushed ../wt-unpushed
+exec git -C wt-unpushed commit -q --allow-empty -m work
+cp notes.txt wt-unpushed/notes.txt
+exec git -C repo worktree lock $WORK/wt-unpushed
+! exec lopper rm wt-unpushed
+stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged$'
+stderr '--force'
+exists wt-unpushed/notes.txt
+
+# --force removes it with the uncommitted file, lock or not. The commit is
+# still on the branch.
+exec lopper rm --force wt-unpushed
+stdout '^removed wt-unpushed$'
+! exists wt-unpushed
+exec git -C repo log -1 --format=%s unpushed
+stdout '^work$'
+
+# The worktree the current directory is in stays, even forced: removing it
+# would pull the directory from under the shell.
+exec git -C repo worktree add -q -b here ../wt-here
+cd wt-here
+! exec lopper rm --force .
+stderr 'the current directory is inside it'
+cd $WORK
+exists wt-here/.git
+
+# The main worktree is never a candidate, not even forced, and every path
+# is still tried.
+exec git -C repo worktree add -q -b other ../wt-other
+! exec lopper rm --force repo wt-other
+stderr '^repo: not removed: not a worktree its repository lists$'
+stdout '^removed wt-other$'
+stderr '(?i)1 of 2 worktrees not removed'
+exists repo/.git
+
+# A path that is gone does not stop the others.
+exec git -C repo worktree add -q -b next ../wt-next
+! exec lopper rm missing wt-next
+stderr '^missing: not removed: no such directory$'
+stdout '^removed wt-next$'
+
+# A worktree whose metadata its repository cannot confirm is not removed,
+# not even forced: git may not know what it deletes.
+exec git -C repo worktree add -q -b damaged ../wt-damaged
+rm repo/.git/worktrees/wt-damaged/HEAD
+! exec lopper rm --force wt-damaged
+stderr '^wt-damaged: not removed: .*cannot confirm it: HEAD is missing'
+exists wt-damaged
+
+# A worktree of a bare repository is removed through that repository.
+exec git clone -q --bare repo bare.git
+exec git -C bare.git worktree add -q ../wt-bare main
+exec lopper rm wt-bare
+! exists wt-bare
+
+-- notes.txt --
+not committed yet

@@ -129,6 +129,83 @@ func TestExecIgnoresRepoCommands(t *testing.T) {
 	}
 }
 
+// `git worktree remove` checks the worktree with a git status of its own,
+// which must not run commands from the repository's config, nor from the
+// worktree's own.
+func TestRemoveWorktreeIgnoresRepoCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		config func(git func(args ...string), repo, wt string)
+	}{
+		{"repository config", func(git func(args ...string), repo, _ string) {
+			git("-C", repo, "config", "filter.evil.clean", "touch ../marker; cat")
+		}},
+		{"worktree config", func(git func(args ...string), repo, wt string) {
+			git("-C", repo, "config", "extensions.worktreeConfig", "true")
+			git("-C", wt, "config", "--worktree", "filter.evil.clean", "touch ../marker; cat")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := exec.LookPath("git"); err != nil {
+				t.Skip("git not installed")
+			}
+			work := t.TempDir()
+			global := filepath.Join(work, ".gitconfig")
+			writeFile(t, global, "[user]\n\tname = lopper\n\temail = test@lopper.invalid\n")
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
+
+			repo, wt := filepath.Join(work, "repo"), filepath.Join(work, "wt")
+			git := func(args ...string) {
+				t.Helper()
+				cmd := exec.Command("git", append([]string{"-C", work}, args...)...)
+				cmd.Env = Environ()
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+			}
+			git("init", "-q", repo)
+			writeFile(t, filepath.Join(repo, "a.txt"), "hi\n")
+			git("-C", repo, "add", "a.txt")
+			git("-C", repo, "commit", "-q", "-m", "init")
+			git("-C", repo, "worktree", "add", "-q", wt)
+			// Commands run through sh in the worktree root, so ../marker is in work.
+			writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "* filter=evil\n")
+			tc.config(git, repo, wt)
+			// git appends its arguments, which touch would make untracked files.
+			git("-C", repo, "config", "core.fsmonitor", "touch ../marker; true")
+
+			marker := filepath.Join(work, "marker")
+			staleStat := func(ts time.Time) {
+				t.Helper()
+				if err := os.Chtimes(filepath.Join(wt, "a.txt"), ts, ts); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			staleStat(time.Unix(1e9, 0))
+			git("-C", wt, "status", "--porcelain")
+			if _, err := os.Stat(marker); err != nil {
+				t.Fatalf("plain git did not run the repo commands, test is ineffective: %v", err)
+			}
+			if err := os.Remove(marker); err != nil {
+				t.Fatal(err)
+			}
+
+			staleStat(time.Unix(2e9, 0))
+			if err := RemoveWorktree(context.Background(), Exec{}, repo, wt, false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("git worktree remove ran a command from config")
+			}
+			if _, err := os.Stat(wt); err == nil {
+				t.Fatal("worktree is still there, test is ineffective")
+			}
+		})
+	}
+}
+
 // TestExecIgnoresCallerRepo checks that git runs in the directory it is
 // given even when the caller points git elsewhere, as git does for hooks.
 // Otherwise status would describe the wrong repository.

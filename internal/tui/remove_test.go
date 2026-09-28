@@ -2,8 +2,8 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -282,7 +282,7 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 	found(a, "unpushed", 100, false, lopper.Facts{})
 	found(a, "feature/login-page", 90, true, lopper.Facts{})
 	rm.fail = map[lopper.ID]error{
-		"unpushed":           errors.New("failed to delete '/Users/me/code/app/.claude/worktrees/unpushed': Permission denied"),
+		"unpushed":           fmt.Errorf("failed to delete '%s': Permission denied", filepath.Join(t.TempDir(), "code", "app", ".claude", "worktrees", "unpushed")),
 		"feature/login-page": &engine.NotSafeError{Facts: lopper.Facts{Dirty: new(1), Unpushed: new(0), Merged: new(lopper.MergedFF)}},
 	}
 	press(a, ' ')

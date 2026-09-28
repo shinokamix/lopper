@@ -149,7 +149,7 @@ func header(t theme, s *store, spin string, width int) string {
 // line shows where the worktree under the cursor is and, at the right
 // end under the size column, what is selected; the help drops the keys
 // that do not fit.
-func (l *list) footer(t theme, s *store, h help.Model, k keyMap, width int) string {
+func (l *list) footer(t theme, s *store, h help.Model, k keyMap, spin string, width int) string {
 	var picked []*row
 	for id := range l.selected {
 		if r, ok := s.byID[id]; ok {
@@ -158,7 +158,7 @@ func (l *list) footer(t theme, s *store, h help.Model, k keyMap, width int) stri
 	}
 	right := ""
 	if len(picked) > 0 {
-		right = t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), formatBytes(totalSize(picked)))) + " "
+		right = t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), sizeText(picked, spin))) + " "
 	}
 	where := ""
 	if order := ids(s); len(order) > 0 {
@@ -174,8 +174,9 @@ func (l *list) footer(t theme, s *store, h help.Model, k keyMap, width int) stri
 }
 
 // view renders the grouped rows into height lines, scrolling just enough
-// to keep the cursor row visible.
-func (l *list) view(t theme, s *store, width, height int) string {
+// to keep the cursor row visible. Sizes still being measured show spin,
+// the spinner's frame.
+func (l *list) view(t theme, s *store, spin string, width, height int) string {
 	groups := s.groups()
 	if len(groups) == 0 {
 		msg := "no worktrees found"
@@ -199,7 +200,7 @@ func (l *list) view(t theme, s *store, width, height int) string {
 		if gi > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, l.repoLine(t, g, width))
+		lines = append(lines, l.repoLine(t, g, spin, width))
 		for ri, r := range g.rows {
 			if r.worktree.ID == cursor {
 				top, at = len(lines), len(lines)
@@ -207,7 +208,7 @@ func (l *list) view(t theme, s *store, width, height int) string {
 					top-- // bring the repository header along
 				}
 			}
-			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, names, notes, width))
+			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, spin, names, notes, width))
 		}
 	}
 
@@ -221,7 +222,7 @@ func (l *list) view(t theme, s *store, width, height int) string {
 	return strings.Join(lines[off:min(len(lines), off+height)], "\n")
 }
 
-func (l *list) repoLine(t theme, g group, width int) string {
+func (l *list) repoLine(t theme, g group, spin string, width int) string {
 	name, where := repoName(g.repo.Path), g.repo.Path
 	if filepath.Base(where) == name {
 		where = filepath.Dir(where) // the name already says the last part
@@ -230,7 +231,7 @@ func (l *list) repoLine(t theme, g group, width int) string {
 	if g.repo.Path == "" {
 		name, where = "unknown repository", ""
 	}
-	right := plural(len(g.rows), "worktree") + " · " + formatBytes(totalSize(g.rows)) + " "
+	right := plural(len(g.rows), "worktree") + " · " + sizeText(g.rows, spin) + " "
 	room := width - 1 - ansi.StringWidth(name) - 2 - ansi.StringWidth(right) - 2
 	left := " " + t.repo.Render(name)
 	if room >= 8 {
@@ -251,7 +252,7 @@ func columns(rows []*row) (names, notes int) {
 	return names, notes
 }
 
-func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) string {
+func (l *list) rowLine(t theme, r *row, atCursor bool, spin string, names, notes, width int) string {
 	base, name := lipgloss.NewStyle(), lipgloss.NewStyle()
 	if l.selected[r.worktree.ID] {
 		base, name = t.picked, t.selected
@@ -262,22 +263,23 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) 
 			base = t.pickedCursor
 		}
 	}
-	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, names, notes, width)
+	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, spin, names, notes, width)
 }
 
 // rowLine renders a worktree: lead, at least rowIndent cells wide, then
 // its branch and facts in columns names and notes wide, and its size at
-// the right end, on the background of base.
-func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, names, notes, width int) string {
+// the right end, or spin while it is being measured, on the background
+// of base.
+func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, spin string, names, notes, width int) string {
 	// Every piece, spaces included, is rendered on the row background: an
 	// inner style's reset would otherwise cut the highlight short.
 	plain := lipgloss.NewStyle()
 	seg := func(st lipgloss.Style, s string) string { return st.Inherit(base).Render(s) }
 
-	size := fmt.Sprintf("%*s ", sizeWidth, formatBytes(r.facts.SizeBytes))
+	size := fmt.Sprintf("%*s ", sizeWidth, sizeText([]*row{r}, spin))
 	sizeStyle := name
-	if r.facts.SizeBytes != nil && *r.facts.SizeBytes < 1_000_000 {
-		sizeStyle = sizeStyle.Faint(true) // too small to matter for space
+	if r.facts.SizeBytes == nil || *r.facts.SizeBytes < 1_000_000 {
+		sizeStyle = sizeStyle.Faint(true) // too small to matter for space, or not known
 	}
 	// The branch and the facts share what the size leaves. A long branch
 	// gives way first, down to what keeps it recognizable, then the

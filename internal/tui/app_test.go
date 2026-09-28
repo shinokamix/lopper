@@ -228,7 +228,7 @@ func TestSelectionIsShownBesideThePath(t *testing.T) {
 	}
 }
 
-// A size still being measured shows a one-cell placeholder; the status
+// A size still being measured shows a one-cell spinner; the status
 // column must stay where it is on rows with a known size.
 func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	a := testApp()
@@ -246,11 +246,34 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	lines := plainLines(a)
 	at := lineWith(t, lines, "a-branch") // measured first: it is larger
 	known, unknown := lines[at], strings.TrimRight(lines[at+1], " ")
-	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, "…") {
+	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, spinning(a)) {
 		t.Fatalf("want the measured row, then the one still being measured:\n%s\n%s", known, unknown)
 	}
 	if strings.Index(known, "merged") != strings.Index(unknown, "merged") {
 		t.Errorf("status column moves on a row with unknown size:\n%s\n%s", known, unknown)
+	}
+}
+
+// spinning is the spinner's frame now: what a size being measured shows.
+func spinning(a *app) string { return strings.TrimSpace(a.spin.View()) }
+
+// A size that could not be measured must not look as if it still were:
+// the spinner would turn forever.
+func TestSizeSpinsOnlyWhileBeingMeasured(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+	for _, id := range []string{"measuring", "unmeasurable"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: id}}})
+	}
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measuring"}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "unmeasurable", Final: true}})
+
+	lines := plainLines(a)
+	if row := strings.TrimRight(lines[lineWith(t, lines, "measuring")], " "); !strings.HasSuffix(row, spinning(a)) {
+		t.Errorf("size being measured does not show the spinner: %q", row)
+	}
+	if row := strings.TrimRight(lines[lineWith(t, lines, "unmeasurable")], " "); !strings.HasSuffix(row, "?") {
+		t.Errorf("size that could not be measured does not show as unknown: %q", row)
 	}
 }
 

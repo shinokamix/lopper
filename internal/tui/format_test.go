@@ -16,11 +16,8 @@ func TestFormatBytes(t *testing.T) {
 		{2_000_000_000_000, "2.0 TB"},
 	}
 	for _, tc := range cases {
-		if got := formatBytes(&tc.n); got != tc.want {
+		if got := formatBytes(tc.n); got != tc.want {
 			t.Errorf("formatBytes(%d) = %q, want %q", tc.n, got, tc.want)
 		}
-	}
-	if got := formatBytes(nil); got != "…" {
-		t.Errorf("formatBytes(nil) = %q, want placeholder", got)
 	}
 }

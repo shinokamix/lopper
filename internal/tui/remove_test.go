@@ -17,8 +17,17 @@ import (
 // remover stands in for Engine.Remove: it records what it was asked to
 // remove and fails with fail's error for a worktree there.
 type remover struct {
-	calls []string // "id" or "id forced"
+	calls []string // "id" or "id forced", or "measure id"
 	fail  map[lopper.ID]error
+	sizes map[lopper.ID]int64
+}
+
+func (r *remover) measure(_ context.Context, wt lopper.Worktree) *int64 {
+	r.calls = append(r.calls, "measure "+string(wt.ID))
+	if size, ok := r.sizes[wt.ID]; ok {
+		return &size
+	}
+	return nil
 }
 
 func (r *remover) remove(_ context.Context, wt lopper.Worktree, force bool) error {
@@ -33,7 +42,7 @@ func (r *remover) remove(_ context.Context, wt lopper.Worktree, force bool) erro
 func removalApp(t *testing.T) (*app, *remover) {
 	a := testApp()
 	rm := &remover{}
-	a.ctx, a.remove = t.Context(), rm.remove
+	a.ctx, a.remove, a.measure = t.Context(), rm.remove, rm.measure
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	return a, rm
 }
@@ -163,6 +172,27 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	settle(a, press(a, tea.KeyEnter))
 	if want := []string{"wt forced"}; !slices.Equal(rm.calls, want) {
 		t.Errorf("removed %v, want %v: it was shown holding work when confirmed", rm.calls, want)
+	}
+}
+
+// A worktree the scan had not measured yet is measured before it goes,
+// so the summary still tells the space freed.
+func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
+	a, rm := removalApp(t)
+	found(a, "known", 1_000_000, true, lopper.Facts{})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "new", Path: "/r/new", Branch: "new", Repo: lopper.Repo{Path: "/r"}}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "new", Safe: true}})
+	rm.sizes = map[lopper.ID]int64{"new": 4_000_000}
+	press(a, ' ')
+	press(a, ' ')
+
+	press(a, 'd')
+	settle(a, press(a, tea.KeyEnter))
+	if want := []string{"known", "measure new", "new"}; !slices.Equal(rm.calls, want) {
+		t.Errorf("calls %v, want %v: only the unmeasured one, and before it is removed", rm.calls, want)
+	}
+	if v := view(a); !strings.Contains(v, "5.0 MB freed") {
+		t.Errorf("summary does not count the size measured at removal:\n%s", v)
 	}
 }
 

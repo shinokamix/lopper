@@ -29,18 +29,19 @@ type eventMsg struct {
 }
 
 type app struct {
-	ctx    context.Context
-	scan   func(context.Context) <-chan engine.Event
-	remove func(ctx context.Context, wt lopper.Worktree, force bool) error
-	gen    int                // counts scans
-	stop   context.CancelFunc // stops the current scan
-	events <-chan engine.Event
-	store  *store
-	keys   keyMap
-	theme  theme
-	help   help.Model
-	spin   spinner.Model
-	list   list
+	ctx     context.Context
+	scan    func(context.Context) <-chan engine.Event
+	remove  func(ctx context.Context, wt lopper.Worktree, force bool) error
+	measure func(context.Context, lopper.Worktree) *int64
+	gen     int                // counts scans
+	stop    context.CancelFunc // stops the current scan
+	events  <-chan engine.Event
+	store   *store
+	keys    keyMap
+	theme   theme
+	help    help.Model
+	spin    spinner.Model
+	list    list
 	// removal is the removal screen, shown over the list while not nil.
 	removal *removal
 	width   int
@@ -53,14 +54,15 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options) error {
 	defer cancel()
 
 	a := &app{
-		ctx:    ctx,
-		scan:   func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
-		remove: eng.Remove,
-		keys:   defaultKeys(),
-		theme:  newTheme(true),
-		help:   help.New(),
-		spin:   spinner.New(spinner.WithSpinner(spinner.Dot)),
-		list:   newList(pathAliases()),
+		ctx:     ctx,
+		scan:    func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
+		remove:  eng.Remove,
+		measure: eng.Measure,
+		keys:    defaultKeys(),
+		theme:   newTheme(true),
+		help:    help.New(),
+		spin:    spinner.New(spinner.WithSpinner(spinner.Dot)),
+		list:    newList(pathAliases()),
 	}
 	a.startScan(ctx)
 	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
@@ -96,12 +98,18 @@ func (a *app) waitEvent() tea.Cmd {
 	}
 }
 
-// removeNext removes the next item of the removal screen.
+// removeNext removes the next item of the removal screen. One the scan
+// has not measured yet is measured first, to tell the space freed.
 func (a *app) removeNext() tea.Cmd {
-	ctx, remove, i := a.ctx, a.remove, a.removal.next
+	ctx, remove, measure, i := a.ctx, a.remove, a.measure, a.removal.next
 	it := a.removal.items[i]
-	wt, force := it.row.worktree, it.force()
-	return func() tea.Msg { return removedMsg{i, remove(ctx, wt, force)} }
+	wt, force, size := it.row.worktree, it.force(), it.row.facts.SizeBytes
+	return func() tea.Msg {
+		if size == nil {
+			size = measure(ctx, wt)
+		}
+		return removedMsg{i: i, size: size, err: remove(ctx, wt, force)}
+	}
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -194,7 +202,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) removed(msg removedMsg) tea.Cmd {
 	rm := a.removal
 	it := rm.items[msg.i]
-	it.done, it.err = true, msg.err
+	it.done, it.err, it.row.facts.SizeBytes = true, msg.err, msg.size
 	if it.removed() {
 		a.list.drop(a.store, it.row.worktree.ID)
 	}
@@ -219,17 +227,17 @@ const (
 
 func (a *app) View() tea.View {
 	w := max(a.width-2*margin, 1)
+	spin := strings.TrimSpace(a.spin.View())
 	var screen string
 	switch {
 	case a.removal != nil && a.removal.phase == finished:
 		screen = a.removal.summary(a.theme, a.help, a.keys, w, max(a.height-1, 1))
 	case a.removal != nil:
-		spin := strings.TrimSpace(a.spin.View())
 		screen = a.removal.view(a.theme, a.help, a.keys, spin, w, max(a.height-1, 1))
 	default:
-		body := a.list.view(a.theme, a.store, w, max(a.height-chromeLines, 1))
+		body := a.list.view(a.theme, a.store, spin, w, max(a.height-chromeLines, 1))
 		screen = header(a.theme, a.store, a.spin.View(), w) + "\n\n" +
-			body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, w)
+			body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
 	}
 	// Scrolling counts one screen line per line: a line wider than the
 	// screen would wrap and push the list down, so none may be.

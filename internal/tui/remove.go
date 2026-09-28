@@ -45,10 +45,11 @@ type item struct {
 	err  error // why it was not removed, or a *engine.RecordLeftError
 }
 
-// removedMsg reports how removing item i went.
+// removedMsg reports how removing item i went, and its size.
 type removedMsg struct {
-	i   int
-	err error
+	i    int
+	size *int64
+	err  error
 }
 
 // The space freed counts up from zero in frames, slowing down as it
@@ -139,7 +140,7 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	}
 	title := " " + t.title.Render(verb+" "+plural(len(rm.items), "worktree"))
 	if size := totalSize(rowsOf(rm.items)); size != nil {
-		title += t.subtle.Render(" · " + formatBytes(size))
+		title += t.subtle.Render(" · " + formatBytes(*size))
 	}
 	head := title
 	if rm.quitting {
@@ -218,7 +219,7 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 			mark = spin
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		lines = append(lines, rowLine(t, it.row, lead, plain, plain, names, notes, width))
+		lines = append(lines, rowLine(t, it.row, lead, plain, plain, spin, names, notes, width))
 	}
 	if rm.unchecked > 0 {
 		lines = append(lines, "", strings.Repeat(" ", rowIndent)+
@@ -252,8 +253,8 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	case size != nil:
 		// Padded to the width of the total, so the line stays put as the
 		// counter goes through the units.
-		total := formatBytes(size)
-		now := fmt.Sprintf("%*s", len(total), formatBytes(new(rm.counted(*size))))
+		total := formatBytes(*size)
+		now := fmt.Sprintf("%*s", len(total), formatBytes(rm.counted(*size)))
 		lines = append(lines, t.title.Render(now+" freed"), t.subtle.Render(count))
 	default: // some sizes were still being measured
 		lines = append(lines, t.title.Render(count))

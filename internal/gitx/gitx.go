@@ -277,6 +277,13 @@ func RemoveWorktree(ctx context.Context, r Runner, repo, path string, force bool
 	return err
 }
 
+// RepairWorktree relinks the worktree at path with its repository after
+// it was moved there by hand, so that git can remove it.
+func RepairWorktree(ctx context.Context, r Runner, path string) error {
+	_, err := r.Run(ctx, path, "worktree", "repair")
+	return err
+}
+
 // DefaultBranch guesses the base branch: origin/HEAD, then main, then master.
 func DefaultBranch(ctx context.Context, r Runner, dir string) string {
 	if ref, err := r.Run(ctx, dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {

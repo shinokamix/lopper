@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shinokamix/lopper/internal/config"
 	"github.com/shinokamix/lopper/internal/engine"
-	"github.com/shinokamix/lopper/internal/lopper"
 )
 
 func newRmCmd() *cobra.Command {
@@ -20,13 +21,19 @@ func newRmCmd() *cobra.Command {
 		Short: "Remove worktrees, refusing ones that are not safe unless forced",
 		Long: "rm removes each worktree at the given paths if it is safe to delete, checked " +
 			"just before removal; otherwise it is left alone and why is printed. --force " +
-			"removes it anyway, with whatever work it holds. The branch is always kept.",
+			"removes it anyway, whatever it holds or however git lost track of it: any " +
+			"worktree lopper scan shows. The branch is always kept.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			eng := engine.New()
+			rm := remover{eng: engine.New(), force: force}
 			failed, unsafe := 0, 0
 			for _, a := range args {
-				if err := removeOne(cmd, eng, a, force); err != nil {
+				err := rm.remove(cmd.Context(), a)
+				if left, ok := errors.AsType[*engine.RecordLeftError](err); ok {
+					fmt.Fprintf(cmd.OutOrStdout(), "removed %s; %v\n", a, left)
+					continue
+				}
+				if err != nil {
 					failed++
 					if _, ok := errors.AsType[*engine.NotSafeError](err); ok {
 						unsafe++
@@ -49,13 +56,33 @@ func newRmCmd() *cobra.Command {
 	return cmd
 }
 
-func removeOne(cmd *cobra.Command, eng *engine.Engine, path string, force bool) error {
+type remover struct {
+	eng   *engine.Engine
+	force bool
+	roots []string // where to look for worktrees whose directory is gone; loaded once
+}
+
+// remove removes the worktree at path, found as lopper scan would find it.
+func (r *remover) remove(ctx context.Context, path string) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(abs); errors.Is(err, fs.ErrNotExist) {
-		return errors.New("no such directory")
+	search := []string{abs}
+	if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
+		// Only its repository still knows it, and only a scan finds that.
+		if r.roots == nil {
+			cfg, err := config.Default()
+			if err != nil {
+				return err
+			}
+			r.roots = cfg.Roots
+		}
+		search = r.roots
 	}
-	return eng.Remove(cmd.Context(), lopper.Worktree{Path: abs}, force)
+	wt, err := r.eng.Find(ctx, search, abs)
+	if err != nil {
+		return err
+	}
+	return r.eng.Remove(ctx, wt, r.force)
 }

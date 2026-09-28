@@ -9,7 +9,7 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -145,20 +145,34 @@ func (e *NotSafeError) Error() string {
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 
-// Remove removes the worktree at wt.Path through git, which keeps its
-// branch. Unless forced, the worktree is inspected again first and left
-// alone if it is not safe to delete, and git itself refuses if it holds
-// uncommitted work by then; forced, it goes with whatever it holds.
-// Either way, only a worktree its repository lists and can confirm at
-// this path is removed, and not the one the current directory is in.
-// wt.Repo may be empty when the directory still exists.
+// RecordLeftError is returned by Remove when a worktree's directory is
+// gone but git's record of it could not be removed: git cannot tell which
+// record is the worktree's.
+type RecordLeftError struct{ Repo string }
+
+func (e *RecordLeftError) Error() string {
+	return "git's record of it is left in " + e.Repo + ": `git worktree prune` there removes it"
+}
+
+// Find returns the linked worktree at path as a scan of roots reports it,
+// without inspecting it: what Remove takes. The roots must reach path, and
+// when its directory is gone, its repository too.
+func (e *Engine) Find(ctx context.Context, roots []string, path string) (lopper.Worktree, error) {
+	listers, _ := budget(0)
+	return discovery.Find(ctx, e.Git, discovery.Options{Roots: roots, Listers: listers}, path)
+}
+
+// Remove removes a worktree lopper found, whatever kind it is: its
+// directory, and git's record of it. The branch is kept. The worktree is
+// looked up again first, since it may have changed since it was found.
+// Unless forced, it is inspected too and left alone if it is not safe to
+// delete, and git itself refuses if it holds uncommitted work by then;
+// forced, it goes with whatever it holds. The directory the current
+// directory is in always stays.
 func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) error {
-	now, err := discovery.Lookup(ctx, e.Git, wt.Repo.Path, wt.Path)
+	now, err := e.current(ctx, wt)
 	if err != nil {
 		return err
-	}
-	if now.Unconfirmed != "" {
-		return fmt.Errorf("%s cannot confirm it: %s", now.Repo.Path, now.Unconfirmed)
 	}
 	if inside(now.Path) {
 		return errors.New("the current directory is inside it")
@@ -168,7 +182,39 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 			return &NotSafeError{Worktree: now, Facts: f}
 		}
 	}
+	switch {
+	case now.Orphaned:
+		// No repository tracks it: its record is gone, or belongs to
+		// another worktree now.
+		return os.RemoveAll(now.Path)
+	case now.Unconfirmed != "":
+		// git cannot work in it, but once it is gone, can remove the
+		// record that still names it, if one does.
+		if err := os.RemoveAll(now.Path); err != nil {
+			return err
+		}
+		if gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, true) != nil {
+			return &RecordLeftError{Repo: now.Repo.Path}
+		}
+		return nil
+	case now.MovedFrom != "":
+		if err := gitx.RepairWorktree(ctx, e.Git, now.Path); err != nil {
+			return err
+		}
+	}
 	return gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, force)
+}
+
+// current looks wt up again as it is now: by a walk of its directory, or,
+// when that is gone, in its repository.
+func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktree, error) {
+	if _, err := os.Lstat(wt.Path); errors.Is(err, fs.ErrNotExist) {
+		if wt.Repo.Path == "" {
+			return lopper.Worktree{}, discovery.ErrNotFound
+		}
+		return discovery.Lookup(ctx, e.Git, wt.Repo.Path, wt.Path)
+	}
+	return e.Find(ctx, []string{wt.Path}, wt.Path)
 }
 
 // inside reports whether the current directory is dir or below it:

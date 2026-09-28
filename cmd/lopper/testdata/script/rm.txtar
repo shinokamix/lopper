@@ -1,4 +1,8 @@
-# rm removes a worktree only when it is safe to delete, and keeps its branch.
+# rm removes a worktree only when it is safe to delete, and keeps its
+# branch; --force removes any worktree lopper scan shows.
+
+# A worktree whose folder is gone is found by a scan of the default roots.
+env HOME=$WORK
 
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
@@ -44,24 +48,65 @@ exists wt-here/.git
 # is still tried.
 exec git -C repo worktree add -q -b other ../wt-other
 ! exec lopper rm --force repo wt-other
-stderr '^repo: not removed: not a worktree its repository lists$'
+stderr '^repo: not removed: not a linked worktree$'
 stdout '^removed wt-other$'
 stderr '(?i)1 of 2 worktrees not removed'
 exists repo/.git
 
-# A path that is gone does not stop the others.
+# A worktree whose folder is gone is safe: git's record of it goes. A path
+# where no worktree ever was does not stop the others.
+exec git -C repo worktree add -q -b gone ../wt-gone
+rm wt-gone
 exec git -C repo worktree add -q -b next ../wt-next
-! exec lopper rm missing wt-next
-stderr '^missing: not removed: no such directory$'
+! exec lopper rm missing wt-gone wt-next
+stderr '^missing: not removed: not a linked worktree$'
+stdout '^removed wt-gone$'
 stdout '^removed wt-next$'
+exec git -C repo worktree list --porcelain
+! stdout 'wt-gone'
 
-# A worktree whose metadata its repository cannot confirm is not removed,
-# not even forced: git may not know what it deletes.
+# Worktrees git lost track of are never safe, but forced they go, and so
+# does git's record of them when one still names them.
+
+# Damaged metadata: git lists it, but cannot work in it.
 exec git -C repo worktree add -q -b damaged ../wt-damaged
 rm repo/.git/worktrees/wt-damaged/HEAD
-! exec lopper rm --force wt-damaged
-stderr '^wt-damaged: not removed: .*cannot confirm it: HEAD is missing'
-exists wt-damaged
+! exec lopper rm wt-damaged
+stderr '^wt-damaged: not removed: not safe to delete: not confirmed by git'
+exec lopper rm --force wt-damaged
+stdout '^removed wt-damaged$'
+! exists wt-damaged
+! exists repo/.git/worktrees/wt-damaged
+
+# A record that no longer names its folder is not git's to find by path:
+# it stays, and the output says how to clean it.
+exec git -C repo worktree add -q -b unlinked ../wt-unlinked
+rm repo/.git/worktrees/wt-unlinked/gitdir
+exec lopper rm --force wt-unlinked
+stdout '^removed wt-unlinked; git''s record of it is left in .*repo: `git worktree prune` there removes it$'
+! exists wt-unlinked
+
+# Moved by hand: relinked, then removed with its record.
+exec git -C repo worktree add -q -b moved ../wt-moved-from
+mv wt-moved-from wt-moved
+! exec lopper rm wt-moved
+stderr 'not safe to delete: moved by hand'
+exec lopper rm --force wt-moved
+stdout '^removed wt-moved$'
+! exists wt-moved
+exec git -C repo worktree list --porcelain
+! stdout 'wt-moved'
+
+# Orphaned: its repository is gone, so only the folder is left to remove.
+exec git init -q lost
+exec git -C lost commit -q --allow-empty -m init
+exec git -C lost worktree add -q -b orphan ../wt-orphan
+rm lost
+! exec lopper rm wt-orphan
+stderr 'not safe to delete: not tracked by git'
+exec lopper rm --force wt-orphan
+stdout '^removed wt-orphan$'
+! exists wt-orphan
 
 # A worktree of a bare repository is removed through that repository.
 exec git clone -q --bare repo bare.git

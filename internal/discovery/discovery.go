@@ -137,24 +137,45 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 	return err
 }
 
-// ErrNotListed is returned by Lookup for a directory that its repository
-// does not list as a linked worktree.
-var ErrNotListed = errors.New("not a worktree its repository lists")
+// ErrNotFound is returned by Find and Lookup for a path where they find
+// no linked worktree: the main worktree, a submodule or a plain directory
+// is never one.
+var ErrNotFound = errors.New("not a linked worktree")
 
-// Lookup finds the linked worktree at path as its repository lists it
-// now, marked as Scan marks it. repo is the repository's path, as in
-// lopper.Repo; it may be empty when path still exists, and is then found
-// through path's .git file.
+// Find returns the linked worktree at path as a Scan of opts.Roots
+// reports it: moved, orphaned or unconfirmed alike. The roots must reach
+// path; when its directory is gone, only a walk that meets its repository
+// finds it.
+func Find(ctx context.Context, git gitx.Runner, opts Options, path string) (lopper.Worktree, error) {
+	want := realPath(path)
+	var (
+		mu    sync.Mutex
+		wt    lopper.Worktree
+		found bool
+	)
+	err := Scan(ctx, git, opts, func(w lopper.Worktree) {
+		if realPath(w.Path) == want {
+			mu.Lock()
+			defer mu.Unlock()
+			wt, found = w, true
+		}
+	})
+	if err != nil {
+		return lopper.Worktree{}, err
+	}
+	if !found {
+		return lopper.Worktree{}, ErrNotFound
+	}
+	return wt, nil
+}
+
+// Lookup finds the linked worktree at path as the repository at repo, a
+// lopper.Repo path, lists it now, marked as Scan marks it. Unlike Find, it
+// needs no walk: this is how a worktree whose directory is gone is looked
+// up again.
 func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Worktree, error) {
 	gitDir := repo
-	switch {
-	case repo == "":
-		gf, ok := readGitFile(filepath.Join(path, ".git"))
-		if !ok || gf.orphaned || gf.repoGone {
-			return lopper.Worktree{}, ErrNotListed
-		}
-		gitDir = gf.commonDir
-	case !isGitDir(repo):
+	if !isGitDir(repo) {
 		gitDir = filepath.Join(repo, ".git")
 	}
 	want := realPath(path)
@@ -171,7 +192,7 @@ func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Wor
 		return lopper.Worktree{}, err
 	}
 	if !found {
-		return lopper.Worktree{}, ErrNotListed
+		return lopper.Worktree{}, ErrNotFound
 	}
 	present(&wt)
 	return wt, nil

@@ -1,80 +1,52 @@
 package verdict
 
 import (
-	"slices"
-	"strings"
 	"testing"
 
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-func TestEvaluate(t *testing.T) {
+func TestSafe(t *testing.T) {
 	n := func(v int) *int { return &v }
 	m := func(k lopper.MergeKind) *lopper.MergeKind { return &k }
 	repo := lopper.Worktree{Repo: lopper.Repo{DefaultBranch: "main"}}
 	noBase := lopper.Worktree{}
 	locked := repo
 	locked.Locked = true
+	lockedGone := lopper.Worktree{Prunable: true, Locked: true}
 	moved := repo
 	moved.MovedFrom = "/old/wt"
 	unconfirmed := repo
 	unconfirmed.Unconfirmed = "git worktree list failed"
+	clean := lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}
 
 	cases := []struct {
-		name      string
-		wt        lopper.Worktree
-		facts     lopper.Facts
-		want      lopper.Level
-		wantRules []string
+		name  string
+		wt    lopper.Worktree
+		facts lopper.Facts
+		want  bool
 	}{
-		{"merged and clean", repo, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelSafe, []string{"merged"}},
-		{"squash merged, local commits only", repo, lopper.Facts{Dirty: n(0), Unpushed: n(3), Merged: m(lopper.MergedSquash)}, lopper.LevelSafe, []string{"merged"}},
-		{"merged but dirty", repo, lopper.Facts{Dirty: n(2), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelKeep, []string{"dirty", "merged"}},
-		{"unmerged and unpushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(1), Merged: m(lopper.NotMerged)}, lopper.LevelKeep, []string{"unpushed", "not-merged"}},
-		{"unmerged but pushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.NotMerged)}, lopper.LevelReview, []string{"not-merged"}},
-		{"locked", locked, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelKeep, []string{"locked", "merged"}},
-		{"prunable", lopper.Worktree{Prunable: true}, lopper.Facts{}, lopper.LevelSafe, []string{"prunable"}},
-		{"moved, merged and clean", moved, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelReview, []string{"moved", "merged"}},
-		{"unconfirmed, merged and clean", unconfirmed, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}, lopper.LevelReview, []string{"unconfirmed", "merged"}},
-		{"orphaned", lopper.Worktree{Orphaned: true}, lopper.Facts{SizeBytes: new(int64(4096))}, lopper.LevelReview, []string{"orphaned"}},
-		{"status failed but merged", repo, lopper.Facts{Unpushed: n(0), Merged: m(lopper.MergedFF), Errors: []string{"could not read status: boom"}}, lopper.LevelReview, []string{"incomplete", "merged"}},
-		{"no base branch", noBase, lopper.Facts{Dirty: n(0), Unpushed: n(0)}, lopper.LevelReview, []string{"incomplete"}},
-		{"nothing known", repo, lopper.Facts{}, lopper.LevelReview, []string{"incomplete"}},
-		{"unknown facts never hide a keep", repo, lopper.Facts{Dirty: n(1)}, lopper.LevelKeep, []string{"incomplete", "dirty"}},
+		{"merged and clean", repo, clean, true},
+		{"squash merged, local commits only", repo, lopper.Facts{Dirty: n(0), Unpushed: n(3), Merged: m(lopper.MergedSquash)}, true},
+		{"merged but dirty", repo, lopper.Facts{Dirty: n(2), Unpushed: n(0), Merged: m(lopper.MergedFF)}, false},
+		{"unmerged and unpushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(1), Merged: m(lopper.NotMerged)}, false},
+		{"unmerged but pushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.NotMerged)}, false},
+		{"locked", locked, clean, false},
+		{"folder gone", lopper.Worktree{Prunable: true}, lopper.Facts{}, true},
+		{"folder gone but locked", lockedGone, lopper.Facts{}, false},
+		{"moved, merged and clean", moved, clean, false},
+		{"unconfirmed, merged and clean", unconfirmed, clean, false},
+		{"orphaned", lopper.Worktree{Orphaned: true}, lopper.Facts{SizeBytes: new(int64(4096))}, false},
+		{"status failed but merged", repo, lopper.Facts{Unpushed: n(0), Merged: m(lopper.MergedFF), Errors: []string{"could not read status: boom"}}, false},
+		{"unpushed unknown but merged", repo, lopper.Facts{Dirty: n(0), Merged: m(lopper.MergedFF)}, false},
+		{"no base branch", noBase, lopper.Facts{Dirty: n(0), Unpushed: n(0)}, false},
+		{"nothing known", repo, lopper.Facts{}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := Evaluate(tc.wt, tc.facts)
-			if got.Level != tc.want {
-				t.Errorf("level = %v, want %v (reasons: %+v)", got.Level, tc.want, got.Reasons)
-			}
-			var rules []string
-			for _, r := range got.Reasons {
-				rules = append(rules, r.Rule)
-			}
-			if !slices.Equal(rules, tc.wantRules) {
-				t.Errorf("rules = %q, want %q", rules, tc.wantRules)
+			if got := Safe(tc.wt, tc.facts); got != tc.want {
+				t.Errorf("Safe = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-// TestIncompleteMessage checks that the reason names the missing facts and why.
-func TestIncompleteMessage(t *testing.T) {
-	n := func(v int) *int { return &v }
-
-	f := lopper.Facts{Unpushed: n(0), Errors: []string{"could not read status: fatal: bad index"}}
-	v := Evaluate(lopper.Worktree{}, f)
-	if len(v.Reasons) != 1 || v.Reasons[0].Rule != "incomplete" {
-		t.Fatalf("Evaluate = %+v, want one incomplete reason", v)
-	}
-	r := v.Reasons[0]
-	for _, want := range []string{"uncommitted changes", "merge status", "no base branch found", "could not read status: fatal: bad index"} {
-		if !strings.Contains(r.Message, want) {
-			t.Errorf("message %q lacks %q", r.Message, want)
-		}
-	}
-	if strings.Contains(r.Message, "unpushed") {
-		t.Errorf("message %q mentions a known fact", r.Message)
 	}
 }

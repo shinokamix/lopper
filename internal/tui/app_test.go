@@ -79,12 +79,7 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	dirty, unpushed := 3, 2
 	a.Update(eventMsg{engine.FactsUpdated{
 		ID:    "wt",
-		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed},
-		Verdict: lopper.Verdict{Level: lopper.LevelKeep, Reasons: []lopper.Reason{
-			{Rule: "dirty", Level: lopper.LevelKeep, Message: "3 uncommitted change(s)"},
-			{Rule: "unpushed", Level: lopper.LevelKeep, Message: "2 commit(s) not on any remote"},
-			{Rule: "not-merged", Level: lopper.LevelReview, Message: "work not found in base branch"},
-		}},
+		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed, Merged: new(lopper.NotMerged)},
 	}})
 
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -139,41 +134,34 @@ func TestLongPathsFitTheScreen(t *testing.T) {
 	}
 }
 
-// A row reads "merged" only when the merged rule decided a safe verdict:
-// a user will delete merged rows without looking closer.
-func TestClassifyShowsMergedOnlyWhenSafe(t *testing.T) {
-	merged := lopper.Reason{Rule: "merged", Level: lopper.LevelSafe}
-	notMerged := lopper.Reason{Rule: "not-merged", Level: lopper.LevelReview}
+// A row shows "merged" in its color only when the worktree is safe to
+// delete: users delete merged rows without looking closer.
+func TestFactsColorMergedOnlyWhenSafe(t *testing.T) {
+	clean, dirty := 0, 1
+	merged, notMerged := new(lopper.MergedFF), new(lopper.NotMerged)
 	cases := []struct {
-		name    string
-		verdict lopper.Verdict
-		want    state
-		label   string
+		name   string
+		row    row
+		want   string
+		marked bool // "merged" is in its color
 	}{
-		{"merged", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{merged}}, stateMerged, "merged"},
-		{"folder gone", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
-			{Rule: "prunable", Level: lopper.LevelSafe},
-		}}, stateGone, "folder gone"},
-		{"safe for a reason the list does not know", lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
-			{Rule: "future-rule", Level: lopper.LevelSafe},
-		}}, stateUnknown, "future-rule"},
-		{"merged but moved", lopper.Verdict{Level: lopper.LevelReview, Reasons: []lopper.Reason{
-			{Rule: "moved", Level: lopper.LevelReview}, merged,
-		}}, stateUnknown, "moved by hand"},
-		{"not merged", lopper.Verdict{Level: lopper.LevelReview, Reasons: []lopper.Reason{notMerged}}, stateNotMerged, "not merged"},
-		{"merged but unconfirmed", lopper.Verdict{Level: lopper.LevelReview, Reasons: []lopper.Reason{
-			{Rule: "unconfirmed", Level: lopper.LevelReview}, merged,
-		}}, stateUnknown, "not confirmed by git"},
-		{"not merged and unchecked", lopper.Verdict{Level: lopper.LevelReview, Reasons: []lopper.Reason{
-			{Rule: "incomplete", Level: lopper.LevelReview}, notMerged,
-		}}, stateUnknown, "couldn't check"},
-		{"no verdict yet", lopper.Verdict{}, stateChecking, "checking…"},
+		{"merged", row{checked: true, safe: true, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "merged", true},
+		{"merged but dirty", row{checked: true, facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", false},
+		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "moved by hand · merged", false},
+		{"not merged and unchecked", row{checked: true, facts: lopper.Facts{Unpushed: &clean, Merged: notMerged}}, "couldn't check · not merged", false},
+		{"folder gone", row{checked: true, safe: true, worktree: lopper.Worktree{Prunable: true}}, "folder gone", false},
+		{"no facts yet", row{}, "checking…", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, label := classify(&row{verdict: tc.verdict})
-			if got != tc.want || label != tc.label {
-				t.Errorf("classify = %v %q, want %v %q", got, label, tc.want, tc.label)
+			var texts []string
+			marked := false
+			for _, n := range facts(&tc.row) {
+				texts = append(texts, n.Text)
+				marked = marked || n.Kind == lopper.NoteMerged
+			}
+			if got := strings.Join(texts, " · "); got != tc.want || marked != tc.marked {
+				t.Errorf("facts = %q (merged in color: %v), want %q (%v)", got, marked, tc.want, tc.marked)
 			}
 		})
 	}
@@ -222,13 +210,15 @@ func TestSelectionIsShownBesideThePath(t *testing.T) {
 func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
-	merged := lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{{Rule: "merged", Level: lopper.LevelSafe}}}
-	size := int64(1000)
+	clean := 0
+	merged := lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}
+	measured := merged
+	measured.SizeBytes = new(int64(1000))
 	for _, id := range []string{"measured", "measuring"} {
 		a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: "a-branch-long-enough-to-be-cut-" + id}}})
 	}
-	a.Update(eventMsg{engine.FactsUpdated{ID: "measured", Facts: lopper.Facts{SizeBytes: &size}, Verdict: merged}})
-	a.Update(eventMsg{engine.FactsUpdated{ID: "measuring", Verdict: merged}})
+	a.Update(eventMsg{engine.FactsUpdated{ID: "measured", Facts: measured, Safe: true}})
+	a.Update(eventMsg{engine.FactsUpdated{ID: "measuring", Facts: merged, Safe: true}})
 
 	lines := plainLines(a)
 	at := lineWith(t, lines, "a-branch") // measured first: it is larger
@@ -327,9 +317,6 @@ func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 	a.Update(eventMsg{engine.FactsUpdated{
 		ID:    "wt",
 		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed, SizeBytes: &size},
-		Verdict: lopper.Verdict{Level: lopper.LevelKeep, Reasons: []lopper.Reason{
-			{Rule: "dirty", Level: lopper.LevelKeep}, {Rule: "unpushed", Level: lopper.LevelKeep},
-		}},
 	}})
 	a.Update(tea.KeyPressMsg{Code: ' '})
 

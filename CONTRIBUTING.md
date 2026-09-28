@@ -27,11 +27,11 @@ The hooks format and lint on commit and run `task check` on push.
 ```
 cmd/lopper        entry point
 internal/
-  lopper          core types: Worktree, Facts, Verdict (no dependencies)
+  lopper          core types: Worktree, Facts, and Notes that word them (no dependencies)
   gitx            thin wrapper over the git CLI
   discovery       where worktrees are
   inspect         facts about a worktree (dirty, unpushed, merged, size…)
-  verdict         pure rules: facts → safe / review / keep + reasons
+  verdict         the one rule deciding whether a worktree is safe to delete
   engine          scan pipeline, emits events
   config          user settings
   cli             cobra commands
@@ -45,7 +45,7 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 
 ## Tests
 
-- Unit tests live next to the code; `verdict` rules are table-driven.
+- Unit tests live next to the code; `verdict.Safe` is table-driven.
 - [`cmd/lopper/testdata/script`](cmd/lopper/testdata/script) holds end-to-end
   [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
   scenarios that build real repositories and run `lopper` against them.

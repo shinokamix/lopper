@@ -16,14 +16,13 @@ cp dirty.txt repo/.claude/worktrees/wip/dirty.txt
 
 exec lopper scan $WORK
 stdout '^safe\s+merged\s'
-stdout '^keep\s+unpushed\s'
-stdout '^keep\s+wip\s'
+stdout '^unsafe\s+unpushed\s'
+stdout '^unsafe\s+wip\s'
 ! stderr .
 
-# --json exposes origin and the reasons behind each verdict.
+# --json exposes origin and the facts behind each verdict.
 exec lopper scan --json $WORK
 stdout '"origin": "claude-code"'
-stdout '"rule": "dirty"'
 stdout '"dirty": 1'
 
 -- dirty.txt --

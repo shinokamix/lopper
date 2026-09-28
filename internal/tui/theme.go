@@ -4,6 +4,8 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/shinokamix/lopper/internal/lopper"
 )
 
 // theme is the only place where colors and styles are defined.
@@ -24,7 +26,7 @@ type theme struct {
 	pickedCursor lipgloss.Style
 	selected     lipgloss.Style // text of selected rows
 	failure      lipgloss.Style
-	state        map[state]lipgloss.Style
+	note         map[lopper.NoteKind]lipgloss.Style
 }
 
 func newTheme(isDark bool) theme {
@@ -41,13 +43,10 @@ func newTheme(isDark bool) theme {
 		pickedCursor: plain.Background(c("#C8C8C8", "#4C4C4C")),
 		selected:     plain.Bold(true),
 		failure:      plain.Foreground(c("#CF222E", "#F85149")),
-		state: map[state]lipgloss.Style{
-			stateChecking:  subtle,
-			stateMerged:    plain.Foreground(c("#8250DF", "#A371F7")),
-			stateNotMerged: subtle,
-			stateLocalWork: plain.Foreground(c("#9A6700", "#D29922")),
-			stateUnknown:   subtle,
-			stateGone:      subtle,
+		note: map[lopper.NoteKind]lipgloss.Style{
+			lopper.NotePlain:  subtle,
+			lopper.NoteWork:   plain.Foreground(c("#9A6700", "#D29922")),
+			lopper.NoteMerged: plain.Foreground(c("#8250DF", "#A371F7")),
 		},
 	}
 }

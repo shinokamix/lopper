@@ -9,10 +9,9 @@ exec git -C a/repo worktree add -q -b feature $WORK/a/wt
 rm a/repo/.git/worktrees/wt/commondir
 exec lopper scan --json $WORK/a
 stdout -count=1 '"path"'
-stdout '"verdict": "review"'
-stdout '"rule": "unconfirmed"'
+stdout '"safe": false'
 stdout 'commondir is missing from '
-! stdout '"rule": "orphaned"'
+! stdout '"orphaned": true'
 # ...also when the walk reaches only the worktree.
 exec lopper scan --json $WORK/a/wt
 stdout 'commondir is missing from '
@@ -26,10 +25,10 @@ exec git -C b/repo worktree add -q -b broken $WORK/b/broken
 exec git -C b/repo worktree add -q -b sibling $WORK/b/sibling
 cp nowhere b/repo/.git/worktrees/broken/commondir
 exec lopper scan $WORK/b
-stdout '^review\s+broken\s'
+stdout '^unsafe\s+broken\s'
 stdout '^safe\s+sibling\s'
 exec lopper scan --json $WORK/b
-stdout -count=1 '"rule": "unconfirmed"'
+stdout -count=1 '"unconfirmed": "'
 stdout 'commondir names .*nowhere is gone'
 
 # The repository is no longer one: its objects are gone.
@@ -40,7 +39,7 @@ rm c/repo/.git/objects
 exec lopper scan --json $WORK/c
 stdout -count=1 '"path"'
 stdout 'its git directory .* is not a git repository'
-! stdout '"rule": "orphaned"'
+! stdout '"orphaned": true'
 
 # No link back to the worktree: git leaves it out of `worktree list`, yet
 # still works inside, so its unsaved work is found.
@@ -51,16 +50,16 @@ rm d/repo/.git/worktrees/wt/gitdir
 cp dirty.txt d/wt/dirty.txt
 exec lopper scan --json $WORK/d
 stdout -count=1 '"path"'
-stdout '"verdict": "keep"'
+stdout '"safe": false'
 stdout 'gitdir is missing from '
 stdout '"dirty": 1'
-! stdout '"rule": "orphaned"'
+! stdout '"orphaned": true'
 # An empty link is no better.
 rm d/wt/dirty.txt
 cp empty d/repo/.git/worktrees/wt/gitdir
 exec lopper scan --json $WORK/d
 stdout 'gitdir is empty in '
-stdout '"verdict": "review"'
+stdout '"safe": false'
 
 # A lock is kept, too: the user asked for the worktree to stay.
 exec git init -q l/repo
@@ -69,8 +68,8 @@ exec git -C l/repo worktree add -q -b pinned $WORK/l/wt
 exec git -C l/repo worktree lock $WORK/l/wt
 rm l/repo/.git/worktrees/wt/gitdir
 exec lopper scan --json $WORK/l
-stdout '"verdict": "keep"'
-stdout '"rule": "locked"'
+stdout '"safe": false'
+stdout '"locked": true'
 stdout 'gitdir is missing from '
 
 # No HEAD in the admin directory: listed, but git cannot open it.
@@ -81,7 +80,7 @@ rm e/repo/.git/worktrees/wt/HEAD
 exec lopper scan --json $WORK/e
 stdout -count=1 '"path"'
 stdout 'HEAD is missing from '
-stdout '"verdict": "review"'
+stdout '"safe": false'
 
 -- nowhere --
 ../../../nowhere

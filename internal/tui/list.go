@@ -149,8 +149,8 @@ func (l *list) view(t theme, s *store, width, height int) string {
 	order := ids(s)
 	cursor := order[l.current(order)]
 
-	// The name column is as wide as the longest branch, so each status
-	// sits next to its branch whatever the screen width.
+	// The name column is as wide as the longest branch, so the facts
+	// sit next to their branch whatever the screen width.
 	names := 0
 	for _, g := range groups {
 		for _, r := range g.rows {
@@ -219,22 +219,38 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, width int) string 
 	}
 	seg := func(st lipgloss.Style, s string) string { return st.Inherit(base).Render(s) }
 
-	st, why := classify(r)
 	size := fmt.Sprintf("%*s ", sizeWidth, formatBytes(r.facts.SizeBytes))
 	sizeStyle := name
 	if r.facts.SizeBytes != nil && *r.facts.SizeBytes < 1_000_000 {
 		sizeStyle = sizeStyle.Faint(true) // too small to matter for space
 	}
-	// The branch and the status share what the size leaves. A long branch
+	// The branch and the facts share what the size leaves. A long branch
 	// gives way first, down to what keeps it recognizable, then the
-	// status; the size always stays.
+	// facts; the size always stays.
 	room := width - rowIndent - 2 - ansi.StringWidth(size) - 1
 	labelW := max(min(labelWidth, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
-	branch, label := fit(branchName(r.worktree), nameW), fit(why, labelW)
+	branch := fit(branchName(r.worktree), nameW)
 	gap := max(width-rowIndent-nameW-2-labelW-ansi.StringWidth(size), 1)
-	return seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  ") +
-		seg(t.state[st], label) + seg(plain, strings.Repeat(" ", gap)) + seg(sizeStyle, size)
+	var b strings.Builder
+	b.WriteString(seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  "))
+	// The facts, each in its color, fill labelW cells: the first one that
+	// does not fit is cut short, and the rest are left out.
+	left := labelW
+	for i, n := range facts(r) {
+		if i > 0 {
+			if left < 4 { // no room for a separator and a letter
+				break
+			}
+			b.WriteString(seg(t.subtle, " · "))
+			left -= 3
+		}
+		text := ansi.Truncate(n.Text, left, "…")
+		b.WriteString(seg(t.note[n.Kind], text))
+		left -= ansi.StringWidth(text)
+	}
+	b.WriteString(seg(plain, strings.Repeat(" ", left+gap)) + seg(sizeStyle, size))
+	return b.String()
 }
 
 // spread puts left and right at the two ends of a width-wide line, or

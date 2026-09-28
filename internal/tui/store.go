@@ -13,7 +13,8 @@ import (
 type row struct {
 	worktree lopper.Worktree
 	facts    lopper.Facts
-	verdict  lopper.Verdict
+	checked  bool // facts have arrived; until then none are known
+	safe     bool
 }
 
 // store is the single source of truth for scan results: every screen
@@ -42,7 +43,7 @@ func (s *store) apply(ev engine.Event) {
 		}
 	case engine.FactsUpdated:
 		if r, ok := s.byID[ev.ID]; ok {
-			r.facts, r.verdict = ev.Facts, ev.Verdict
+			r.facts, r.safe, r.checked = ev.Facts, ev.Safe, true
 		}
 	case engine.ScanDone:
 		s.scanning, s.err = false, ev.Err

@@ -83,11 +83,10 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 //
 //	 lopper  ~/code                               2 worktrees · 1.5 GB
 //	░  feature/login  merged                                1.2 GB ░
-//	   fix/typo       not merged                            300 MB
+//	   fix/typo       3 uncommitted · not merged            300 MB
 const (
-	rowIndent  = 3
-	labelWidth = 26
-	sizeWidth  = 9
+	rowIndent = 3
+	sizeWidth = 9
 	// minNameWidth is how much of a branch a narrow screen still shows.
 	minNameWidth = 12
 )
@@ -150,11 +149,13 @@ func (l *list) view(t theme, s *store, width, height int) string {
 	cursor := order[l.current(order)]
 
 	// The name column is as wide as the longest branch, so the facts
-	// sit next to their branch whatever the screen width.
-	names := 0
+	// sit next to their branch whatever the screen width, and the facts
+	// column as wide as the longest facts, so they all show when they fit.
+	names, notes := 0, 0
 	for _, g := range groups {
 		for _, r := range g.rows {
 			names = max(names, ansi.StringWidth(branchName(r.worktree)))
+			notes = max(notes, notesWidth(facts(r)))
 		}
 	}
 
@@ -172,7 +173,7 @@ func (l *list) view(t theme, s *store, width, height int) string {
 					top-- // bring the repository header along
 				}
 			}
-			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, names, width))
+			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, names, notes, width))
 		}
 	}
 
@@ -204,7 +205,7 @@ func (l *list) repoLine(t theme, g group, width int) string {
 	return spread(left, t.subtle.Render(right), width)
 }
 
-func (l *list) rowLine(t theme, r *row, atCursor bool, names, width int) string {
+func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) string {
 	// Every piece, spaces included, is rendered on the row background: an
 	// inner style's reset would otherwise cut the highlight short.
 	base, plain, name := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
@@ -228,27 +229,30 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, width int) string 
 	// gives way first, down to what keeps it recognizable, then the
 	// facts; the size always stays.
 	room := width - rowIndent - 2 - ansi.StringWidth(size) - 1
-	labelW := max(min(labelWidth, max(room-names, room-minNameWidth)), 0)
+	labelW := max(min(notes, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
 	branch := fit(branchName(r.worktree), nameW)
 	gap := max(width-rowIndent-nameW-2-labelW-ansi.StringWidth(size), 1)
 	var b strings.Builder
 	b.WriteString(seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  "))
-	// The facts, each in its color, fill labelW cells: the first one that
-	// does not fit is cut short, and the rest are left out.
-	left := labelW
-	for i, n := range facts(r) {
-		if i > 0 {
-			if left < 4 { // no room for a separator and a letter
-				break
-			}
-			b.WriteString(seg(t.subtle, " · "))
-			left -= 3
-		}
-		text := ansi.Truncate(n.Text, left, "…")
-		b.WriteString(seg(t.note[n.Kind], text))
-		left -= ansi.StringWidth(text)
+	// The facts, each in its color, fill labelW cells. Those that do not
+	// fit are counted, most pressing first so the least are left out.
+	shown, hidden := fitNotes(facts(r), labelW)
+	var parts []string
+	for _, n := range shown {
+		parts = append(parts, seg(t.note[n.Kind], n.Text))
 	}
+	label := strings.Join(parts, seg(t.subtle, noteSep))
+	if hidden > 0 {
+		count := more(hidden)
+		if len(shown) == 0 {
+			count = strings.TrimSpace(count)
+		}
+		label += seg(t.subtle, count)
+	}
+	label = ansi.Truncate(label, labelW, "…") // not even the count fits
+	b.WriteString(label)
+	left := labelW - ansi.StringWidth(label)
 	b.WriteString(seg(plain, strings.Repeat(" ", left+gap)) + seg(sizeStyle, size))
 	return b.String()
 }

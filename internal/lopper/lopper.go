@@ -83,13 +83,23 @@ const (
 )
 
 // Notes describes a worktree by its facts, most pressing first: work
-// that deleting it would lose, what could not be checked, then how far
+// that deleting it would lose, what git cannot tell about it, then how far
 // the work got. It describes and never decides: whether the worktree is
 // safe to delete is verdict's call.
 func Notes(wt Worktree, f Facts) []Note {
 	var out []Note
 	add := func(kind NoteKind, format string, a ...any) {
 		out = append(out, Note{fmt.Sprintf(format, a...), kind})
+	}
+	merged := f.Merged != nil && *f.Merged != NotMerged
+	if wt.Locked {
+		add(NoteWork, "locked")
+	}
+	if f.Dirty != nil && *f.Dirty > 0 {
+		add(NoteWork, "%d uncommitted", *f.Dirty)
+	}
+	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
+		add(NoteWork, "%d unpushed", *f.Unpushed)
 	}
 	switch {
 	case wt.Prunable:
@@ -100,16 +110,6 @@ func Notes(wt Worktree, f Facts) []Note {
 		add(NotePlain, "moved by hand")
 	case wt.Unconfirmed != "":
 		add(NotePlain, "not confirmed by git")
-	}
-	if wt.Locked {
-		add(NoteWork, "locked")
-	}
-	merged := f.Merged != nil && *f.Merged != NotMerged
-	if f.Dirty != nil && *f.Dirty > 0 {
-		add(NoteWork, "%d uncommitted", *f.Dirty)
-	}
-	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
-		add(NoteWork, "%d unpushed", *f.Unpushed)
 	}
 	if !wt.Prunable && !wt.Orphaned && (f.Dirty == nil || f.Unpushed == nil || f.Merged == nil) {
 		add(NotePlain, "couldn't check")

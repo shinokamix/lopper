@@ -25,6 +25,53 @@ func facts(r *row) []lopper.Note {
 	return notes
 }
 
+// noteSep separates the notes of a row.
+const noteSep = " · "
+
+// notesWidth is how many cells notes take in one line.
+func notesWidth(notes []lopper.Note) int {
+	w := 0
+	for i, n := range notes {
+		if i > 0 {
+			w += len(noteSep) - 1 // the dot is one cell but two bytes
+		}
+		w += ansi.StringWidth(n.Text)
+	}
+	return w
+}
+
+// fitNotes returns the leading notes that fit in w cells, and how many
+// are left out: those are counted as "+N", never dropped silently. When
+// not even the first fits whole, it is cut short rather than leaving a
+// bare count.
+func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
+	for k := len(notes); k > 0; k-- {
+		need := notesWidth(notes[:k])
+		if k < len(notes) {
+			need += ansi.StringWidth(more(len(notes) - k))
+		}
+		if need <= w {
+			return notes[:k], len(notes) - k
+		}
+	}
+	if len(notes) == 0 {
+		return nil, 0
+	}
+	first, rest := notes[0], len(notes)-1
+	room := w
+	if rest > 0 {
+		room -= ansi.StringWidth(more(rest))
+	}
+	if room < 4 { // too short to recognize: a count says more
+		return nil, len(notes)
+	}
+	first.Text = ansi.Truncate(first.Text, room, "…")
+	return []lopper.Note{first}, rest
+}
+
+// more counts notes left out, to follow the last one shown.
+func more(n int) string { return fmt.Sprintf(" +%d", n) }
+
 // branchName is the branch, or the short commit of a detached HEAD.
 func branchName(wt lopper.Worktree) string {
 	if wt.Branch != "" {

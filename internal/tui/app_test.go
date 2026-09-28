@@ -167,6 +167,29 @@ func TestFactsColorMergedOnlyWhenSafe(t *testing.T) {
 	}
 }
 
+// A row shows all its facts when the screen has room, and otherwise the
+// most pressing ones and how many more there are: a fact that makes a
+// worktree unsafe must never vanish without a trace.
+func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
+	a := testApp()
+	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: "/w/wt", Branch: "fix/login", Unconfirmed: "HEAD is missing",
+	}}})
+	dirty, clean := 3, 0
+	a.Update(eventMsg{engine.FactsUpdated{
+		ID: "wt", Facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.MergedFF)},
+	}})
+
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted · not confirmed by git · merged") {
+		t.Errorf("wide row does not show every fact: %q", row)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted +2") {
+		t.Errorf("narrow row does not lead with the work at stake and count the rest: %q", row)
+	}
+}
+
 func TestCursorStaysOnWorktreeWhenOneSortsAbove(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -326,7 +349,7 @@ func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 			t.Errorf("line is %d cells wide on a 40-cell screen: %q", w, l)
 		}
 	}
-	if row := lines[lineWith(t, lines, "feature/")]; !strings.Contains(row, "1.2 GB") || !strings.Contains(row, "3 uncom") {
-		t.Errorf("narrow row lost its status or size: %q", row)
+	if row := lines[lineWith(t, lines, "feature/")]; !strings.Contains(row, "1.2 GB") || !strings.Contains(row, "3 un… +2") {
+		t.Errorf("narrow row lost its facts or size: %q", row)
 	}
 }

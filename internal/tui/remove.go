@@ -26,6 +26,7 @@ type removal struct {
 	next      int  // the item being removed
 	quitting  bool // quit once the item being removed is done
 	frame     int  // of the space freed counting up, once finished
+	offset    int  // first visible line of the worktrees
 }
 
 type phase int
@@ -120,21 +121,32 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 
 	rows := rm.rows(t, spin, width)
 	body := max(height-4, 1) // the title, the key help and a blank line after each
-	if all := len(rows); all > body {
-		// Keep the worktree being removed in sight.
-		off := 0
+	all := len(rows)
+	if all > body {
+		// The user scrolls through what they confirm; the worktree being
+		// removed stays in sight.
+		off := rm.offset
 		if rm.phase == removing {
-			off = max(min(rm.focus()+2-body, all-body), 0)
+			off = rm.focus() + 2 - body
 		}
+		off = max(min(off, all-body), 0)
+		rm.offset = off
 		rows = rows[off : off+body]
+		more := strings.Repeat(" ", rowIndent) + t.subtle.Render("…")
+		if off > 0 {
+			rows[0] = more
+		}
 		if off+body < all {
-			rows[len(rows)-1] = strings.Repeat(" ", rowIndent) + t.subtle.Render("…")
+			rows[len(rows)-1] = more
 		}
 	}
 
 	var keys bindings
 	if rm.phase == confirming {
-		keys = bindings{k.confirm, k.back}
+		if all > body {
+			keys = append(keys, k.scroll)
+		}
+		keys = append(keys, k.confirm, k.back)
 	}
 	h.SetWidth(max(width-2, 0))
 	return head + "\n\n" + strings.Join(rows, "\n") + "\n\n " + h.View(keys)
@@ -151,11 +163,10 @@ func (rm *removal) focus() int {
 
 func (rm *removal) rows(t theme, spin string, width int) []string {
 	names, notes := columns(rowsOf(rm.items))
-	// Worktrees of different repositories may share a branch name: then
-	// each row starts with its repository's.
-	repos, repoW := map[string]bool{}, 0
+	// Unlike the list, rows are not grouped by repository, and branch
+	// names repeat across repositories: each row starts with its own.
+	repoW := 0
 	for _, it := range rm.items {
-		repos[it.row.worktree.Repo.Path] = true
 		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
 	}
 	plain := lipgloss.NewStyle()
@@ -177,10 +188,7 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 		case rm.phase == removing && i == rm.next:
 			mark = spin
 		}
-		lead := " " + mark + " "
-		if len(repos) > 1 {
-			lead += t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		}
+		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
 		lines = append(lines, rowLine(t, &it.row, lead, plain, plain, names, notes, width))
 	}
 	if rm.unchecked > 0 {

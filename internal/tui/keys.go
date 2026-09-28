@@ -6,7 +6,7 @@ import "charm.land/bubbles/v2/key"
 type keyMap struct {
 	up, down, toggle, remove, quit key.Binding
 	// On the removal screen.
-	confirm, rescan, back key.Binding
+	scroll, confirm, rescan, back key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -16,6 +16,7 @@ func defaultKeys() keyMap {
 		toggle:  key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "select")),
 		remove:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove")),
 		quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		scroll:  key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("↑/↓", "scroll")),
 		confirm: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "remove")),
 		rescan:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "scan again")),
 		back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),

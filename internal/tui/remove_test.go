@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -142,8 +143,8 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 }
 
 // Worktrees of different repositories may share a branch name: the
-// confirmation then tells them apart by repository.
-func TestConfirmationNamesRepositoriesWhenSeveral(t *testing.T) {
+// confirmation tells them apart by repository.
+func TestConfirmationNamesRepositories(t *testing.T) {
 	a, _ := removalApp(t)
 	for _, repo := range []string{"app", "api"} {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
@@ -160,6 +161,30 @@ func TestConfirmationNamesRepositoriesWhenSeveral(t *testing.T) {
 		if !strings.HasPrefix(strings.TrimSpace(lines[lineWith(t, lines, want)]), want) {
 			t.Errorf("row does not start with its repository %q:\n%s", want, strings.Join(lines, "\n"))
 		}
+	}
+}
+
+// Every worktree to be removed can be seen before confirming, however
+// many there are: the ones out of sight could hold work.
+func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
+	a, _ := removalApp(t)
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 10})
+	for i := range 12 {
+		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), true, lopper.Facts{})
+	}
+	for range 12 {
+		press(a, ' ')
+	}
+
+	press(a, 'd')
+	if v := view(a); !strings.Contains(v, "wt00") || strings.Contains(v, "wt11") || !strings.Contains(v, "scroll") {
+		t.Fatalf("long selection does not start at the top with a way to scroll:\n%s", v)
+	}
+	for range 20 {
+		press(a, tea.KeyDown)
+	}
+	if v := view(a); !strings.Contains(v, "wt11") || strings.Contains(v, "wt00") {
+		t.Errorf("scrolling down does not reach the last worktree:\n%s", v)
 	}
 }
 

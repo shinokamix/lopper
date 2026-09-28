@@ -164,6 +164,10 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 		case key.Matches(msg, a.keys.confirm):
 			rm.phase = removing
 			return tea.Batch(a.removeNext(), a.spin.Tick)
+		case key.Matches(msg, a.keys.up):
+			rm.offset-- // View keeps it in range
+		case key.Matches(msg, a.keys.down):
+			rm.offset++
 		}
 	case removing:
 		// Stopping git halfway through a removal could leave the worktree

@@ -92,7 +92,7 @@ const (
 	minNameWidth = 12
 )
 
-// header renders the title, the scan status and the tally per state.
+// header renders the title and the scan status.
 func header(t theme, s *store, spin string, width int) string {
 	title := " " + t.title.Render("lopper")
 	var status string
@@ -104,35 +104,7 @@ func header(t theme, s *store, spin string, width int) string {
 	default:
 		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(len(s.order), "worktree"), plural(len(s.groups()), "repository")))
 	}
-	// The tally narrows in steps: tighter spacing, then only the states
-	// that have worktrees; the view truncates what still does not fit.
-	tallies := s.summary()
-	var all, present []string
-	for _, st := range states {
-		tl := tallies[st]
-		if st == stateGone && tl.count == 0 {
-			continue // rare, and nothing to act on when absent
-		}
-		text := fmt.Sprintf("%d %s", tl.count, st)
-		if st == stateMerged && tl.bytes > 0 {
-			text += " · " + formatBytes(&tl.bytes)
-		}
-		style := t.state[st]
-		if tl.count == 0 {
-			style = t.subtle
-		}
-		all = append(all, style.Render(text))
-		if tl.count > 0 {
-			present = append(present, style.Render(text))
-		}
-	}
-	tally := " " + strings.Join(all, "    ")
-	for _, try := range [][]string{all, present} {
-		if ansi.StringWidth(tally) > width {
-			tally = " " + strings.Join(try, "  ")
-		}
-	}
-	return spread(title, status+" ", width) + "\n\n" + tally
+	return spread(title, status+" ", width)
 }
 
 // footer renders the status line, which shows where the worktree under

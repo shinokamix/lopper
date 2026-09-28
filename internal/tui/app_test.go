@@ -294,22 +294,6 @@ func TestLargestWorktreesComeFirst(t *testing.T) {
 	}
 }
 
-// A worktree whose directory is gone is safe to drop but was never
-// checked for merging; the tally must not count it as merged.
-func TestFolderGoneIsNotCountedAsMerged(t *testing.T) {
-	a := testApp()
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: "g", Path: "/w/gone", Branch: "gone", Prunable: true}}})
-	a.Update(eventMsg{engine.FactsUpdated{ID: "g", Verdict: lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{
-		{Rule: "prunable", Level: lopper.LevelSafe, Message: "directory is already gone"},
-	}}}})
-
-	tally := plainLines(a)[3]
-	if !strings.Contains(tally, "0 merged") || !strings.Contains(tally, "1 folder gone") {
-		t.Errorf("tally counts a gone folder as merged: %q", tally)
-	}
-}
-
 // Scrolling assumes one screen line per line of the view, so on a narrow
 // terminal every line must still fit, and a row must keep its size.
 func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {

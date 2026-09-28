@@ -14,7 +14,7 @@ and removes them without losing work.
 lopper              # interactive TUI, scans your home and temporary directories
 lopper ~/code       # scan specific paths
 lopper scan --json  # machine-readable output for scripts
-lopper rm ../wt     # remove a worktree unless it holds work; --force anyway
+lopper rm ../wt     # remove an existing worktree unless it holds work; --force anyway
 ```
 
 ## Contributing

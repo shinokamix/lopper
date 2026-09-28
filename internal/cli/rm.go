@@ -18,11 +18,12 @@ func newRmCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rm path...",
 		Short: "Remove worktrees, refusing ones that are not safe unless forced",
-		Long: "rm removes each worktree at the given paths if it is safe to delete, checked " +
-			"just before removal; otherwise it is left alone and why is printed. --force " +
-			"removes it anyway, whatever it holds or however git lost track of it. The " +
-			"branch is always kept. A worktree whose folder is gone has nothing left to " +
-			"remove: `git worktree prune` in its repository clears git's record of it.",
+		Long: "rm removes the worktree at each given path whose folder still exists, if it " +
+			"is safe to delete, checked just before removal; otherwise it is left alone and " +
+			"why is printed. --force removes it anyway, whatever work it holds, even when " +
+			"git lost track of it: moved by hand, orphaned or damaged. The branch is always " +
+			"kept. A worktree whose folder is gone is not removed: only git's record of it " +
+			"is left, and `git worktree prune` in its repository clears that.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rm := remover{eng: engine.New(), force: force}

@@ -14,12 +14,13 @@ type row struct {
 	worktree lopper.Worktree
 	facts    lopper.Facts
 	checked  bool // facts have arrived; until then none are known
+	final    bool // no more facts will arrive
 	safe     bool
 }
 
 // store is the single source of truth for scan results: every screen
-// reads worktrees from it, and only engine events mutate it. UI state
-// such as the cursor and the selection lives in the screens.
+// reads worktrees from it, and only engine events and removals mutate
+// it. UI state such as the cursor and the selection lives in the screens.
 type store struct {
 	order    []lopper.ID
 	byID     map[lopper.ID]*row
@@ -30,6 +31,13 @@ type store struct {
 
 func newStore() *store {
 	return &store{byID: map[lopper.ID]*row{}, scanning: true}
+}
+
+// remove forgets a worktree that was removed from disk.
+func (s *store) remove(id lopper.ID) {
+	s.grouped = nil
+	delete(s.byID, id)
+	s.order = slices.DeleteFunc(s.order, func(o lopper.ID) bool { return o == id })
 }
 
 // apply folds an engine event into the store.
@@ -43,7 +51,7 @@ func (s *store) apply(ev engine.Event) {
 		}
 	case engine.FactsUpdated:
 		if r, ok := s.byID[ev.ID]; ok {
-			r.facts, r.safe, r.checked = ev.Facts, ev.Safe, true
+			r.facts, r.safe, r.checked, r.final = ev.Facts, ev.Safe, true, ev.Final
 		}
 	case engine.ScanDone:
 		s.scanning, s.err = false, ev.Err
@@ -115,6 +123,28 @@ func sizeOf(r *row) int64 {
 		return 0
 	}
 	return *r.facts.SizeBytes
+}
+
+// sizeText is the total size of rows as shown: spin, the spinner's
+// frame, while any is still being measured, and "?" when one could not
+// be, as a partial total would understate it.
+func sizeText(rows []*row, spin string) string {
+	var total int64
+	unknown := false
+	for _, r := range rows {
+		switch {
+		case r.facts.SizeBytes != nil:
+			total += *r.facts.SizeBytes
+		case !r.final:
+			return spin
+		default:
+			unknown = true
+		}
+	}
+	if unknown {
+		return "?"
+	}
+	return formatBytes(total)
 }
 
 // totalSize sums the sizes of rows, or returns nil while any is unknown:

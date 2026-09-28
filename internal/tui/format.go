@@ -142,20 +142,17 @@ func fit(s string, w int) string {
 }
 
 // formatBytes formats a size in SI units like "1.4 GB" (as macOS Finder
-// does); nil renders as a placeholder.
-func formatBytes(n *int64) string {
-	if n == nil {
-		return "…"
-	}
+// does).
+func formatBytes(n int64) string {
 	const unit = 1000
-	if *n < unit {
-		return fmt.Sprintf("%d B", *n)
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
 	}
 	div, exp := int64(unit), 0
-	for v := *n / unit; v >= unit; v /= unit {
+	for v := n / unit; v >= unit; v /= unit {
 		div *= unit
 		exp++
 	}
 	prefixes := [...]string{"k", "M", "G", "T", "P", "E"}
-	return fmt.Sprintf("%.1f %sB", float64(*n)/float64(div), prefixes[exp])
+	return fmt.Sprintf("%.1f %sB", float64(n)/float64(div), prefixes[exp])
 }

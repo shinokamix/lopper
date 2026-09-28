@@ -205,6 +205,13 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 	return gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, force)
 }
 
+// Measure returns the size of a worktree's directory as a scan measures
+// it, or nil when it cannot be measured: for a removal to tell the space
+// it freed when the scan had not measured it yet.
+func (e *Engine) Measure(ctx context.Context, wt lopper.Worktree) *int64 {
+	return inspect.Inspector{Git: e.Git}.Slow(ctx, wt, lopper.Facts{}).SizeBytes
+}
+
 // current looks wt up again as it is now: by a walk of its directory, or,
 // when that is gone, in its repository.
 func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktree, error) {

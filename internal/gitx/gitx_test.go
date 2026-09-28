@@ -284,3 +284,19 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// A failed removal tells the user git's reason, not the command it ran.
+func TestErrorMessageIsGitsReason(t *testing.T) {
+	cases := []struct{ stderr, want string }{
+		{"error: failed to delete '/w': Permission denied", "failed to delete '/w': Permission denied"},
+		{"hint: use --force\nfatal: '/w' contains modified or untracked files, use --force to delete it\nhint: more", "'/w' contains modified or untracked files, use --force to delete it"},
+		{"something unexpected", "something unexpected"},
+		{"", "exit status 128"},
+	}
+	for _, tc := range cases {
+		e := &Error{Args: []string{"worktree", "remove", "/w"}, Err: errors.New("exit status 128"), Stderr: tc.stderr}
+		if got := briefly(e).Error(); got != tc.want {
+			t.Errorf("stderr %q: message %q, want %q", tc.stderr, got, tc.want)
+		}
+	}
+}

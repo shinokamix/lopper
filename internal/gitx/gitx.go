@@ -179,7 +179,7 @@ func run(ctx context.Context, dir string, env []string, args ...string) (string,
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return "", &Error{Args: args, Err: err, Stderr: strings.TrimSpace(stderr.String())}
 	}
 	return strings.TrimRight(stdout.String(), "\n"), nil
 }
@@ -264,6 +264,51 @@ func parseWorktreeList(out string) []WorktreeEntry {
 	return entries
 }
 
+// Error is a git command that failed.
+type Error struct {
+	Args   []string
+	Err    error
+	Stderr string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("git %s: %v: %s", strings.Join(e.Args, " "), e.Err, e.Stderr)
+}
+
+func (e *Error) Unwrap() error { return e.Err }
+
+// Message is what git said went wrong, without the command: its last
+// "fatal:" or "error:" line, or else its last line.
+func (e *Error) Message() string {
+	lines := strings.Split(e.Stderr, "\n")
+	for _, l := range slices.Backward(lines) {
+		for _, p := range []string{"fatal: ", "error: "} {
+			if msg, ok := strings.CutPrefix(l, p); ok {
+				return msg
+			}
+		}
+	}
+	if l := strings.TrimSpace(lines[len(lines)-1]); l != "" {
+		return l
+	}
+	return e.Err.Error()
+}
+
+// brief is a git error told by its message alone: for users, whom the
+// command git ran does not help.
+type brief struct{ git *Error }
+
+func (b brief) Error() string { return b.git.Message() }
+func (b brief) Unwrap() error { return b.git }
+
+// briefly returns err told by git's message alone, if git failed.
+func briefly(err error) error {
+	if e, ok := errors.AsType[*Error](err); ok {
+		return brief{e}
+	}
+	return err
+}
+
 // RemoveWorktree removes the linked worktree at path of the repository
 // at repo, or only git's record of it when the directory is gone. Unless
 // forced, git refuses when the worktree is locked or has modified or
@@ -274,14 +319,14 @@ func RemoveWorktree(ctx context.Context, r Runner, repo, path string, force bool
 		args = append(args, "--force", "--force") // twice for a locked one
 	}
 	_, err := r.Run(ctx, repo, append(args, path)...)
-	return err
+	return briefly(err)
 }
 
 // RepairWorktree relinks the worktree at path with its repository after
 // it was moved there by hand, so that git can remove it.
 func RepairWorktree(ctx context.Context, r Runner, path string) error {
 	_, err := r.Run(ctx, path, "worktree", "repair")
-	return err
+	return briefly(err)
 }
 
 // DefaultBranch guesses the base branch: origin/HEAD, then main, then master.

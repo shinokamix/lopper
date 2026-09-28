@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,8 +19,9 @@ import (
 // removal is the screen that removes worktrees: it shows what goes and
 // asks once, removes them one at a time, then tells what came of it.
 type removal struct {
-	// items are safe ones first, then the ones that are not, each as the
-	// user saw it when asked.
+	// items are safe ones first, then the ones that are not. Until the
+	// user confirms, they follow the scan; then they are what the user
+	// confirmed.
 	items     []*item
 	unchecked int // left out: their facts had not arrived yet
 	phase     phase
@@ -38,7 +40,7 @@ const (
 )
 
 type item struct {
-	row  row
+	row  *row
 	done bool
 	err  error // why it was not removed, or a *engine.RecordLeftError
 }
@@ -74,14 +76,36 @@ func (rm *removal) counted(n int64) int64 {
 
 func newRemoval(rows []*row, unchecked int) *removal {
 	rm := &removal{unchecked: unchecked}
-	for _, safe := range []bool{true, false} {
-		for _, r := range rows {
-			if r.safe == safe {
-				rm.items = append(rm.items, &item{row: *r})
-			}
-		}
+	for _, r := range rows {
+		rm.items = append(rm.items, &item{row: r})
 	}
+	rm.sort()
 	return rm
+}
+
+// sort puts the safe items first, as a verdict may change while the
+// user looks.
+func (rm *removal) sort() {
+	slices.SortStableFunc(rm.items, func(a, b *item) int {
+		switch {
+		case a.row.safe == b.row.safe:
+			return 0
+		case a.row.safe:
+			return -1
+		}
+		return 1
+	})
+}
+
+// confirm fixes the items as the user sees them now: the scan may still
+// be updating them.
+func (rm *removal) confirm() {
+	rm.sort()
+	for _, it := range rm.items {
+		seen := *it.row
+		it.row = &seen
+	}
+	rm.phase = removing
 }
 
 // force tells whether it is removed whatever it holds: the user was
@@ -98,7 +122,7 @@ func (it *item) removed() bool {
 func rowsOf(items []*item) []*row {
 	out := make([]*row, len(items))
 	for i, it := range items {
-		out[i] = &it.row
+		out[i] = it.row
 	}
 	return out
 }
@@ -106,6 +130,9 @@ func rowsOf(items []*item) []*row {
 // view renders the confirmation and the progress: the worktrees and a
 // line of key help, in height lines.
 func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, height int) string {
+	if rm.phase == confirming {
+		rm.sort()
+	}
 	verb := "Remove"
 	if rm.phase == removing {
 		verb = "Removing"
@@ -191,7 +218,7 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 			mark = spin
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		lines = append(lines, rowLine(t, &it.row, lead, plain, plain, names, notes, width))
+		lines = append(lines, rowLine(t, it.row, lead, plain, plain, names, notes, width))
 	}
 	if rm.unchecked > 0 {
 		lines = append(lines, "", strings.Repeat(" ", rowIndent)+

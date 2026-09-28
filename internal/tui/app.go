@@ -162,7 +162,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 		case key.Matches(msg, a.keys.back):
 			a.removal = nil
 		case key.Matches(msg, a.keys.confirm):
-			rm.phase = removing
+			rm.confirm()
 			return tea.Batch(a.removeNext(), a.spin.Tick)
 		case key.Matches(msg, a.keys.up):
 			rm.offset-- // View keeps it in range

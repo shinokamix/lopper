@@ -142,6 +142,30 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	}
 }
 
+// The confirmation follows the scan until the user confirms: sizes still
+// being measured arrive, and a worktree that turns out to hold work
+// moves under the warning. What is on screen at enter is what goes.
+func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
+	a, rm := removalApp(t)
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(0)}, Safe: true}})
+	press(a, 'd')
+	if v := view(a); strings.Contains(v, "work in these will be lost") {
+		t.Fatalf("safe worktree is shown under the warning:\n%s", v)
+	}
+
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(2), SizeBytes: new(int64(5_000_000))}}})
+	lines := plainLines(a)
+	if !strings.Contains(lines[lineWith(t, lines, "Remove")], "5.0 MB") ||
+		lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "2 uncommitted") {
+		t.Errorf("confirmation does not show the size and work that arrived:\n%s", strings.Join(lines, "\n"))
+	}
+	settle(a, press(a, tea.KeyEnter))
+	if want := []string{"wt forced"}; !slices.Equal(rm.calls, want) {
+		t.Errorf("removed %v, want %v: it was shown holding work when confirmed", rm.calls, want)
+	}
+}
+
 // Worktrees of different repositories may share a branch name: the
 // confirmation tells them apart by repository.
 func TestConfirmationNamesRepositories(t *testing.T) {

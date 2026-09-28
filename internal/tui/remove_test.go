@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -317,7 +318,7 @@ func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 9})
 	found(a, "gone", 2000, true, lopper.Facts{})
 	found(a, "kept", 100, true, lopper.Facts{})
-	rm.fail = map[lopper.ID]error{"kept": fmt.Errorf("permission denied")}
+	rm.fail = map[lopper.ID]error{"kept": errors.New("permission denied")}
 	press(a, ' ')
 	press(a, ' ')
 	press(a, 'd')

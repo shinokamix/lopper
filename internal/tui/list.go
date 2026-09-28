@@ -92,7 +92,7 @@ const (
 	minNameWidth = 12
 )
 
-// header renders the title, the scan status and the tally per state.
+// header renders the title and the scan status.
 func header(t theme, s *store, spin string, width int) string {
 	title := " " + t.title.Render("lopper")
 	var status string
@@ -104,58 +104,35 @@ func header(t theme, s *store, spin string, width int) string {
 	default:
 		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(len(s.order), "worktree"), plural(len(s.groups()), "repository")))
 	}
-	// The tally narrows in steps: tighter spacing, then only the states
-	// that have worktrees; the view truncates what still does not fit.
-	tallies := s.summary()
-	var all, present []string
-	for _, st := range states {
-		tl := tallies[st]
-		if st == stateGone && tl.count == 0 {
-			continue // rare, and nothing to act on when absent
-		}
-		text := fmt.Sprintf("%d %s", tl.count, st)
-		if st == stateMerged && tl.bytes > 0 {
-			text += " · " + formatBytes(&tl.bytes)
-		}
-		style := t.state[st]
-		if tl.count == 0 {
-			style = t.subtle
-		}
-		all = append(all, style.Render(text))
-		if tl.count > 0 {
-			present = append(present, style.Render(text))
-		}
-	}
-	tally := " " + strings.Join(all, "    ")
-	for _, try := range [][]string{all, present} {
-		if ansi.StringWidth(tally) > width {
-			tally = " " + strings.Join(try, "  ")
-		}
-	}
-	return spread(title, status+" ", width) + "\n\n" + tally
+	return spread(title, status+" ", width)
 }
 
-// footer renders the status line, which shows where the worktree under
-// the cursor is, and below it what is selected and the key help, which
-// drops the keys that do not fit.
+// footer renders the status line and the key help below it. The status
+// line shows where the worktree under the cursor is and, at the right
+// end under the size column, what is selected; the help drops the keys
+// that do not fit.
 func (l *list) footer(t theme, s *store, h help.Model, k keyMap, width int) string {
-	where := ""
-	if order := ids(s); len(order) > 0 {
-		wt := s.byID[order[l.current(order)]].worktree
-		where = " " + t.subtle.Render(fitPath(abbrev(wt.Path, l.aliases), width-2))
-	}
 	var picked []*row
 	for id := range l.selected {
 		if r, ok := s.byID[id]; ok {
 			picked = append(picked, r)
 		}
 	}
-	left := ""
+	right := ""
 	if len(picked) > 0 {
-		left = " " + t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), formatBytes(totalSize(picked))))
+		right = t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), formatBytes(totalSize(picked)))) + " "
 	}
-	h.SetWidth(max(width-ansi.StringWidth(left)-2, 0))
-	return where + "\n" + spread(left, h.View(k)+" ", width)
+	where := ""
+	if order := ids(s); len(order) > 0 {
+		wt := s.byID[order[l.current(order)]].worktree
+		room := width - 1 - ansi.StringWidth(right)
+		if right != "" {
+			room -= 2 // keep the path clear of the selection
+		}
+		where = t.subtle.Render(fitPath(abbrev(wt.Path, l.aliases), max(room, 0)))
+	}
+	h.SetWidth(max(width-2, 0))
+	return spread(" "+where, right, width) + "\n " + h.View(k)
 }
 
 // view renders the grouped rows into height lines, scrolling just enough

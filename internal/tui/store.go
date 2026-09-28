@@ -128,25 +128,3 @@ func totalSize(rows []*row) *int64 {
 	}
 	return total
 }
-
-// tally is the number and total size of rows in one state.
-type tally struct {
-	count int
-	bytes int64
-}
-
-// summary tallies rows per state; bytes of rows still being measured
-// are not counted.
-func (s *store) summary() map[state]tally {
-	out := map[state]tally{}
-	for _, r := range s.byID {
-		st, _ := classify(r)
-		t := out[st]
-		t.count++
-		if r.facts.SizeBytes != nil {
-			t.bytes += *r.facts.SizeBytes
-		}
-		out[st] = t
-	}
-	return out
-}

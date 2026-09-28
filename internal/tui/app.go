@@ -95,11 +95,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// Screen layout, inside a margin: a blank line, the header (title,
-// blank, tally, blank), the list, then a blank line, the status line and
+// Screen layout, inside a margin: a blank line, the header and a blank
+// line, the list, then a blank line, the status line and
 // the key help.
 const (
-	chromeLines = 8
+	chromeLines = 6
 	margin      = 2
 )
 

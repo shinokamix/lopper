@@ -25,9 +25,6 @@ const (
 	stateGone                   // safe: the directory is already gone, only git's record is left
 )
 
-// states lists the settled states in display order.
-var states = [...]state{stateMerged, stateNotMerged, stateLocalWork, stateUnknown, stateGone}
-
 func (s state) String() string {
 	switch s {
 	case stateMerged:

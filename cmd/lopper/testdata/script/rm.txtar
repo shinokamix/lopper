@@ -1,0 +1,119 @@
+# rm removes a worktree only when it is safe to delete, and keeps its
+# branch; --force removes any worktree lopper scan shows whose folder is
+# still there.
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+# merged: safe, so its directory and git's record of it go; the branch stays.
+exec git -C repo worktree add -q -b merged ../wt-merged
+exec lopper rm wt-merged
+stdout '^removed wt-merged$'
+! exists wt-merged
+exec git -C repo worktree list --porcelain
+! stdout 'wt-merged'
+exec git -C repo rev-parse --verify -q refs/heads/merged
+
+# locked, unpushed and dirty: without --force the worktree and its work
+# stay, and the error says why and how to remove it anyway.
+exec git -C repo worktree add -q -b unpushed ../wt-unpushed
+exec git -C wt-unpushed commit -q --allow-empty -m work
+cp notes.txt wt-unpushed/notes.txt
+exec git -C repo worktree lock $WORK/wt-unpushed
+! exec lopper rm wt-unpushed
+stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged$'
+stderr '--force'
+exists wt-unpushed/notes.txt
+
+# --force removes it with the uncommitted file, lock or not. The commit is
+# still on the branch.
+exec lopper rm --force wt-unpushed
+stdout '^removed wt-unpushed$'
+! exists wt-unpushed
+exec git -C repo log -1 --format=%s unpushed
+stdout '^work$'
+
+# The worktree the current directory is in stays, even forced: removing it
+# would pull the directory from under the shell.
+exec git -C repo worktree add -q -b here ../wt-here
+cd wt-here
+! exec lopper rm --force .
+stderr 'the current directory is inside it'
+cd $WORK
+exists wt-here/.git
+
+# The main worktree is never a candidate, not even forced, and every path
+# is still tried.
+exec git -C repo worktree add -q -b other ../wt-other
+! exec lopper rm --force repo wt-other
+stderr '^repo: not removed: not a linked worktree$'
+stdout '^removed wt-other$'
+stderr '(?i)1 of 2 worktrees not removed'
+exists repo/.git
+
+# A worktree whose folder is gone has nothing left for rm to remove: its
+# record stays for `git worktree prune`, even forced. A path where no
+# worktree ever was is told apart only by its repository, so it reads the
+# same. Neither stops the others.
+exec git -C repo worktree add -q -b gone ../wt-gone
+rm wt-gone
+exec git -C repo worktree add -q -b next ../wt-next
+! exec lopper rm --force missing wt-gone wt-next
+stderr '^missing: not removed: no such directory; if a repository lists a worktree there, `git worktree prune` in it removes the record$'
+stderr '^wt-gone: not removed: no such directory'
+stdout '^removed wt-next$'
+stderr '(?i)2 of 3 worktrees not removed'
+exec git -C repo worktree list --porcelain
+stdout 'wt-gone'
+
+# Worktrees git lost track of are never safe, but forced they go, and so
+# does git's record of them when one still names them.
+
+# Damaged metadata: git lists it, but cannot work in it.
+exec git -C repo worktree add -q -b damaged ../wt-damaged
+rm repo/.git/worktrees/wt-damaged/HEAD
+! exec lopper rm wt-damaged
+stderr '^wt-damaged: not removed: not safe to delete: not confirmed by git'
+exec lopper rm --force wt-damaged
+stdout '^removed wt-damaged$'
+! exists wt-damaged
+! exists repo/.git/worktrees/wt-damaged
+
+# A record that no longer names its folder is not git's to find by path:
+# it stays, and the output says how to clean it.
+exec git -C repo worktree add -q -b unlinked ../wt-unlinked
+rm repo/.git/worktrees/wt-unlinked/gitdir
+exec lopper rm --force wt-unlinked
+stdout '^removed wt-unlinked; git''s record of it is left in .*repo: `git worktree prune` there removes it$'
+! exists wt-unlinked
+
+# Moved by hand: relinked, then removed with its record.
+exec git -C repo worktree add -q -b moved ../wt-moved-from
+mv wt-moved-from wt-moved
+! exec lopper rm wt-moved
+stderr 'not safe to delete: moved by hand'
+exec lopper rm --force wt-moved
+stdout '^removed wt-moved$'
+! exists wt-moved
+exec git -C repo worktree list --porcelain
+! stdout 'wt-moved'
+
+# Orphaned: its repository is gone, so only the folder is left to remove.
+exec git init -q lost
+exec git -C lost commit -q --allow-empty -m init
+exec git -C lost worktree add -q -b orphan ../wt-orphan
+rm lost
+! exec lopper rm wt-orphan
+stderr 'not safe to delete: not tracked by git'
+exec lopper rm --force wt-orphan
+stdout '^removed wt-orphan$'
+! exists wt-orphan
+
+# A worktree of a bare repository is removed through that repository.
+exec git clone -q --bare repo bare.git
+exec git -C bare.git worktree add -q ../wt-bare main
+exec lopper rm wt-bare
+! exists wt-bare
+
+-- notes.txt --
+not committed yet

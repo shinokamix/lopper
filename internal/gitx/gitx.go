@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -40,14 +41,15 @@ type Runner interface {
 // lopper runs git inside arbitrary, possibly untrusted repositories, so
 // repository-local config must never make git spawn a program. For the
 // commands lopper uses (status, rev-list, worktree, symbolic-ref,
-// rev-parse, config) the vectors are:
+// rev-parse, config) the vectors are below; `worktree remove` runs status
+// in the worktree through a child git, which inherits both settings.
 //   - core.fsmonitor: status runs the configured hook; disabled via -c,
 //     which takes precedence over every config file.
 //   - filter.<driver>.clean/process: status hashes files whose stat data
 //     is stale through the clean filter chosen by .gitattributes or
 //     .git/info/attributes. Driver names are arbitrary, so they are looked
-//     up first and blanked via GIT_CONFIG_KEY_n (which, unlike -c, accepts
-//     any name).
+//     up first, in the worktree a command checks too, and blanked via
+//     GIT_CONFIG_KEY_n (which, unlike -c, accepts any name).
 //
 // Hooks do not run for these commands, and the pager, editor, ssh and
 // credential helpers are never reached. Future commands that print diffs
@@ -61,8 +63,9 @@ type Exec struct{}
 
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
-	if readsFiles(args) {
-		drivers, err := run(ctx, dir, env, "config", "-z", "--name-only",
+	var drivers []string
+	for _, d := range filterConfigs(dir, args) {
+		out, err := run(ctx, d, env, "config", "-z", "--name-only",
 			"--get-regexp", `^filter\..+\.(clean|smudge|process)$`)
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -71,7 +74,10 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 		if err != nil {
 			return "", err
 		}
-		env = blankFilters(env, drivers)
+		drivers = append(drivers, out)
+	}
+	if len(drivers) > 0 {
+		env = blankFilters(env, strings.Join(drivers, "\x00"))
 	}
 	return run(ctx, dir, env, args...)
 }
@@ -125,14 +131,45 @@ func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (strin
 	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
-// readsFiles reports whether the git command may hash working tree files
-// (status, and worktree remove/move, which run status internally).
-func readsFiles(args []string) bool {
+// filterConfigs returns where to look up the filter drivers a git command
+// run in dir may use, or nothing if it hashes no working tree files:
+// status, and worktree commands other than list, read the config of dir.
+// worktree remove and move also run status in the worktree they are
+// given, whose own config counts there too (extensions.worktreeConfig).
+func filterConfigs(dir string, args []string) []string {
 	for len(args) > 0 && strings.HasPrefix(args[0], "--work-tree=") {
 		args = args[1:] // from OwnWorkTree
 	}
-	return len(args) > 0 && (args[0] == "status" ||
-		args[0] == "worktree" && len(args) > 1 && args[1] != "list")
+	switch {
+	case len(args) > 0 && args[0] == "status":
+		return []string{dir}
+	case len(args) > 1 && args[0] == "worktree" && (args[1] == "remove" || args[1] == "move"):
+		if wt := worktreeArg(dir, args[2:]); wt != "" {
+			return []string{dir, wt}
+		}
+		return []string{dir}
+	case len(args) > 1 && args[0] == "worktree" && args[1] != "list":
+		return []string{dir}
+	}
+	return nil
+}
+
+// worktreeArg is the worktree that `git worktree remove` or `move` is
+// given, if it exists: their first argument that is not an option.
+func worktreeArg(dir string, args []string) string {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue // --force, their only option
+		}
+		if !filepath.IsAbs(a) {
+			a = filepath.Join(dir, a)
+		}
+		if info, err := os.Stat(a); err == nil && info.IsDir() {
+			return a
+		}
+		return ""
+	}
+	return ""
 }
 
 func run(ctx context.Context, dir string, env []string, args ...string) (string, error) {
@@ -225,6 +262,26 @@ func parseWorktreeList(out string) []WorktreeEntry {
 		}
 	}
 	return entries
+}
+
+// RemoveWorktree removes the linked worktree at path of the repository
+// at repo, or only git's record of it when the directory is gone. Unless
+// forced, git refuses when the worktree is locked or has modified or
+// untracked files. Ignored files go with it; the branch stays.
+func RemoveWorktree(ctx context.Context, r Runner, repo, path string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force", "--force") // twice for a locked one
+	}
+	_, err := r.Run(ctx, repo, append(args, path)...)
+	return err
+}
+
+// RepairWorktree relinks the worktree at path with its repository after
+// it was moved there by hand, so that git can remove it.
+func RepairWorktree(ctx context.Context, r Runner, path string) error {
+	_, err := r.Run(ctx, path, "worktree", "repair")
+	return err
 }
 
 // DefaultBranch guesses the base branch: origin/HEAD, then main, then master.

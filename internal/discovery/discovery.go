@@ -51,19 +51,11 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		wg.Go(func() {
 			for gitDir := range gitDirs {
 				repo, err := listRepo(ctx, git, gitDir, func(wt lopper.Worktree) {
-					// Unless it was moved, see below. git does not call a
-					// locked worktree prunable, so its .git file is checked,
-					// as backLink does: the directory may have been recreated.
-					if wt.Prunable || isGone(filepath.Join(wt.Path, ".git")) {
+					if !present(&wt) { // unless it was moved, see below
 						mu.Lock()
 						defer mu.Unlock()
 						missing[recordKey(gitDir, wt.Path)] = wt
 						return
-					}
-					// git lists a worktree whose admin directory it can no
-					// longer use.
-					if gf, ok := readGitFile(filepath.Join(wt.Path, ".git")); ok {
-						wt.Unconfirmed = gf.damage
 					}
 					listed.Store(realPath(wt.Path), struct{}{})
 					emit(wt)
@@ -143,6 +135,83 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		}
 	}
 	return err
+}
+
+// ErrNotFound is returned by Find and Lookup for a path where they find
+// no linked worktree: the main worktree, a submodule or a plain directory
+// is never one.
+var ErrNotFound = errors.New("not a linked worktree")
+
+// Find returns the linked worktree at path as a Scan of opts.Roots
+// reports it: moved, orphaned or unconfirmed alike. The roots must reach
+// path; when its directory is gone, only a walk that meets its repository
+// finds it.
+func Find(ctx context.Context, git gitx.Runner, opts Options, path string) (lopper.Worktree, error) {
+	want := realPath(path)
+	var (
+		mu    sync.Mutex
+		wt    lopper.Worktree
+		found bool
+	)
+	err := Scan(ctx, git, opts, func(w lopper.Worktree) {
+		if realPath(w.Path) == want {
+			mu.Lock()
+			defer mu.Unlock()
+			wt, found = w, true
+		}
+	})
+	if err != nil {
+		return lopper.Worktree{}, err
+	}
+	if !found {
+		return lopper.Worktree{}, ErrNotFound
+	}
+	return wt, nil
+}
+
+// Lookup finds the linked worktree at path as the repository at repo, a
+// lopper.Repo path, lists it now, marked as Scan marks it. Unlike Find, it
+// needs no walk: this is how a worktree whose directory is gone is looked
+// up again.
+func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Worktree, error) {
+	gitDir := repo
+	if !isGitDir(repo) {
+		gitDir = filepath.Join(repo, ".git")
+	}
+	want := realPath(path)
+	var (
+		wt    lopper.Worktree
+		found bool
+	)
+	_, err := listRepo(ctx, git, gitDir, func(w lopper.Worktree) {
+		if realPath(w.Path) == want {
+			wt, found = w, true
+		}
+	})
+	if err != nil {
+		return lopper.Worktree{}, err
+	}
+	if !found {
+		return lopper.Worktree{}, ErrNotFound
+	}
+	present(&wt)
+	return wt, nil
+}
+
+// present reports whether a worktree its repository lists is still on
+// disk, and marks it unconfirmed when git lists it but can no longer use
+// its admin directory. git does not call a locked worktree prunable, so
+// its .git file is checked, as backLink does: the directory may have been
+// recreated.
+func present(wt *lopper.Worktree) bool {
+	dotGit := filepath.Join(wt.Path, ".git")
+	if wt.Prunable || isGone(dotGit) {
+		return false
+	}
+	if gf, ok := readGitFile(dotGit); ok {
+		wt.Unconfirmed = gf.damage
+	}
+	return true
 }
 
 func firstLine(s string) string {

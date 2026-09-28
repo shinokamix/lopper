@@ -251,11 +251,11 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, width int) string 
 	// The branch and the status share what the size leaves. A long branch
 	// gives way first, down to what keeps it recognizable, then the
 	// status; the size always stays.
-	room := width - rowIndent - 2 - len(size) - 1
+	room := width - rowIndent - 2 - ansi.StringWidth(size) - 1
 	labelW := max(min(labelWidth, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
 	branch, label := fit(branchName(r.worktree), nameW), fit(why, labelW)
-	gap := max(width-rowIndent-nameW-2-labelW-len(size), 1)
+	gap := max(width-rowIndent-nameW-2-labelW-ansi.StringWidth(size), 1)
 	return seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  ") +
 		seg(t.state[st], label) + seg(plain, strings.Repeat(" ", gap)) + seg(sizeStyle, size)
 }

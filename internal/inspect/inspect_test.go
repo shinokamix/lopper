@@ -186,6 +186,16 @@ func TestSlowSize(t *testing.T) {
 	}
 }
 
+// A worktree git reports as gone has no directory to measure; it frees
+// nothing, which a known zero says and an unknown size would not.
+func TestSlowSizeOfGoneWorktreeIsZero(t *testing.T) {
+	wt := lopper.Worktree{Path: filepath.Join(t.TempDir(), "gone"), Prunable: true}
+	f := (Inspector{}).Slow(t.Context(), wt, lopper.Facts{})
+	if f.SizeBytes == nil || *f.SizeBytes != 0 || len(f.Errors) != 0 {
+		t.Errorf("size = %v, errors = %q, want 0 and no errors", ptr(f.SizeBytes), f.Errors)
+	}
+}
+
 func TestSlowSizeUnavailable(t *testing.T) {
 	for _, name := range []string{"missing directory", "cancelled"} {
 		t.Run(name, func(t *testing.T) {

@@ -197,6 +197,30 @@ func statusLine(lines []string) string {
 	return strings.TrimSpace(lines[len(lines)-2])
 }
 
+// A size still being measured shows a one-cell placeholder; the status
+// column must stay where it is on rows with a known size.
+func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+	merged := lopper.Verdict{Level: lopper.LevelSafe, Reasons: []lopper.Reason{{Rule: "merged", Level: lopper.LevelSafe}}}
+	size := int64(1000)
+	for _, id := range []string{"measured", "measuring"} {
+		a.Update(eventMsg{engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: "a-branch-long-enough-to-be-cut-" + id}}})
+	}
+	a.Update(eventMsg{engine.FactsUpdated{ID: "measured", Facts: lopper.Facts{SizeBytes: &size}, Verdict: merged}})
+	a.Update(eventMsg{engine.FactsUpdated{ID: "measuring", Verdict: merged}})
+
+	lines := plainLines(a)
+	at := lineWith(t, lines, "a-branch") // measured first: it is larger
+	known, unknown := lines[at], strings.TrimRight(lines[at+1], " ")
+	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, "…") {
+		t.Fatalf("want the measured row, then the one still being measured:\n%s\n%s", known, unknown)
+	}
+	if strings.Index(known, "merged") != strings.Index(unknown, "merged") {
+		t.Errorf("status column moves on a row with unknown size:\n%s\n%s", known, unknown)
+	}
+}
+
 func TestSelectionAndCursorBandsDiffer(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})

@@ -18,8 +18,8 @@ type row struct {
 }
 
 // store is the single source of truth for scan results: every screen
-// reads worktrees from it, and only engine events mutate it. UI state
-// such as the cursor and the selection lives in the screens.
+// reads worktrees from it, and only engine events and removals mutate
+// it. UI state such as the cursor and the selection lives in the screens.
 type store struct {
 	order    []lopper.ID
 	byID     map[lopper.ID]*row
@@ -30,6 +30,13 @@ type store struct {
 
 func newStore() *store {
 	return &store{byID: map[lopper.ID]*row{}, scanning: true}
+}
+
+// remove forgets a worktree that was removed from disk.
+func (s *store) remove(id lopper.ID) {
+	s.grouped = nil
+	delete(s.byID, id)
+	s.order = slices.DeleteFunc(s.order, func(o lopper.ID) bool { return o == id })
 }
 
 // apply folds an engine event into the store.

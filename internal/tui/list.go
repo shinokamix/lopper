@@ -75,6 +75,45 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 	l.cursor = order[i]
 }
 
+// targets returns what the remove key acts on, in display order: the
+// selected rows, or the row under the cursor when none is selected. Rows
+// still being checked are left out, and counted: without their facts
+// there is nothing to show before removing them.
+func (l *list) targets(s *store) (rows []*row, unchecked int) {
+	order := ids(s)
+	if len(order) == 0 {
+		return nil, 0
+	}
+	cursor := order[l.current(order)]
+	for _, id := range order {
+		if picked := l.selected[id] || len(l.selected) == 0 && id == cursor; !picked {
+			continue
+		}
+		if r := s.byID[id]; r.checked {
+			rows = append(rows, r)
+		} else {
+			unchecked++
+		}
+	}
+	return rows, unchecked
+}
+
+// drop takes a removed worktree off the list. The cursor moves to the
+// row below it, or above when it was the last, instead of to the top.
+func (l *list) drop(s *store, id lopper.ID) {
+	if order := ids(s); id == l.cursor {
+		i := l.current(order)
+		switch {
+		case i+1 < len(order):
+			l.cursor = order[i+1]
+		case i > 0:
+			l.cursor = order[i-1]
+		}
+	}
+	delete(l.selected, id)
+	s.remove(id)
+}
+
 // Row layout: rows are indented under their repository and drawn on a
 // band one cell wider than the text on each side. The band is faint for
 // selected rows, brighter under the cursor and brightest for a selected
@@ -148,16 +187,11 @@ func (l *list) view(t theme, s *store, width, height int) string {
 	order := ids(s)
 	cursor := order[l.current(order)]
 
-	// The name column is as wide as the longest branch, so the facts
-	// sit next to their branch whatever the screen width, and the facts
-	// column as wide as the longest facts, so they all show when they fit.
-	names, notes := 0, 0
+	var all []*row
 	for _, g := range groups {
-		for _, r := range g.rows {
-			names = max(names, ansi.StringWidth(branchName(r.worktree)))
-			notes = max(notes, notesWidth(facts(r)))
-		}
+		all = append(all, g.rows...)
 	}
+	names, notes := columns(all)
 
 	var lines []string
 	var top, at int // the lines that must stay visible: from top to the cursor row
@@ -205,10 +239,20 @@ func (l *list) repoLine(t theme, g group, width int) string {
 	return spread(left, t.subtle.Render(right), width)
 }
 
+// columns returns the widths of the name and facts columns for rows. The
+// name column is as wide as the longest branch, so the facts sit next to
+// their branch whatever the screen width, and the facts column as wide
+// as the longest facts, so they all show when they fit.
+func columns(rows []*row) (names, notes int) {
+	for _, r := range rows {
+		names = max(names, ansi.StringWidth(branchName(r.worktree)))
+		notes = max(notes, notesWidth(facts(r)))
+	}
+	return names, notes
+}
+
 func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) string {
-	// Every piece, spaces included, is rendered on the row background: an
-	// inner style's reset would otherwise cut the highlight short.
-	base, plain, name := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
+	base, name := lipgloss.NewStyle(), lipgloss.NewStyle()
 	if l.selected[r.worktree.ID] {
 		base, name = t.picked, t.selected
 	}
@@ -218,6 +262,16 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) 
 			base = t.pickedCursor
 		}
 	}
+	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, names, notes, width)
+}
+
+// rowLine renders a worktree: lead, rowIndent cells wide, then its branch
+// and facts in columns names and notes wide, and its size at the right
+// end, on the background of base.
+func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, names, notes, width int) string {
+	// Every piece, spaces included, is rendered on the row background: an
+	// inner style's reset would otherwise cut the highlight short.
+	plain := lipgloss.NewStyle()
 	seg := func(st lipgloss.Style, s string) string { return st.Inherit(base).Render(s) }
 
 	size := fmt.Sprintf("%*s ", sizeWidth, formatBytes(r.facts.SizeBytes))
@@ -234,7 +288,7 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, names, notes, width int) 
 	branch := fit(branchName(r.worktree), nameW)
 	gap := max(width-rowIndent-nameW-2-labelW-ansi.StringWidth(size), 1)
 	var b strings.Builder
-	b.WriteString(seg(plain, strings.Repeat(" ", rowIndent)) + seg(name, branch) + seg(plain, "  "))
+	b.WriteString(lead + seg(name, branch) + seg(plain, "  "))
 	// The facts, each in its color, fill labelW cells. Those that do not
 	// fit are counted, most pressing first so the least are left out.
 	shown, hidden := fitNotes(facts(r), labelW)

@@ -18,11 +18,22 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/shinokamix/lopper/internal/engine"
+	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-type eventMsg struct{ ev engine.Event }
+// eventMsg carries an event of scan number gen: events of a scan
+// replaced by a new one are dropped.
+type eventMsg struct {
+	gen int
+	ev  engine.Event
+}
 
 type app struct {
+	ctx    context.Context
+	scan   func(context.Context) <-chan engine.Event
+	remove func(ctx context.Context, wt lopper.Worktree, force bool) error
+	gen    int                // counts scans
+	stop   context.CancelFunc // stops the current scan
 	events <-chan engine.Event
 	store  *store
 	keys   keyMap
@@ -30,8 +41,10 @@ type app struct {
 	help   help.Model
 	spin   spinner.Model
 	list   list
-	width  int
-	height int
+	// removal is the removal screen, shown over the list while not nil.
+	removal *removal
+	width   int
+	height  int
 }
 
 // Run starts the TUI and a scan feeding it.
@@ -40,14 +53,16 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options) error {
 	defer cancel()
 
 	a := &app{
-		events: eng.Scan(ctx, opts),
-		store:  newStore(),
+		ctx:    ctx,
+		scan:   func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
+		remove: eng.Remove,
 		keys:   defaultKeys(),
 		theme:  newTheme(true),
 		help:   help.New(),
 		spin:   spinner.New(spinner.WithSpinner(spinner.Dot)),
 		list:   newList(pathAliases()),
 	}
+	a.startScan(ctx)
 	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
 	return err
 }
@@ -56,26 +71,53 @@ func (a *app) Init() tea.Cmd {
 	return tea.Batch(a.waitEvent(), tea.RequestBackgroundColor, a.spin.Tick)
 }
 
+// startScan starts a scan into an empty list, stopping the one before.
+func (a *app) startScan(ctx context.Context) {
+	if a.stop != nil {
+		a.stop()
+	}
+	ctx, a.stop = context.WithCancel(ctx)
+	a.gen++
+	a.events = a.scan(ctx)
+	a.store = newStore()
+	a.list = newList(a.list.aliases)
+}
+
 // waitEvent bridges the engine channel into Bubble Tea messages.
 // TODO: coalesce bursts of events into one message per frame.
 func (a *app) waitEvent() tea.Cmd {
+	events, gen := a.events, a.gen
 	return func() tea.Msg {
-		ev, ok := <-a.events
+		ev, ok := <-events
 		if !ok {
 			return nil
 		}
-		return eventMsg{ev}
+		return eventMsg{gen, ev}
 	}
+}
+
+// removeNext removes the next item of the removal screen.
+func (a *app) removeNext() tea.Cmd {
+	ctx, remove, i := a.ctx, a.remove, a.removal.next
+	it := a.removal.items[i]
+	wt, force := it.row.worktree, it.force()
+	return func() tea.Msg { return removedMsg{i, remove(ctx, wt, force)} }
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case eventMsg:
+		if msg.gen != a.gen {
+			return a, nil // from a scan replaced by a new one
+		}
 		a.store.apply(msg.ev)
 		next := a.waitEvent()
 		return a, next
+	case removedMsg:
+		cmd := a.removed(msg)
+		return a, cmd
 	case spinner.TickMsg:
-		if !a.store.scanning {
+		if !a.store.scanning && (a.removal == nil || a.removal.phase != removing) {
 			return a, nil // stop ticking
 		}
 		var cmd tea.Cmd
@@ -87,12 +129,75 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 	case tea.KeyPressMsg:
-		if key.Matches(msg, a.keys.quit) {
-			return a, tea.Quit
+		if a.removal != nil {
+			cmd := a.removalKey(msg)
+			return a, cmd
 		}
-		a.list.update(msg, a.keys, a.store)
+		switch {
+		case key.Matches(msg, a.keys.quit):
+			return a, tea.Quit
+		case key.Matches(msg, a.keys.remove):
+			if rows, unchecked := a.list.targets(a.store); len(rows) > 0 {
+				a.removal = newRemoval(rows, unchecked)
+			}
+		default:
+			a.list.update(msg, a.keys, a.store)
+		}
 	}
 	return a, nil
+}
+
+func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
+	rm := a.removal
+	switch rm.phase {
+	case confirming:
+		switch {
+		case key.Matches(msg, a.keys.quit):
+			return tea.Quit
+		case key.Matches(msg, a.keys.back):
+			a.removal = nil
+		case key.Matches(msg, a.keys.confirm):
+			rm.phase = removing
+			return tea.Batch(a.removeNext(), a.spin.Tick)
+		}
+	case removing:
+		// Stopping git halfway through a removal could leave the worktree
+		// half deleted: quitting waits for the one being removed.
+		if key.Matches(msg, a.keys.quit) {
+			rm.quitting = true
+		}
+	case finished:
+		switch {
+		case key.Matches(msg, a.keys.quit):
+			return tea.Quit
+		case key.Matches(msg, a.keys.back):
+			a.removal = nil
+		case key.Matches(msg, a.keys.rescan):
+			a.removal = nil
+			a.startScan(a.ctx)
+			return tea.Batch(a.waitEvent(), a.spin.Tick)
+		}
+	}
+	return nil
+}
+
+// removed records how removing an item went, and goes on to the next.
+func (a *app) removed(msg removedMsg) tea.Cmd {
+	rm := a.removal
+	it := rm.items[msg.i]
+	it.done, it.err = true, msg.err
+	if it.removed() {
+		a.list.drop(a.store, it.row.worktree.ID)
+	}
+	rm.next++
+	switch {
+	case rm.quitting:
+		return tea.Quit
+	case rm.next == len(rm.items):
+		rm.phase = finished
+		return nil
+	}
+	return a.removeNext()
 }
 
 // Screen layout, inside a margin: a blank line, the header and a blank
@@ -105,9 +210,18 @@ const (
 
 func (a *app) View() tea.View {
 	w := max(a.width-2*margin, 1)
-	body := a.list.view(a.theme, a.store, w, max(a.height-chromeLines, 1))
-	screen := header(a.theme, a.store, a.spin.View(), w) + "\n\n" +
-		body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, w)
+	var screen string
+	switch {
+	case a.removal != nil && a.removal.phase == finished:
+		screen = a.removal.summary(a.theme, a.help, a.keys, w, max(a.height-1, 1))
+	case a.removal != nil:
+		spin := strings.TrimSpace(a.spin.View())
+		screen = a.removal.view(a.theme, a.help, a.keys, spin, w, max(a.height-1, 1))
+	default:
+		body := a.list.view(a.theme, a.store, w, max(a.height-chromeLines, 1))
+		screen = header(a.theme, a.store, a.spin.View(), w) + "\n\n" +
+			body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, w)
+	}
 	// Scrolling counts one screen line per line: a line wider than the
 	// screen would wrap and push the list down, so none may be.
 	lines := strings.Split(screen, "\n")

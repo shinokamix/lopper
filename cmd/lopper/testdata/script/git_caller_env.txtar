@@ -13,7 +13,7 @@ env GIT_DIR=$WORK/caller/.git
 env GIT_WORK_TREE=$WORK/caller
 exec lopper scan --json $WORK/scanned
 stdout '"branch": "wip"'
-stdout '"verdict": "keep"'
+stdout '"safe": false'
 stdout '"dirty": 1'
 
 -- dirty.txt --

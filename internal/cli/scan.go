@@ -11,13 +11,17 @@ import (
 )
 
 type scanRecord struct {
-	Path    string          `json:"path"`
-	Repo    string          `json:"repo"`
-	Branch  string          `json:"branch,omitempty"`
-	Origin  lopper.Origin   `json:"origin"`
-	Verdict lopper.Level    `json:"verdict"`
-	Reasons []lopper.Reason `json:"reasons"`
-	Facts   lopper.Facts    `json:"facts"`
+	Path        string        `json:"path"`
+	Repo        string        `json:"repo"`
+	Branch      string        `json:"branch,omitempty"`
+	Origin      lopper.Origin `json:"origin"`
+	Safe        bool          `json:"safe"`
+	Locked      bool          `json:"locked,omitempty"`
+	Prunable    bool          `json:"prunable,omitempty"`
+	Orphaned    bool          `json:"orphaned,omitempty"`
+	MovedFrom   string        `json:"moved_from,omitempty"`
+	Unconfirmed string        `json:"unconfirmed,omitempty"`
+	Facts       lopper.Facts  `json:"facts"`
 }
 
 func newScanCmd() *cobra.Command {
@@ -38,14 +42,18 @@ func newScanCmd() *cobra.Command {
 				switch ev := ev.(type) {
 				case engine.WorktreeFound:
 					wt := ev.Worktree
-					records[wt.ID] = &scanRecord{Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch, Origin: wt.Origin}
+					records[wt.ID] = &scanRecord{
+						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch, Origin: wt.Origin,
+						Locked: wt.Locked, Prunable: wt.Prunable, Orphaned: wt.Orphaned,
+						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Unconfirmed,
+					}
 					order = append(order, wt.ID)
 				case engine.FactsUpdated:
 					r := records[ev.ID]
 					if r == nil {
 						continue // not announced by WorktreeFound; nothing to attach to
 					}
-					r.Facts, r.Verdict, r.Reasons = ev.Facts, ev.Verdict.Level, ev.Verdict.Reasons
+					r.Facts, r.Safe = ev.Facts, ev.Safe
 				case engine.ScanDone:
 					if ev.Err != nil {
 						return ev.Err
@@ -65,7 +73,11 @@ func newScanCmd() *cobra.Command {
 			}
 			// TODO: pretty table output via lipgloss/table.
 			for _, r := range out {
-				fmt.Fprintf(w, "%-7s %-40s %s\n", r.Verdict, r.Branch, r.Path)
+				safe := "unsafe"
+				if r.Safe {
+					safe = "safe"
+				}
+				fmt.Fprintf(w, "%-7s %-40s %s\n", safe, r.Branch, r.Path)
 			}
 			return nil
 		},

@@ -9,15 +9,15 @@ rm repo
 exec lopper scan --json $WORK
 # JSON escapes the Windows separator as \\.
 stdout '"path": ".*agent(/|\\\\)wt"'
-stdout '"verdict": "review"'
-stdout '"rule": "orphaned"'
+stdout '"safe": false'
+stdout '"orphaned": true'
 stdout '"size_bytes": '
-! stdout '"verdict": "safe"'
-! stdout '"rule": "incomplete"'
+! stdout '"safe": true'
+! stdout '"errors"'
 ! stderr .
 
 exec lopper scan $WORK/agent
-stdout '^review\s+.*agent[/\\]wt$'
+stdout '^unsafe\s+.*agent[/\\]wt$'
 
 # A worktree pruned from a repository that still exists is an orphan too,
 # and it still leads to the repository's other worktrees.
@@ -29,7 +29,7 @@ rm $WORK/outside/kept/.git/worktrees/pruned
 
 exec lopper scan $WORK/tree
 stdout -count=2 '^\w+\s'
-stdout '^review\s+.*tree[/\\]pruned$'
+stdout '^unsafe\s+.*tree[/\\]pruned$'
 stdout '^\w+\s+other\s'
 
 # A submodule is not a worktree, even at a path named worktrees/: neither
@@ -67,7 +67,7 @@ mv $WORK/away $WORK/smwt/one
 
 exec lopper scan $WORK/smwt
 stdout -count=2 '^\w+\s'
-stdout '^review\s+.*smwt[/\\]one$'
+stdout '^unsafe\s+.*smwt[/\\]one$'
 stdout '^\w+\s+two\s'
 
 # git reuses a free admin directory name: after a prune, a new worktree can
@@ -82,7 +82,7 @@ exec git -C $WORK/reuse/repo worktree add -q -b second $WORK/reuse/new/wt
 mv $WORK/reuse/away $WORK/reuse/old
 
 exec lopper scan $WORK/reuse/old
-stdout '^review\s+.*old[/\\]wt$'
+stdout '^unsafe\s+.*old[/\\]wt$'
 
 # A superproject with its git directory elsewhere (--separate-git-dir) keeps
 # submodule repositories there too: still not a worktree.

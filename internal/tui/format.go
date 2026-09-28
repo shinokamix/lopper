@@ -10,110 +10,67 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// state is how the list presents a verdict: a fact the user can check
-// instead of a judgement. A state is only as safe as the verdict level
-// it comes from, and merged also needs the merged rule to have decided:
-// safe alone does not mean merged.
-type state int
-
-const (
-	stateChecking  state = iota // no verdict yet
-	stateMerged                 // safe: the work is in the base branch
-	stateNotMerged              // review only because the work is not merged
-	stateLocalWork              // keep: work exists only in this worktree
-	stateUnknown                // review for any other reason: lopper cannot tell
-	stateGone                   // safe: the directory is already gone, only git's record is left
-)
-
-func (s state) String() string {
-	switch s {
-	case stateMerged:
-		return "merged"
-	case stateNotMerged:
-		return "not merged"
-	case stateLocalWork:
-		return "local work"
-	case stateUnknown:
-		return "unknown"
-	case stateGone:
-		return "folder gone"
-	default:
-		return "checking"
+// facts is what a row shows about its worktree. "merged" gets its color
+// only on a safe row: users delete merged rows without looking closer.
+func facts(r *row) []lopper.Note {
+	if !r.checked {
+		return []lopper.Note{{Text: "checking…"}}
 	}
+	notes := lopper.Notes(r.worktree, r.facts)
+	for i, n := range notes {
+		if n.Kind == lopper.NoteMerged && !r.safe {
+			notes[i].Kind = lopper.NotePlain
+		}
+	}
+	return notes
 }
 
-// classify returns a row's state and the facts behind it, e.g.
-// "3 uncommitted · 2 unpushed".
-func classify(r *row) (state, string) {
-	v := r.verdict
-	// Only the reasons that decided the level are shown. Among review
-	// reasons, not being merged is a known fact; any other means lopper
-	// cannot vouch for the worktree.
-	var decisive, unsure []string
-	rules := map[string]bool{}
-	for _, reason := range v.Reasons {
-		if reason.Level != v.Level {
-			continue
+// noteSep separates the notes of a row.
+const noteSep = " · "
+
+// notesWidth is how many cells notes take in one line.
+func notesWidth(notes []lopper.Note) int {
+	w := 0
+	for i, n := range notes {
+		if i > 0 {
+			w += len(noteSep) - 1 // the dot is one cell but two bytes
 		}
-		label := reasonLabel(reason, r.facts)
-		decisive = append(decisive, label)
-		rules[reason.Rule] = true
-		if reason.Rule != "not-merged" {
-			unsure = append(unsure, label)
-		}
+		w += ansi.StringWidth(n.Text)
 	}
-	switch v.Level {
-	case lopper.LevelSafe:
-		switch {
-		case rules["prunable"]:
-			return stateGone, strings.Join(decisive, " · ")
-		case rules["merged"]:
-			return stateMerged, strings.Join(decisive, " · ")
-		default: // a safe rule the list does not know: claim nothing
-			return stateUnknown, strings.Join(decisive, " · ")
-		}
-	case lopper.LevelKeep:
-		return stateLocalWork, strings.Join(decisive, " · ")
-	case lopper.LevelReview:
-		if len(unsure) == 0 {
-			return stateNotMerged, strings.Join(decisive, " · ")
-		}
-		return stateUnknown, strings.Join(unsure, " · ")
-	default:
-		return stateChecking, "checking…"
-	}
+	return w
 }
 
-// reasonLabel is the few-word form of a verdict reason.
-func reasonLabel(r lopper.Reason, f lopper.Facts) string {
-	switch r.Rule {
-	case "prunable":
-		return "folder gone"
-	case "orphaned":
-		return "not tracked by git"
-	case "moved":
-		return "moved by hand"
-	case "unconfirmed":
-		return "not confirmed by git"
-	case "locked":
-		return "locked"
-	case "incomplete":
-		return "couldn't check"
-	case "dirty":
-		if f.Dirty != nil {
-			return fmt.Sprintf("%d uncommitted", *f.Dirty)
+// fitNotes returns the leading notes that fit in w cells, and how many
+// are left out: those are counted as "+N", never dropped silently. When
+// not even the first fits whole, it is cut short rather than leaving a
+// bare count.
+func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
+	for k := len(notes); k > 0; k-- {
+		need := notesWidth(notes[:k])
+		if k < len(notes) {
+			need += ansi.StringWidth(more(len(notes) - k))
 		}
-	case "unpushed":
-		if f.Unpushed != nil {
-			return fmt.Sprintf("%d unpushed", *f.Unpushed)
+		if need <= w {
+			return notes[:k], len(notes) - k
 		}
-	case "merged":
-		return "merged"
-	case "not-merged":
-		return "not merged"
 	}
-	return r.Rule
+	if len(notes) == 0 {
+		return nil, 0
+	}
+	first, rest := notes[0], len(notes)-1
+	room := w
+	if rest > 0 {
+		room -= ansi.StringWidth(more(rest))
+	}
+	if room < 4 { // too short to recognize: a count says more
+		return nil, len(notes)
+	}
+	first.Text = ansi.Truncate(first.Text, room, "…")
+	return []lopper.Note{first}, rest
 }
+
+// more counts notes left out, to follow the last one shown.
+func more(n int) string { return fmt.Sprintf(" +%d", n) }
 
 // branchName is the branch, or the short commit of a detached HEAD.
 func branchName(wt lopper.Worktree) string {

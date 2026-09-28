@@ -14,11 +14,10 @@ cp badconfig repo/.git/config
 
 exec lopper scan $WORK
 stdout -count=1 '^\w+\s'
-stdout '^review\s+feature\s+.*wt$'
+stdout '^unsafe\s+feature\s+.*wt$'
 exec lopper scan --json $WORK
-stdout '"rule": "unconfirmed"'
-stdout 'cannot confirm this worktree: could not list its worktrees: git worktree list'
-! stdout '"verdict": "safe"'
+stdout '"unconfirmed": "could not list its worktrees: git worktree list'
+! stdout '"safe": true'
 
 -- badconfig --
 [core

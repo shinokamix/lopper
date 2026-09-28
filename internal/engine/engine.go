@@ -27,10 +27,10 @@ type WorktreeFound struct{ Worktree lopper.Worktree }
 
 // FactsUpdated is sent every time more facts about a worktree are known.
 type FactsUpdated struct {
-	ID      lopper.ID
-	Facts   lopper.Facts
-	Verdict lopper.Verdict
-	Final   bool // no more updates will follow for this worktree
+	ID    lopper.ID
+	Facts lopper.Facts
+	Safe  bool // see [verdict.Safe]
+	Final bool // no more updates will follow for this worktree
 }
 
 // ScanDone is the last event of a scan.
@@ -91,9 +91,9 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		workers.Go(func() {
 			for wt := range found {
 				f := insp.Quick(ctx, wt)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f)})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Safe: verdict.Safe(wt, f)})
 				f = insp.Slow(ctx, wt, f)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Evaluate(wt, f), Final: true})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Safe: verdict.Safe(wt, f), Final: true})
 			}
 		})
 	}

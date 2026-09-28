@@ -2,6 +2,8 @@
 // It must not import anything from this module.
 package lopper
 
+import "fmt"
+
 // ID uniquely identifies a worktree: its absolute, cleaned path.
 type ID string
 
@@ -64,44 +66,59 @@ const (
 	MergedSquash MergeKind = "patch-id" // all patches found in base
 )
 
-// Level is the overall recommendation for a worktree.
-//
-// The numeric order of the constants IS the severity order:
-// Unknown < Safe < Review < Keep. verdict.Evaluate relies on it to pick
-// the strictest reason, so never reorder them.
-type Level int
+// Note is one fact about a worktree in words, as the list and the CLI
+// show it.
+type Note struct {
+	Text string
+	Kind NoteKind
+}
+
+// NoteKind tells what a note is about, for the list to color it.
+type NoteKind int
 
 const (
-	LevelUnknown Level = iota
-	LevelSafe          // can be removed without losing work
-	LevelReview        // probably removable, a human should look
-	LevelKeep          // removing would lose work or break something
+	NotePlain  NoteKind = iota
+	NoteWork            // work that deleting the worktree would lose
+	NoteMerged          // the work is in the base branch
 )
 
-func (l Level) String() string {
-	switch l {
-	case LevelSafe:
-		return "safe"
-	case LevelReview:
-		return "review"
-	case LevelKeep:
-		return "keep"
-	default:
-		return "unknown"
+// Notes describes a worktree by its facts, most pressing first: work
+// that deleting it would lose, what git cannot tell about it, then how far
+// the work got. It describes and never decides: whether the worktree is
+// safe to delete is verdict's call.
+func Notes(wt Worktree, f Facts) []Note {
+	var out []Note
+	add := func(kind NoteKind, format string, a ...any) {
+		out = append(out, Note{fmt.Sprintf(format, a...), kind})
 	}
-}
-
-func (l Level) MarshalText() ([]byte, error) { return []byte(l.String()), nil }
-
-// Reason is a single human-readable argument behind a verdict.
-type Reason struct {
-	Rule    string `json:"rule"` // stable rule id, e.g. "unpushed"
-	Level   Level  `json:"level"`
-	Message string `json:"message"`
-}
-
-// Verdict is the result of evaluating all rules against Facts.
-type Verdict struct {
-	Level   Level
-	Reasons []Reason
+	merged := f.Merged != nil && *f.Merged != NotMerged
+	if wt.Locked {
+		add(NoteWork, "locked")
+	}
+	if f.Dirty != nil && *f.Dirty > 0 {
+		add(NoteWork, "%d uncommitted", *f.Dirty)
+	}
+	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
+		add(NoteWork, "%d unpushed", *f.Unpushed)
+	}
+	switch {
+	case wt.Prunable:
+		add(NotePlain, "folder gone")
+	case wt.Orphaned:
+		add(NotePlain, "not tracked by git")
+	case wt.MovedFrom != "":
+		add(NotePlain, "moved by hand")
+	case wt.Unconfirmed != "":
+		add(NotePlain, "not confirmed by git")
+	}
+	if !wt.Prunable && !wt.Orphaned && (f.Dirty == nil || f.Unpushed == nil || f.Merged == nil) {
+		add(NotePlain, "couldn't check")
+	}
+	switch {
+	case merged:
+		add(NoteMerged, "merged")
+	case f.Merged != nil:
+		add(NotePlain, "not merged")
+	}
+	return out
 }

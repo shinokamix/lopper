@@ -62,10 +62,12 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 
 // Slow gathers expensive facts that require walking the directory.
 // Size excludes unreadable or vanished entries below the root. A root
-// error or cancellation leaves the size unknown.
+// error or cancellation leaves the size unknown; a worktree git reports
+// as gone takes no space.
 // TODO: LastTouched from non-ignored files, busy processes.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
 	if wt.Prunable {
+		f.SizeBytes = new(int64(0))
 		return f
 	}
 	var size int64

@@ -310,6 +310,27 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 	}
 }
 
+// However short the terminal, the summary says that some worktrees were
+// not removed: without it, it reads as if everything went.
+func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
+	a, rm := removalApp(t)
+	a.Update(tea.WindowSizeMsg{Width: 90, Height: 9})
+	found(a, "gone", 2000, true, lopper.Facts{})
+	found(a, "kept", 100, true, lopper.Facts{})
+	rm.fail = map[lopper.ID]error{"kept": fmt.Errorf("permission denied")}
+	press(a, ' ')
+	press(a, ' ')
+	press(a, 'd')
+	settle(a, press(a, tea.KeyEnter))
+
+	if v := view(a); !strings.Contains(v, "1 not removed") {
+		t.Errorf("summary on a 9-line screen hides that a worktree was not removed:\n%s", v)
+	}
+	if n := len(plainLines(a)); n > 9 {
+		t.Errorf("summary takes %d lines of a 9-line screen", n)
+	}
+}
+
 // Quitting in the middle waits for the worktree being removed, which git
 // could leave half deleted, and removes no more.
 func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {

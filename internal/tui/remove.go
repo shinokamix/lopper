@@ -356,18 +356,27 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
 	}
 	branchW = min(branchW, width/3)
-	room := height - len(lines) - 4 // what fits, and how many more there are
+	// Each list says how many it holds even when none of its rows fit:
+	// a summary without it would read as if everything went.
+	room := height - len(lines) - 2 // left by the key help and a blank line
 	list := func(title string, items []*item) {
-		if len(items) == 0 || room < 3 {
+		if len(items) == 0 {
 			return
 		}
-		table = append(table, "", title)
-		room -= 2
+		if room >= 2 {
+			table = append(table, "")
+			room--
+		}
+		table = append(table, title)
+		room--
 		for i, it := range items {
+			if room <= 0 {
+				return
+			}
 			if room == 1 && i < len(items)-1 {
 				table = append(table, t.subtle.Render(fmt.Sprintf("+%d more", len(items)-i)))
 				room--
-				break
+				return
 			}
 			table = append(table, fit(branchName(it.row.worktree), branchW)+"  "+t.subtle.Render(reason(it.err)))
 			room--
@@ -385,7 +394,10 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	}
 
 	h.SetWidth(max(width-2, 0))
-	lines = append(lines, "", "", h.View(bindings{k.rescan, k.back, k.quit}))
+	for range min(max(height-len(lines)-1, 0), 2) {
+		lines = append(lines, "") // two blank lines above the key help when they fit
+	}
+	lines = append(lines, h.View(bindings{k.rescan, k.back, k.quit}))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(lines, "\n"))
 }
 

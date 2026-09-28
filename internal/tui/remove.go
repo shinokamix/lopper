@@ -169,6 +169,7 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 	for _, it := range rm.items {
 		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
 	}
+	repoW = min(repoW, width/5) // the branch says more: a long name gives way
 	plain := lipgloss.NewStyle()
 	var lines []string
 	for i, it := range rm.items {
@@ -176,8 +177,9 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 			if i > 0 {
 				lines = append(lines, "")
 			}
-			lines = append(lines, strings.Repeat(" ", rowIndent)+
-				t.failure.Render("work in these will be lost"))
+			// Level with the title, like repository headers in the list,
+			// so it reads as a heading over the rows and not as one of them.
+			lines = append(lines, " "+t.failure.Render("work in these will be lost"))
 		}
 		mark := " "
 		switch {

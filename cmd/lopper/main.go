@@ -28,8 +28,8 @@ func run() int {
 	// simply never delivered.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := fang.Execute(ctx, cli.NewRoot(),
-		fang.WithVersion(buildVersion()), fang.WithCommit(commit)); err != nil {
+	v := buildVersion()
+	if err := fang.Execute(ctx, cli.NewRoot(v), fang.WithVersion(v), fang.WithCommit(commit)); err != nil {
 		return 1
 	}
 	return 0

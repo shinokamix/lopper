@@ -27,13 +27,14 @@ var layers = map[string][]string{
 	"internal/gitx":     {},
 	"internal/config":   {},
 	"internal/archtest": {},
+	"internal/update":   {},
 
 	"internal/verdict":   {"internal/lopper"},
 	"internal/inspect":   {"internal/lopper", "internal/gitx"},
 	"internal/discovery": {"internal/lopper", "internal/gitx"},
 	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/discovery", "internal/inspect", "internal/verdict"},
 
-	"internal/cli": {"internal/lopper", "internal/config", "internal/engine", "internal/tui"},
+	"internal/cli": {"internal/lopper", "internal/config", "internal/engine", "internal/tui", "internal/update"},
 	"internal/tui": {"internal/lopper", "internal/engine"},
 }
 
@@ -41,6 +42,7 @@ var layers = map[string][]string{
 // A trailing "/..." matches a package and everything below it.
 var restricted = map[string][]string{
 	"os/exec":                   {"internal/gitx"},
+	"net/http":                  {"internal/update"},
 	"charm.land/":               {"internal/tui/..."},
 	"github.com/charmbracelet/": {"cmd/lopper", "internal/tui/..."},
 	"github.com/spf13/cobra":    {"cmd/lopper", "internal/cli"},

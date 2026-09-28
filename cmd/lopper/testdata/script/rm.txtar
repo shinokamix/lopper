@@ -2,8 +2,10 @@
 # branch; --force removes any worktree lopper scan shows.
 
 # The default roots: a home that holds none of the repositories below.
+# Windows finds the home directory through USERPROFILE.
 mkdir home
 env HOME=$WORK/home
+env USERPROFILE=$WORK/home
 
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init

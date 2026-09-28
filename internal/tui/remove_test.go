@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -176,16 +177,18 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 }
 
 // A worktree still being checked can be picked, but not confirmed until
-// its facts show what would be lost; until then it counts as not safe.
+// its facts show what would be lost; until then it is in a section of
+// its own, neither safe nor holding work.
 func TestConfirmationWaitsForChecks(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
 	press(a, 'd')
 	press(a, tea.KeyEnter)
 	lines := plainLines(a)
-	if len(rm.calls) > 0 || lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "checking…") ||
-		!strings.Contains(lines[len(lines)-1], "checking…") || strings.Contains(lines[len(lines)-1], "remove") {
-		t.Fatalf("worktree still being checked is not shown as not safe, waiting (removed %v):\n%s",
+	if len(rm.calls) > 0 || strings.Contains(strings.Join(lines, "\n"), "work in these will be lost") ||
+		lineWith(t, lines, "still checking") > lineWith(t, lines, "wt  checking…") ||
+		!strings.HasSuffix(strings.TrimSpace(lines[lineWith(t, lines, "Remove")]), "checking…") {
+		t.Fatalf("worktree still being checked is not shown waiting apart (removed %v):\n%s",
 			rm.calls, strings.Join(lines, "\n"))
 	}
 
@@ -240,26 +243,70 @@ func TestConfirmationNamesRepositories(t *testing.T) {
 }
 
 // Every worktree to be removed can be seen before confirming, however
-// many there are: the ones out of sight could hold work.
+// many there are: the ones out of sight could hold work. Scrolled into
+// them, the warning over them stays in sight, and what is out of sight
+// is counted.
 func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	a, _ := removalApp(t)
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 10})
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
 	for i := range 12 {
-		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), true, lopper.Facts{})
+		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), i < 3, lopper.Facts{Dirty: new(i)})
 	}
 	for range 12 {
 		press(a, ' ')
 	}
 
 	press(a, 'd')
-	if v := view(a); !strings.Contains(v, "wt00") || strings.Contains(v, "wt11") || !strings.Contains(v, "scroll") {
-		t.Fatalf("long selection does not start at the top with a way to scroll:\n%s", v)
+	if v := view(a); !strings.Contains(v, "wt00") || strings.Contains(v, "wt11") || !strings.Contains(v, "↓ 8 more") ||
+		!strings.Contains(v, "scroll") {
+		t.Fatalf("long selection does not start at the top, counting the rest, with a way to scroll:\n%s", v)
 	}
 	for range 20 {
 		press(a, tea.KeyDown)
 	}
-	if v := view(a); !strings.Contains(v, "wt11") || strings.Contains(v, "wt00") {
-		t.Errorf("scrolling down does not reach the last worktree:\n%s", v)
+	v := view(a)
+	if !strings.Contains(v, "wt11") || strings.Contains(v, "wt00") || !strings.Contains(v, "↑ 7 more") {
+		t.Errorf("scrolling down does not reach the last worktree, counting the ones above:\n%s", v)
+	}
+	if !strings.Contains(v, "work in these will be lost") {
+		t.Errorf("warning scrolled out of sight over the worktrees it is about:\n%s", v)
+	}
+}
+
+// The summary says why each worktree was not removed, in a column the
+// screen holds however long the reason: a line wider than the screen
+// broke the whole summary, and a long path pushed the cause out of sight.
+func TestSummaryTellsWhyInColumn(t *testing.T) {
+	a, rm := removalApp(t)
+	a.Update(tea.WindowSizeMsg{Width: 72, Height: 20})
+	found(a, "unpushed", 100, false, lopper.Facts{})
+	found(a, "feature/login-page", 90, true, lopper.Facts{})
+	rm.fail = map[lopper.ID]error{
+		"unpushed":           errors.New("failed to delete '/Users/me/code/app/.claude/worktrees/unpushed': Permission denied"),
+		"feature/login-page": &engine.NotSafeError{Facts: lopper.Facts{Dirty: new(1), Unpushed: new(0), Merged: new(lopper.MergedFF)}},
+	}
+	press(a, ' ')
+	press(a, ' ')
+	press(a, 'd')
+	settle(a, press(a, tea.KeyEnter))
+
+	lines := plainLines(a)
+	gitErr, notSafe := lines[lineWith(t, lines, "failed to delete")], lines[lineWith(t, lines, "not safe anymore")]
+	if !strings.Contains(gitErr, "unpushed            failed to delete 'unpushed': Permission denied") {
+		t.Errorf("reason does not name the folder shortly and keep the cause: %q", gitErr)
+	}
+	if strings.Index(gitErr, "failed") != strings.Index(notSafe, "not safe") {
+		t.Errorf("reasons are not in one column:\n%s\n%s", gitErr, notSafe)
+	}
+
+	// Wider than the screen, the summary is no longer centered, and every
+	// line of it runs past the edge, cut off: "      …".
+	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	for _, l := range plainLines(a) {
+		if strings.TrimSpace(l) == "…" {
+			t.Errorf("summary runs past the edge of a 50-cell screen:\n%s", view(a))
+			break
+		}
 	}
 }
 

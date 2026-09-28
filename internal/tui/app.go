@@ -180,7 +180,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 	case removing:
 		// Stopping git halfway through a removal could leave the worktree
 		// half deleted: quitting waits for the one being removed.
-		if key.Matches(msg, a.keys.quit) {
+		if key.Matches(msg, a.keys.stop) {
 			rm.quitting = true
 		}
 	case finished:

@@ -3,6 +3,8 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -83,18 +85,27 @@ func newRemoval(rows []*row) *removal {
 	return rm
 }
 
-// sort puts the safe items first, as a verdict may change while the
+// Items are shown in sections, in this order.
+const (
+	safeSection     = iota
+	workSection     // not safe to delete
+	checkingSection // facts still to come
+)
+
+func (it *item) section() int {
+	switch {
+	case !it.row.checked:
+		return checkingSection
+	case it.row.safe:
+		return safeSection
+	}
+	return workSection
+}
+
+// sort orders the items by section, as a verdict may change while the
 // user looks.
 func (rm *removal) sort() {
-	slices.SortStableFunc(rm.items, func(a, b *item) int {
-		switch {
-		case a.row.safe == b.row.safe:
-			return 0
-		case a.row.safe:
-			return -1
-		}
-		return 1
-	})
+	slices.SortStableFunc(rm.items, func(a, b *item) int { return a.section() - b.section() })
 }
 
 // checked reports whether the facts of every item have arrived: until
@@ -149,65 +160,43 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	if rm.phase == removing {
 		verb = "Removing"
 	}
-	title := " " + t.title.Render(verb+" "+plural(len(rm.items), "worktree"))
-	if size := totalSize(rowsOf(rm.items)); size != nil {
-		title += t.subtle.Render(" · " + formatBytes(*size))
+	title := " " + t.title.Render(verb+" "+plural(len(rm.items), "worktree")) +
+		t.subtle.Render(" · "+sizeText(rowsOf(rm.items), spin))
+	var note string
+	switch {
+	case rm.quitting:
+		note = "stopping after this one…"
+	case rm.phase == confirming && !rm.checked():
+		note = "checking…" // enter waits for it
 	}
-	head := title
-	if rm.quitting {
-		head = spread(title, t.subtle.Render("stopping after this one…")+" ", width)
-	}
+	head := spread(title, t.subtle.Render(note)+" ", width)
 
-	rows := rm.rows(t, spin, width)
+	lines := rm.lines(t, spin, width)
 	body := max(height-4, 1) // the title, the key help and a blank line after each
-	all := len(rows)
-	if all > body {
-		// The user scrolls through what they confirm; the worktree being
-		// removed stays in sight.
-		off := rm.offset
-		if rm.phase == removing {
-			off = rm.focus() + 2 - body
-		}
-		off = max(min(off, all-body), 0)
-		rm.offset = off
-		rows = rows[off : off+body]
-		more := strings.Repeat(" ", rowIndent) + t.subtle.Render("…")
-		if off > 0 {
-			rows[0] = more
-		}
-		if off+body < all {
-			rows[len(rows)-1] = more
-		}
-	}
+	shown, scrolls := lines.window(t, &rm.offset, rm.phase == removing, rm.next, body)
 
 	var keys bindings
-	wait := ""
-	if rm.phase == confirming {
-		if all > body {
+	switch {
+	case rm.phase == confirming:
+		if scrolls {
 			keys = append(keys, k.scroll)
 		}
-		if rm.checked() {
-			keys = append(keys, k.confirm)
-		} else {
-			// In place of enter, which waits for the facts.
-			wait = h.Styles.ShortDesc.Render("checking…") + h.Styles.ShortSeparator.Render(h.ShortSeparator)
-		}
-		keys = append(keys, k.back)
+		keys = append(keys, k.confirm, k.back)
+	case rm.phase == removing && !rm.quitting:
+		keys = append(keys, k.stop)
 	}
-	h.SetWidth(max(width-2-ansi.StringWidth(wait), 0))
-	return head + "\n\n" + strings.Join(rows, "\n") + "\n\n " + wait + h.View(keys)
+	h.SetWidth(max(width-2, 0))
+	return head + "\n\n" + strings.Join(shown, "\n") + "\n\n " + h.View(keys)
 }
 
-// focus is the line of the rows showing the item being removed.
-func (rm *removal) focus() int {
-	line := rm.next
-	if rm.next < len(rm.items) && !rm.items[rm.next].row.safe && rm.next > 0 && rm.items[0].row.safe {
-		line += 2 // the blank line and the heading of the ones not safe
-	}
-	return line
+// lines are the worktrees of a removal as lines of the screen.
+type lines struct {
+	text []string
+	item []int // the item on each line, or -1
+	head []int // the heading over each line's section, or -1
 }
 
-func (rm *removal) rows(t theme, spin string, width int) []string {
+func (rm *removal) lines(t theme, spin string, width int) lines {
 	names, notes := columns(rowsOf(rm.items))
 	// Unlike the list, rows are not grouped by repository, and branch
 	// names repeat across repositories: each row starts with its own.
@@ -216,16 +205,28 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
 	}
 	repoW = min(repoW, width/5) // the branch says more: a long name gives way
+	headings := map[int]string{
+		workSection:     t.failure.Render("work in these will be lost"),
+		checkingSection: t.subtle.Render("still checking"),
+	}
 	plain := lipgloss.NewStyle()
-	var lines []string
+	var ls lines
+	add := func(text string, item, head int) {
+		ls.text, ls.item, ls.head = append(ls.text, text), append(ls.item, item), append(ls.head, head)
+	}
+	head := -1
 	for i, it := range rm.items {
-		if !it.row.safe && (i == 0 || it.row.safe != rm.items[i-1].row.safe) {
+		if sec := it.section(); i == 0 || sec != rm.items[i-1].section() {
 			if i > 0 {
-				lines = append(lines, "")
+				add("", -1, head)
 			}
-			// Level with the title, like repository headers in the list,
-			// so it reads as a heading over the rows and not as one of them.
-			lines = append(lines, " "+t.failure.Render("work in these will be lost"))
+			head = -1
+			if heading, ok := headings[sec]; ok {
+				// Level with the title, like repository headers in the list,
+				// so it reads as a heading over the rows, not as one of them.
+				head = len(ls.text)
+				add(" "+heading, -1, head)
+			}
 		}
 		mark := " "
 		switch {
@@ -237,9 +238,81 @@ func (rm *removal) rows(t theme, spin string, width int) []string {
 			mark = spin
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		lines = append(lines, rowLine(t, it.row, lead, plain, plain, spin, names, notes, width))
+		add(rowLine(t, it.row, lead, plain, plain, spin, names, notes, width), i, head)
 	}
-	return lines
+	return ls
+}
+
+// window returns the lines that fit in height from *offset on, which it
+// keeps in range, and whether they do not all fit. Following, it scrolls
+// just enough to show the line of item focus instead. Lines out of sight
+// are counted in their place, and a section's heading stays on top
+// while its rows are in sight.
+func (ls lines) window(t theme, offset *int, following bool, focus, height int) ([]string, bool) {
+	all := len(ls.text)
+	if all <= height {
+		*offset = 0
+		return ls.text, false
+	}
+	// layout tells, for a first line off, which lines are shown below the
+	// marks and the heading, and whether any are left below.
+	layout := func(off int) (from, to int, pin, below bool) {
+		n := height
+		if off > 0 {
+			n-- // "↑ N more"
+		}
+		if pin = off > 0 && ls.head[off] >= 0 && ls.head[off] < off; pin {
+			n--
+		}
+		if off+n < all {
+			n-- // "↓ N more"
+			below = true
+		}
+		return off, off + max(n, 1), pin, below
+	}
+	off := max(min(*offset, all-1), 0)
+	if following {
+		at := slices.Index(ls.item, focus)
+		for off > 0 && off > at {
+			off--
+		}
+		for _, to, _, _ := layout(off); at >= to && off < all-1; _, to, _, _ = layout(off) {
+			off++
+		}
+	}
+	for off > 0 { // not past the end: back while the last line still shows
+		if _, _, _, below := layout(off - 1); below {
+			break
+		}
+		off--
+	}
+	*offset = off
+
+	from, to, pin, below := layout(off)
+	count := func(lo, hi int) int {
+		n := 0
+		for _, it := range ls.item[lo:hi] {
+			if it >= 0 {
+				n++
+			}
+		}
+		return n
+	}
+	more := func(arrow string, n int) string {
+		return strings.Repeat(" ", rowIndent) + t.subtle.Render(fmt.Sprintf("%s %d more", arrow, n))
+	}
+	var out []string
+	if off > 0 {
+		out = append(out, more("↑", count(0, off)))
+	}
+	if pin {
+		out = append(out, ls.text[ls.head[off]])
+	}
+	out = append(out, ls.text[from:min(to, all)]...)
+	if below {
+		out = append(out, more("↓", count(to, all)))
+	}
+	return out, true
 }
 
 // summary tells what the removal came to, centered in width × height,
@@ -274,26 +347,42 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		lines = append(lines, t.title.Render(count))
 	}
 
-	// Each list shows what fits, and how many more there are.
-	room := height - len(lines) - 4
+	// What was not removed, and what git still lists, go in a table:
+	// its lines are as wide as each other, so centering keeps them
+	// aligned, and never wider than the screen.
+	var table []string
+	branchW := 0
+	for _, it := range append(failed, left...) {
+		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
+	}
+	branchW = min(branchW, width/3)
+	room := height - len(lines) - 4 // what fits, and how many more there are
 	list := func(title string, items []*item) {
 		if len(items) == 0 || room < 3 {
 			return
 		}
-		lines = append(lines, "", t.failure.Render(title))
+		table = append(table, "", title)
 		room -= 2
 		for i, it := range items {
 			if room == 1 && i < len(items)-1 {
-				lines = append(lines, t.subtle.Render(fmt.Sprintf("+%d more", len(items)-i)))
+				table = append(table, t.subtle.Render(fmt.Sprintf("+%d more", len(items)-i)))
 				room--
 				break
 			}
-			lines = append(lines, branchName(it.row.worktree)+"  "+t.subtle.Render(reason(it.err)))
+			table = append(table, fit(branchName(it.row.worktree), branchW)+"  "+t.subtle.Render(reason(it.err)))
 			room--
 		}
 	}
-	list(fmt.Sprintf("%d not removed", len(failed)), failed)
-	list("git still lists "+plural(len(left), "removed worktree"), left)
+	list(t.failure.Render(fmt.Sprintf("%d not removed", len(failed))), failed)
+	list(t.subtle.Render("git still lists "+plural(len(left), "removed worktree")), left)
+	tableW := 0
+	for i, l := range table {
+		table[i] = ansi.Truncate(l, width, "…")
+		tableW = max(tableW, ansi.StringWidth(table[i]))
+	}
+	for _, l := range table {
+		lines = append(lines, l+strings.Repeat(" ", tableW-ansi.StringWidth(l)))
+	}
 
 	h.SetWidth(max(width-2, 0))
 	lines = append(lines, "", "", h.View(bindings{k.rescan, k.back, k.quit}))
@@ -308,7 +397,8 @@ func repoLabel(repo lopper.Repo) string {
 	return repoName(repo.Path)
 }
 
-// reason says why a worktree was not removed, in the list's words.
+// reason says why a worktree was not removed, in the list's words, or
+// what is left to do when git still lists it.
 func reason(err error) string {
 	if e, ok := errors.AsType[*engine.NotSafeError](err); ok {
 		var why []string
@@ -317,5 +407,18 @@ func reason(err error) string {
 		}
 		return "not safe anymore: " + strings.Join(why, noteSep)
 	}
-	return err.Error()
+	if e, ok := errors.AsType[*engine.RecordLeftError](err); ok {
+		return "run git worktree prune in " + repoLabel(lopper.Repo{Path: e.Repo})
+	}
+	// The row already says which worktree: a path in the message only
+	// pushes the cause out of sight.
+	return quoted.ReplaceAllStringFunc(err.Error(), func(q string) string {
+		if p := strings.Trim(q, "'"); filepath.IsAbs(p) {
+			return "'" + filepath.Base(p) + "'"
+		}
+		return q
+	})
 }
+
+// quoted matches what git quotes in its messages, paths among them.
+var quoted = regexp.MustCompile(`'[^']+'`)

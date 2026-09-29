@@ -16,7 +16,11 @@ macOS and Linux:
 curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
 ```
 
-On Windows, download the zip from [Releases](https://github.com/shinokamix/lopper/releases).
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
+```
 
 ## Usage
 

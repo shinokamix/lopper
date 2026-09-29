@@ -48,8 +48,11 @@ else
 	fail "sha256sum or shasum is needed to verify the download"
 fi
 
+stage=""
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp" ${stage:+"$stage"}' EXIT
+# dash runs the EXIT trap on exit only, not when a signal ends the script.
+trap 'exit 1' HUP INT TERM
 
 archive="lopper_${os}_${arch}.tar.gz"
 echo "Downloading lopper $tag for $os/$arch"
@@ -64,11 +67,13 @@ want=$(awk -v f="$archive" '$2 == f { print $1 }' "$tmp/checksums.txt")
 
 tar -xzf "$tmp/$archive" -C "$tmp" lopper
 mkdir -p "$dir"
-# Renamed into place from the same directory, never written over: a
-# running lopper keeps its file, and no half-copied binary is left behind.
-cp "$tmp/lopper" "$dir/.lopper.new"
-chmod 755 "$dir/.lopper.new"
-mv -f "$dir/.lopper.new" "$dir/lopper"
+# Copied to a file of its own beside the target, then renamed over it: a
+# running lopper keeps its file, two installs at once never write the same
+# one, and a copy cut short is removed on exit.
+stage=$(mktemp "$dir/.lopper.XXXXXX")
+cp "$tmp/lopper" "$stage"
+chmod 755 "$stage"
+mv -f "$stage" "$dir/lopper"
 echo "Installed lopper $tag to $dir/lopper"
 
 case ":$PATH:" in

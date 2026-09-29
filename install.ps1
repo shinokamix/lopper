@@ -17,6 +17,9 @@
 
 	$repo = 'https://github.com/shinokamix/lopper'
 	$dir = if ($env:LOPPER_INSTALL_DIR) { $env:LOPPER_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\lopper' }
+	# Absolute, from PowerShell's location: it goes into PATH, where .\bin
+	# would mean another directory in every terminal.
+	$dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($dir)
 
 	# A 32-bit PowerShell on 64-bit Windows reports x86 here, the system's
 	# architecture in PROCESSOR_ARCHITEW6432.
@@ -61,17 +64,21 @@
 		Expand-Archive "$tmp\$archive" -DestinationPath "$tmp\x"
 		New-Item -ItemType Directory -Force $dir | Out-Null
 		# Copied beside the target, then renamed over it. A running
-		# lopper.exe cannot be replaced, but can be renamed away first.
+		# lopper.exe cannot be replaced or deleted, but can be renamed away;
+		# each install renames it to a name of its own, as the one renamed
+		# before may still run. Those that no longer do are deleted here.
 		Copy-Item "$tmp\x\lopper.exe" $stage
 		$exe = Join-Path $dir 'lopper.exe'
+		Get-ChildItem $dir -Filter '.lopper-*.old' -Force | Remove-Item -Force -ErrorAction SilentlyContinue
+		$old = $null
 		if (Test-Path $exe) {
-			Remove-Item -Force "$exe.old" -ErrorAction SilentlyContinue
-			Move-Item $exe "$exe.old"
+			$old = Join-Path $dir ".lopper-$([Guid]::NewGuid()).old"
+			Move-Item $exe $old
 		}
 		try {
 			Move-Item $stage $exe
 		} catch {
-			if (Test-Path "$exe.old") { Move-Item "$exe.old" $exe }
+			if ($old) { Move-Item $old $exe }
 			throw
 		}
 		Write-Host "Installed lopper $tag to $exe"

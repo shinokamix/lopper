@@ -84,7 +84,7 @@ jobs:
           version: "~> v2"
           args: release --snapshot --clean
 
-  # The install scripts, run against a published release.
+  # The install scripts, run against the latest release.
   install:
     if: github.event_name == 'pull_request'
     strategy:
@@ -92,10 +92,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      # A pre-release is never the latest one. Drop this once v0.1.0 is out,
-      # so that finding the latest release is tested too.
-      LOPPER_VERSION: v0.1.0-rc.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

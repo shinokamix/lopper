@@ -8,6 +8,16 @@ and removes them without losing work.
 
 > Status: early development.
 
+## Install
+
+macOS and Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
+```
+
+On Windows, download the zip from [Releases](https://github.com/shinokamix/lopper/releases).
+
 ## Usage
 
 ```sh

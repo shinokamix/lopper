@@ -61,10 +61,9 @@ func New() (*Updater, error) {
 	}, nil
 }
 
-// Released reports whether version is that of a release. A binary built
-// from source is not: it is "dev", or since Go 1.24 a pseudo-version of
-// its commit such as v0.0.0-20260928234116-02fd2a7054ad, +dirty if the
-// checkout had changes. Replacing it with a release would lose the build.
+// Released reports whether version names a release rather than "dev",
+// a pseudo-version or a dirty build. The caller checks build provenance;
+// a clean local build on a Git tag can have the same version as a release.
 func Released(version string) bool {
 	v := canonical(version)
 	return semver.IsValid(v) && !module.IsPseudoVersion(v) && semver.Build(v) == ""

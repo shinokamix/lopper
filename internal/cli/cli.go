@@ -16,9 +16,9 @@ import (
 	"github.com/shinokamix/lopper/internal/tui"
 )
 
-// NewRoot returns the root command of lopper at version, the release it
-// was built from.
-func NewRoot(version string) *cobra.Command {
+// NewRoot returns the root command. releaseVersion is the installed
+// release version, or "dev" to disable updates for a local build.
+func NewRoot(releaseVersion string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "lopper [path...]",
 		Short: "Find and safely remove stale git worktrees",
@@ -35,7 +35,7 @@ func NewRoot(version string) *cobra.Command {
 			return tui.Run(cmd.Context(), engine.New(), opts)
 		},
 	}
-	root.AddCommand(newScanCmd(), newRmCmd(), newUpdateCmd(version))
+	root.AddCommand(newScanCmd(), newRmCmd(), newUpdateCmd(releaseVersion))
 	return root
 }
 

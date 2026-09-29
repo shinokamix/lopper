@@ -98,20 +98,7 @@ jobs:
           persist-credentials: false
       - name: install.sh
         if: runner.os != 'Windows'
-        run: |
-          export LOPPER_INSTALL_DIR="$RUNNER_TEMP/bin"
-          LOPPER_VERSION=0.1.0-rc.1 sh install.sh # a release pinned without its v
-          "$RUNNER_TEMP/bin/lopper" --version | grep -F ' 0.1.0-rc.1 '
-
-          # The latest replaces it, and a lopper earlier in PATH is warned about.
-          mkdir "$RUNNER_TEMP/other"
-          printf '#!/bin/sh\n' >"$RUNNER_TEMP/other/lopper"
-          chmod +x "$RUNNER_TEMP/other/lopper"
-          PATH="$RUNNER_TEMP/other:$PATH" sh install.sh | tee "$RUNNER_TEMP/out"
-          grep -F "$RUNNER_TEMP/other/lopper comes first in your PATH" "$RUNNER_TEMP/out"
-          version=$("$RUNNER_TEMP/bin/lopper" --version)
-          case "$version" in *rc.1*) echo "the latest release did not replace $version"; exit 1 ;; esac
-          test "$(ls -A "$RUNNER_TEMP/bin")" = lopper # no staging file left
+        run: sh .github/scripts/test-install.sh
       - name: install.ps1 in Windows PowerShell 5.1
         if: runner.os == 'Windows'
         shell: powershell

@@ -31,13 +31,18 @@
 	}
 
 	if ($env:LOPPER_VERSION) {
-		$tag = $env:LOPPER_VERSION
+		# With or without the v of the tag: 0.1.0 is v0.1.0.
+		$tag = 'v' + $env:LOPPER_VERSION.TrimStart('v')
 	} else {
 		# releases/latest redirects to releases/tag/<latest tag>.
 		$req = [Net.WebRequest]::Create("$repo/releases/latest")
 		$req.Method = 'HEAD'
 		$req.AllowAutoRedirect = $false
-		$res = $req.GetResponse()
+		try {
+			$res = $req.GetResponse()
+		} catch {
+			throw "lopper install: cannot reach ${repo}: $($_.Exception.GetBaseException().Message)"
+		}
 		$tag = ([string]$res.Headers['Location']).TrimEnd('/').Split('/')[-1]
 		$res.Close()
 		if ($tag -notlike 'v*') { throw "lopper install: no release found at $repo/releases" }
@@ -49,8 +54,13 @@
 	New-Item -ItemType Directory -Force $tmp | Out-Null
 	try {
 		Write-Host "Downloading lopper $tag for windows/$arch"
-		Invoke-WebRequest -UseBasicParsing "$repo/releases/download/$tag/$archive" -OutFile "$tmp\$archive"
-		Invoke-WebRequest -UseBasicParsing "$repo/releases/download/$tag/checksums.txt" -OutFile "$tmp\checksums.txt"
+		foreach ($asset in $archive, 'checksums.txt') {
+			try {
+				Invoke-WebRequest -UseBasicParsing "$repo/releases/download/$tag/$asset" -OutFile "$tmp\$asset"
+			} catch {
+				throw "lopper install: cannot download $asset of ${tag}: $($_.Exception.Message)"
+			}
+		}
 
 		$want = Get-Content "$tmp\checksums.txt" | ForEach-Object {
 			$sum, $file = $_ -split '  ', 2
@@ -68,6 +78,13 @@
 		# each install renames it to a name of its own, as the one renamed
 		# before may still run. Those that no longer do are deleted here.
 		Copy-Item "$tmp\x\lopper.exe" $stage
+		# Run before it replaces anything: an antivirus may have taken it away.
+		try {
+			& $stage --version | Out-Null
+		} catch {
+			throw "lopper install: the downloaded lopper.exe does not run: $_"
+		}
+		if ($LASTEXITCODE) { throw "lopper install: the downloaded lopper.exe exited with $LASTEXITCODE" }
 		$exe = Join-Path $dir 'lopper.exe'
 		Get-ChildItem $dir -Filter '.lopper-*.old' -Force | Remove-Item -Force -ErrorAction SilentlyContinue
 		$old = $null
@@ -99,5 +116,11 @@
 		[Environment]::SetEnvironmentVariable('LOPPER_INSTALL', $null, 'User')
 		$env:Path = "$env:Path;$dir"
 		Write-Host "Added $dir to your PATH; open a new terminal to run lopper there"
+	}
+
+	# A lopper.exe installed some other way would still run instead.
+	$found = Get-Command lopper -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+	if ($found -and $found.Source -ne $exe) {
+		Write-Warning "$($found.Source) comes first in your PATH: lopper runs it, not $exe"
 	}
 }

@@ -28,7 +28,8 @@ arm64 | aarch64) arch=arm64 ;;
 esac
 
 if [ -n "${LOPPER_VERSION:-}" ]; then
-	tag="$LOPPER_VERSION"
+	# With or without the v of the tag: 0.1.0 is v0.1.0.
+	tag="v${LOPPER_VERSION#v}"
 else
 	# releases/latest redirects to releases/tag/<latest tag>.
 	latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$repo/releases/latest") ||
@@ -73,6 +74,8 @@ mkdir -p "$dir"
 stage=$(mktemp "$dir/.lopper.XXXXXX")
 cp "$tmp/lopper" "$stage"
 chmod 755 "$stage"
+# Run before it replaces anything: $dir may be mounted noexec.
+"$stage" --version >/dev/null || fail "the downloaded lopper does not run"
 mv -f "$stage" "$dir/lopper"
 echo "Installed lopper $tag to $dir/lopper"
 
@@ -80,3 +83,8 @@ case ":$PATH:" in
 *":$dir:"*) ;;
 *) echo "$dir is not in your PATH; add it to run lopper by name" ;;
 esac
+# A lopper installed some other way would still run instead.
+found=$(command -v lopper || true)
+if [ -n "$found" ] && [ "$found" != "$dir/lopper" ]; then
+	echo "$found comes first in your PATH: lopper runs it, not $dir/lopper"
+fi

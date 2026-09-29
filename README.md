@@ -16,11 +16,7 @@ macOS and Linux:
 curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
 ```
 
-This puts `lopper` in `~/.local/bin` after checking it against the release's
-checksums; `LOPPER_INSTALL_DIR` picks another directory and `LOPPER_VERSION`
-another release. On Windows, download the zip from
-[Releases](https://github.com/shinokamix/lopper/releases). With Go:
-`go install github.com/shinokamix/lopper/cmd/lopper@latest`.
+On Windows, download the zip from [Releases](https://github.com/shinokamix/lopper/releases).
 
 ## Usage
 

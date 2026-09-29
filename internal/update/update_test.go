@@ -8,7 +8,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -55,7 +57,7 @@ func updater(t *testing.T, goos string, r release) *Updater {
 	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return &Updater{Repo: "https://github.com/shinokamix/lopper", Client: &http.Client{Transport: r}, Exe: exe, OS: goos, Arch: "arm64"}
+	return &Updater{Repo: "https://github.com/shinokamix/lopper", Client: &http.Client{Transport: r}, Exe: exe, OS: goos, Arch: "arm64", Cache: filepath.Join(t.TempDir(), "lopper")}
 }
 
 func tarball(t *testing.T, content string) []byte {
@@ -261,54 +263,106 @@ func TestReleased(t *testing.T) {
 	}
 }
 
-// The TUI waits for Check before scanning: it must not ask GitHub on
-// every start, offline least of all, yet must learn of a release
-// published since it last asked.
-func TestCheckAsksGitHubAtMostDaily(t *testing.T) {
+// cache keeps tag as what Refresh found age ago.
+func cache(t *testing.T, u *Updater, tag string, age time.Duration) {
+	t.Helper()
+	u.write(latestFile, tag)
+	then := time.Now().Add(-age)
+	if err := os.Chtimes(filepath.Join(u.Cache, latestFile), then, then); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Starting lopper offers what the last Refresh found, so Refresh must
+// ask GitHub often enough to learn of a new release, yet not on every
+// start, and after failing, not again right away.
+func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 	latest := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
 	later := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.9.0")}
 	offline := release{}
 	for _, tc := range []struct {
 		name   string
-		cached string        // what the last check found
+		cached string        // what the last Refresh found
 		age    time.Duration // since it did
 		r      release
 		want   string
 	}{
-		{"asked an hour ago", "v0.3.0", time.Hour, offline, "v0.3.0"},
+		{"asked an hour ago", "v0.3.0", time.Hour, latest, "v0.3.0"},
 		{"asked two days ago", "v0.3.0", 48 * time.Hour, latest, "v0.4.0"},
-		{"offline an hour ago", "", time.Hour, latest, ""},
-		{"offline two days ago", "", 48 * time.Hour, latest, "v0.4.0"},
+		{"offline minutes ago", "", 10 * time.Minute, latest, ""},
+		{"offline two hours ago", "", 2 * time.Hour, latest, "v0.4.0"},
 		{"offline now", "v0.3.0", 48 * time.Hour, offline, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := updater(t, "darwin", tc.r)
-			u.Cache = filepath.Join(t.TempDir(), "lopper", "latest-release")
-			if err := os.MkdirAll(filepath.Dir(u.Cache), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(u.Cache, []byte(tc.cached+"\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			then := time.Now().Add(-tc.age)
-			if err := os.Chtimes(u.Cache, then, then); err != nil {
-				t.Fatal(err)
-			}
-			if got := u.Check(context.Background(), "0.1.0"); got != tc.want {
-				t.Errorf("Check = %q, want %q", got, tc.want)
+			cache(t, u, tc.cached, tc.age)
+			u.Refresh(context.Background())
+			if got := u.Available("0.1.0"); got != tc.want {
+				t.Errorf("Available after Refresh = %q, want %q", got, tc.want)
 			}
 			// What it found is what the next start trusts, without asking.
 			u.Client.Transport = later
-			if got := u.Check(context.Background(), "0.1.0"); got != tc.want {
-				t.Errorf("Check after that = %q, want %q", got, tc.want)
+			u.Refresh(context.Background())
+			if got := u.Available("0.1.0"); got != tc.want {
+				t.Errorf("Available after another Refresh = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestCheckIsQuietWhenUpToDate(t *testing.T) {
-	u := updater(t, "darwin", release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")})
-	if got := u.Check(context.Background(), "0.4.0"); got != "" {
-		t.Errorf("Check on the latest release = %q, want nothing", got)
+// Quitting lopper while Refresh waits for GitHub is not a failure to
+// find a release: the next start asks again, as if never asked before.
+func TestRefreshCutShortKeepsNothing(t *testing.T) {
+	u := updater(t, "darwin", release{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	u.Refresh(ctx)
+	u.Client.Transport = release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
+	u.Refresh(context.Background())
+	if got := u.Available("0.1.0"); got != "v0.4.0" {
+		t.Errorf("Available on the next start = %q, want v0.4.0", got)
+	}
+}
+
+// A skipped release is not offered again, but a later one is.
+func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {
+	u := updater(t, "darwin", release{})
+	cache(t, u, "v0.4.0", time.Hour)
+	if got := u.Available("0.4.0"); got != "" {
+		t.Errorf("Available on the latest release = %q, want nothing", got)
+	}
+	if got := u.Available("0.1.0"); got != "v0.4.0" {
+		t.Errorf("Available = %q, want v0.4.0", got)
+	}
+	u.Skip("v0.4.0")
+	if got := u.Available("0.1.0"); got != "" {
+		t.Errorf("Available after skipping v0.4.0 = %q, want nothing", got)
+	}
+	u.write(latestFile, "v0.5.0")
+	if got := u.Available("0.1.0"); got != "v0.5.0" {
+		t.Errorf("Available once v0.5.0 is out = %q, want v0.5.0", got)
+	}
+}
+
+// Where lopper cannot write, retrying is no use: the error says how to
+// update instead.
+func TestInstallWhereNotWritableSaysHow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a read-only directory stays writable on Windows")
+	}
+	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
+	archive := tarball(t, "new binary")
+	u := updater(t, "darwin", release{
+		dl + "lopper_darwin_arm64.tar.gz": file(archive),
+		dl + "checksums.txt":              file(sums(map[string][]byte{"lopper_darwin_arm64.tar.gz": archive})),
+	})
+	dir := filepath.Dir(u.Exe)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	err := u.Install(context.Background(), "v0.2.0")
+	if !errors.Is(err, fs.ErrPermission) || !strings.HasSuffix(err.Error(), "; run sudo lopper update") {
+		t.Errorf("Install = %v, want a permission error suggesting sudo", err)
 	}
 }

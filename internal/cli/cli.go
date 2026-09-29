@@ -35,7 +35,9 @@ func NewRoot(releaseVersion string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return tui.Run(cmd.Context(), engine.New(), opts, updates(releaseVersion))
+			updates, stop := offerUpdates(cmd.Context(), releaseVersion)
+			defer stop()
+			return tui.Run(cmd.Context(), engine.New(), opts, updates)
 		},
 	}
 	root.AddCommand(newScanCmd(), newRmCmd(), newUpdateCmd(releaseVersion))
@@ -78,20 +80,32 @@ func scanOptions(args []string) (engine.Options, error) {
 	return engine.Options{Roots: roots}, nil
 }
 
-// updates lets the TUI offer a newer release, unless lopper was built
-// from source or LOPPER_NO_UPDATE_CHECK is set.
-func updates(version string) tui.Updates {
+// offerUpdates lets the TUI offer a newer release that an earlier start
+// found, and looks for one in the background until stop, for the next
+// start to offer. It does neither if lopper was built from source or
+// LOPPER_NO_UPDATE_CHECK is set.
+func offerUpdates(ctx context.Context, version string) (updates tui.Updates, stop func()) {
 	if !update.Released(version) || os.Getenv("LOPPER_NO_UPDATE_CHECK") != "" {
-		return tui.Updates{}
+		return tui.Updates{}, func() {}
 	}
 	u, err := update.New()
 	if err != nil {
-		return tui.Updates{}
+		return tui.Updates{}, func() {}
 	}
+	latest := u.Available(version) // before Refresh changes what it reads
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		u.Refresh(ctx)
+	}()
+	stop = func() { cancel(); <-done }
 	return tui.Updates{
 		Current: "v" + strings.TrimPrefix(version, "v"),
+		Latest:  latest,
 		Repo:    update.Repo,
-		Check:   func(ctx context.Context) string { return u.Check(ctx, version) },
 		Install: u.Install,
-	}
+		Skip:    u.Skip,
+		Restart: func() error { stop(); return u.Restart() },
+	}, stop
 }

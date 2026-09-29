@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -41,12 +42,17 @@ type Updater struct {
 	Client   *http.Client
 	Exe      string
 	OS, Arch string
-	// Cache is the file Check keeps the latest release in; "" keeps none.
+	// Cache is the directory Refresh and Skip keep what they learn in;
+	// "" keeps nothing.
 	Cache string
 }
 
-// checkEvery is how long Check trusts the latest release it found.
-const checkEvery = 24 * time.Hour
+// checkEvery is how long Refresh trusts the latest release it found,
+// and retryEvery how long it waits after failing to find one.
+const (
+	checkEvery = 24 * time.Hour
+	retryEvery = time.Hour
+)
 
 // New returns an Updater for the running binary.
 func New() (*Updater, error) {
@@ -65,53 +71,86 @@ func New() (*Updater, error) {
 		Arch:   runtime.GOARCH,
 	}
 	if dir, err := os.UserCacheDir(); err == nil {
-		u.Cache = filepath.Join(dir, "lopper", "latest-release")
+		u.Cache = filepath.Join(dir, "lopper")
 	}
 	return u, nil
 }
 
-// Check returns the latest release if it is newer than current, and ""
-// otherwise. The TUI waits for it before scanning, so it asks GitHub at
-// most once a day and briefly: in between, and offline, it answers with
-// what it found last, which is nothing after a failed attempt.
-func (u *Updater) Check(ctx context.Context, current string) string {
-	latest, fresh := u.cached()
-	if !fresh {
-		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		latest, _ = u.Latest(ctx) // "" if offline: not asked again until tomorrow
-		u.remember(latest)
-	}
+// Available returns the latest release the last Refresh found if it is
+// newer than current and not skipped, and "" otherwise. It reads only
+// the cache, so that starting lopper never waits for the network.
+func (u *Updater) Available(current string) string {
+	latest, _ := u.read(latestFile)
 	if latest == "" || !Newer(current, latest) {
+		return ""
+	}
+	if skipped, _ := u.read(skippedFile); skipped == latest {
 		return ""
 	}
 	return latest
 }
 
-// cached returns the release Check found, and whether it looked less
-// than checkEvery ago.
-func (u *Updater) cached() (tag string, fresh bool) {
-	if u.Cache == "" {
-		return "", false
-	}
-	info, err := os.Stat(u.Cache)
-	if err != nil || time.Since(info.ModTime()) >= checkEvery {
-		return "", false
-	}
-	data, err := os.ReadFile(u.Cache)
-	if tag := strings.TrimSpace(string(data)); err == nil && semver.IsValid(tag) {
-		return tag, true
-	}
-	return "", true
-}
-
-// remember caches what Check found; failing to only means asking again.
-func (u *Updater) remember(tag string) {
+// Refresh asks GitHub for the latest release, for Available to find on
+// the next start, unless it asked recently: a day after it answered, an
+// hour after it did not, so an offline start does not ask each time.
+// Nothing is kept if ctx ends first.
+func (u *Updater) Refresh(ctx context.Context) {
 	if u.Cache == "" {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(u.Cache), 0o700); err == nil {
-		_ = os.WriteFile(u.Cache, []byte(tag+"\n"), 0o600)
+	latest, asked := u.read(latestFile)
+	wait := checkEvery
+	if latest == "" {
+		wait = retryEvery
+	}
+	if time.Since(asked) < wait {
+		return
+	}
+	ask, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	latest, err := u.Latest(ask)
+	if err != nil && ctx.Err() != nil {
+		return // lopper quit: ask on the next start
+	}
+	u.write(latestFile, latest) // "" if offline
+}
+
+// Skip keeps Available from offering release tag again.
+func (u *Updater) Skip(tag string) {
+	u.write(skippedFile, tag)
+}
+
+// Files in Cache.
+const (
+	latestFile  = "latest-release"  // what Refresh found, "" if it failed
+	skippedFile = "skipped-release" // what Skip was told
+)
+
+// read returns the release kept in a file in Cache, if any, and when it
+// was written.
+func (u *Updater) read(name string) (tag string, written time.Time) {
+	if u.Cache == "" {
+		return "", time.Time{}
+	}
+	f := filepath.Join(u.Cache, name)
+	info, err := os.Stat(f)
+	if err != nil {
+		return "", time.Time{}
+	}
+	data, err := os.ReadFile(f)
+	if tag := strings.TrimSpace(string(data)); err == nil && semver.IsValid(tag) {
+		return tag, info.ModTime()
+	}
+	return "", info.ModTime()
+}
+
+// write keeps tag in a file in Cache; failing to only means asking again.
+func (u *Updater) write(name, tag string) {
+	if u.Cache == "" {
+		return
+	}
+	if err := os.MkdirAll(u.Cache, 0o700); err == nil {
+		_ = os.WriteFile(filepath.Join(u.Cache, name), []byte(tag+"\n"), 0o600)
 	}
 }
 
@@ -190,7 +229,14 @@ func (u *Updater) Install(ctx context.Context, tag string) error {
 	if err != nil {
 		return fmt.Errorf("%s of %s: %w", name, tag, err)
 	}
-	return replace(u.Exe, bin, u.OS == "windows")
+	err = replace(u.Exe, bin, u.OS == "windows")
+	if errors.Is(err, fs.ErrPermission) {
+		if u.OS == "windows" {
+			return fmt.Errorf("%w; run lopper update in a terminal opened as administrator", err)
+		}
+		return fmt.Errorf("%w; run sudo lopper update", err)
+	}
+	return err
 }
 
 func (u *Updater) get(ctx context.Context, url string) ([]byte, error) {

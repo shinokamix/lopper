@@ -34,20 +34,19 @@ type app struct {
 	remove  func(ctx context.Context, wt lopper.Worktree, force bool) error
 	measure func(context.Context, lopper.Worktree) *int64
 	updates Updates
-	// checking is true until the check for a newer release is done, and
-	// offer is the update screen, shown then while not nil: the scan
-	// starts after both.
-	checking bool
-	offer    *offer
-	gen      int                // counts scans
-	stop     context.CancelFunc // stops the current scan
-	events   <-chan engine.Event
-	store    *store
-	keys     keyMap
-	theme    theme
-	help     help.Model
-	spin     spinner.Model
-	list     list
+	// offer is the update screen, shown before the scan while not nil;
+	// restart is set to run the installed release once the TUI quits.
+	offer   *offer
+	restart bool
+	gen     int                // counts scans
+	stop    context.CancelFunc // stops the current scan
+	events  <-chan engine.Event
+	store   *store
+	keys    keyMap
+	theme   theme
+	help    help.Model
+	spin    spinner.Model
+	list    list
 	// removal is the removal screen, shown over the list while not nil.
 	removal *removal
 	width   int
@@ -73,19 +72,21 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates U
 		spin:    spinner.New(spinner.WithSpinner(spinner.Dot)),
 		list:    newList(pathAliases()),
 	}
-	if updates.Check != nil {
-		a.checking = true
+	if updates.Latest != "" {
+		a.offer = &offer{tag: updates.Latest}
 	} else {
 		a.startScan(ctx)
 	}
-	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
-	return err
+	if _, err := tea.NewProgram(a, tea.WithContext(ctx)).Run(); err != nil || !a.restart {
+		return err
+	}
+	return updates.Restart()
 }
 
 func (a *app) Init() tea.Cmd {
-	next := a.waitEvent()
-	if a.checking {
-		next = a.checkRelease()
+	var next tea.Cmd
+	if a.offer == nil {
+		next = a.waitEvent()
 	}
 	return tea.Batch(next, tea.RequestBackgroundColor, a.spin.Tick)
 }
@@ -148,13 +149,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case removedMsg:
 		cmd := a.removed(msg)
 		return a, cmd
-	case releaseMsg:
-		a.checking = false
-		if msg.tag == "" {
-			cmd := a.startScanning()
-			return a, cmd
-		}
-		a.offer = &offer{tag: msg.tag}
 	case installedMsg:
 		a.offer.phase, a.offer.err = installed, msg.err
 		if msg.err != nil {
@@ -166,7 +160,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, rm.nextFrame()
 		}
 	case spinner.TickMsg:
-		busy := a.checking || (a.offer != nil && a.offer.phase == installing) ||
+		busy := (a.offer != nil && a.offer.phase == installing) ||
 			(a.offer == nil && a.store.scanning) || (a.removal != nil && a.removal.phase == removing)
 		if !busy {
 			return a, nil // stop ticking
@@ -180,12 +174,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 	case tea.KeyPressMsg:
-		if a.checking {
-			if key.Matches(msg, a.keys.quit) {
-				return a, tea.Quit
-			}
-			return a, nil
-		}
 		if a.offer != nil {
 			cmd := a.offerKey(msg)
 			return a, cmd
@@ -281,8 +269,6 @@ func (a *app) View() tea.View {
 	spin := strings.TrimSpace(a.spin.View())
 	var screen string
 	switch {
-	case a.checking:
-		screen = " " + a.theme.title.Render("lopper") + "\n\n " + a.theme.subtle.Render(spin+" checking for updates…")
 	case a.offer != nil:
 		screen = a.offer.view(a.theme, a.help, a.keys, a.updates, spin, w)
 	case a.removal != nil && a.removal.phase == finished:

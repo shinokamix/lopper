@@ -3,7 +3,10 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -314,36 +317,34 @@ func rawLine(a *app, text string) string {
 	return ""
 }
 
-// updatingApp is the app as Run starts it when a newer release may be
-// out: checking, with no scan yet. scans counts the scans started.
-func updatingApp(t *testing.T, install func(context.Context, string) error) (a *app, scans *int) {
+// updatingApp is the app as Run starts it with release v0.2.0 to offer.
+// scans counts the scans started, skipped the releases skipped.
+func updatingApp(t *testing.T, install func(context.Context, string) error) (a *app, scans *int, skipped *[]string) {
 	a = testApp()
 	a.ctx = t.Context()
-	scans = new(int)
+	scans, skipped = new(int), new([]string)
 	a.scan = func(context.Context) <-chan engine.Event {
 		*scans++
 		ch := make(chan engine.Event)
 		close(ch)
 		return ch
 	}
-	a.updates = Updates{Current: "v0.1.0", Repo: "https://github.com/shinokamix/lopper", Install: install}
-	a.checking = true
+	a.updates = Updates{
+		Current: "v0.1.0", Latest: "v0.2.0", Repo: "https://github.com/shinokamix/lopper",
+		Install: install,
+		Skip:    func(tag string) { *skipped = append(*skipped, tag) },
+	}
+	a.offer = &offer{tag: "v0.2.0"}
 	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
-	return a, scans
+	return a, scans, skipped
 }
 
 // A newer release is offered on its own screen before anything is
-// scanned; skipping it scans with the running version.
+// scanned; skipping it scans with the running version and is remembered.
 func TestNewerReleaseIsOfferedBeforeTheScan(t *testing.T) {
-	a, scans := updatingApp(t, nil)
-	if screen := view(a); !strings.Contains(screen, "checking for updates") || *scans != 0 {
-		t.Fatalf("scan started before the check (%d scans):\n%s", *scans, screen)
-	}
-
-	_, cmd := a.Update(releaseMsg{"v0.2.0"})
-	settle(a, cmd)
+	a, scans, skipped := updatingApp(t, nil)
 	screen := view(a)
-	for _, want := range []string{"lopper v0.2.0", "You have v0.1.0", "https://github.com/shinokamix/lopper/releases/tag/v0.2.0", "enter update", "esc skip"} {
+	for _, want := range []string{"lopper v0.1.0 → v0.2.0", "https://github.com/shinokamix/lopper/releases/tag/v0.2.0", "enter update", "esc skip this version"} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("update screen lacks %q:\n%s", want, screen)
 		}
@@ -356,47 +357,58 @@ func TestNewerReleaseIsOfferedBeforeTheScan(t *testing.T) {
 	if screen := view(a); *scans != 1 || strings.Contains(screen, "v0.2.0") {
 		t.Errorf("skipping did not go on to scan (%d scans):\n%s", *scans, screen)
 	}
-}
-
-func TestScanStartsRightAwayWithoutNewerRelease(t *testing.T) {
-	a, scans := updatingApp(t, nil)
-	_, cmd := a.Update(releaseMsg{""})
-	settle(a, cmd)
-	if screen := view(a); *scans != 1 || strings.Contains(screen, "Update") {
-		t.Errorf("no scan after finding no newer release (%d scans):\n%s", *scans, screen)
+	if !slices.Equal(*skipped, []string{"v0.2.0"}) {
+		t.Errorf("skipped %q, want v0.2.0", *skipped)
 	}
 }
 
 // Enter installs the offered release; a failure says why and enter tries
-// again; once installed, enter scans with the running version.
+// again; once installed, enter restarts into it rather than scanning.
 func TestOfferedReleaseIsInstalledWithEnter(t *testing.T) {
 	var installed []string
-	a, scans := updatingApp(t, func(_ context.Context, tag string) error {
+	a, scans, _ := updatingApp(t, func(_ context.Context, tag string) error {
 		installed = append(installed, tag)
 		if len(installed) == 1 {
-			return errors.New("cannot write to /usr/local/bin: permission denied")
+			return errors.New("download: connection reset")
 		}
 		return nil
 	})
-	a.Update(releaseMsg{"v0.2.0"})
 
 	settle(a, press(a, tea.KeyEnter))
-	if screen := view(a); !strings.Contains(screen, "update failed: cannot write to /usr/local/bin") || !strings.Contains(screen, "enter update") {
+	if screen := view(a); !strings.Contains(screen, "update failed: download: connection reset") || !strings.Contains(screen, "enter update") {
 		t.Errorf("failed install is not shown with a way to retry:\n%s", screen)
 	}
 	settle(a, press(a, tea.KeyEnter))
 	if len(installed) != 2 || installed[1] != "v0.2.0" {
 		t.Fatalf("installed %q, want v0.2.0 again after the failure", installed)
 	}
-	if screen := view(a); !strings.Contains(screen, "Updated to lopper v0.2.0") || strings.Contains(screen, "failed") {
+	if screen := view(a); !strings.Contains(screen, "Updated to lopper v0.2.0") || !strings.Contains(screen, "enter restart") || strings.Contains(screen, "failed") {
 		t.Errorf("finished install is not shown:\n%s", screen)
 	}
-	if *scans != 0 {
-		t.Errorf("scan started before the user moved on")
+	if _, isQuit := press(a, tea.KeyEnter)().(tea.QuitMsg); !isQuit || !a.restart {
+		t.Errorf("enter after the update did not quit to restart")
 	}
+	if *scans != 0 {
+		t.Errorf("scan started though lopper restarts")
+	}
+}
+
+// Where lopper may not write, installing again would fail again: only
+// skipping is offered, with the error saying how to update instead.
+func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
+	var tries int
+	a, _, _ := updatingApp(t, func(context.Context, string) error {
+		tries++
+		return fmt.Errorf("cannot write to /usr/local/bin: %w; run sudo lopper update", fs.ErrPermission)
+	})
 	settle(a, press(a, tea.KeyEnter))
-	if *scans != 1 {
-		t.Errorf("enter after the update did not scan")
+	settle(a, press(a, tea.KeyEnter))
+	screen := view(a)
+	if tries != 1 || strings.Contains(screen, "enter update") || !strings.Contains(screen, "esc skip") {
+		t.Errorf("install without permission is offered again (%d tries):\n%s", tries, screen)
+	}
+	if !strings.Contains(screen, "run sudo lopper update") {
+		t.Errorf("the way to update is not shown:\n%s", screen)
 	}
 }
 

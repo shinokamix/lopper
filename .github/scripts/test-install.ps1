@@ -1,16 +1,10 @@
-# Runs install.ps1, as `irm … | iex` would, against the snapshot in dist/
-# served as a release. It installs to a relative directory, and three
-# times: the second and third time while the lopper.exe each replaces is
+# Runs install.ps1 as `irm … | iex` would: to a relative directory, and
+# three times, the second and third while the lopper.exe each replaces is
 # still running, the one the second replaced included.
 $ErrorActionPreference = 'Stop'
-$server = Start-Process python -ArgumentList '.github/scripts/release-server.py', 'dist', '8765' -PassThru -NoNewWindow
 $running = @()
 try {
-	foreach ($i in 1..50) {
-		try { Invoke-WebRequest -UseBasicParsing -Method Head 'http://127.0.0.1:8765/releases/tag/v0.0.0' | Out-Null; break }
-		catch { Start-Sleep -Milliseconds 200 }
-	}
-	$script = (Get-Content -Raw install.ps1).Replace("'https://github.com/shinokamix/lopper'", "'http://127.0.0.1:8765'")
+	$script = Get-Content -Raw install.ps1
 	$name = "bin-$($PSVersionTable.PSEdition)"
 	$dir = Join-Path $env:RUNNER_TEMP $name
 	Push-Location $env:RUNNER_TEMP
@@ -35,5 +29,4 @@ try {
 	}
 } finally {
 	$running | Stop-Process -ErrorAction SilentlyContinue
-	Stop-Process $server
 }

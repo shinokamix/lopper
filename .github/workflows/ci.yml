@@ -84,7 +84,7 @@ jobs:
           version: "~> v2"
           args: release --snapshot --clean
 
-  # The install scripts, run against the snapshot served as a release.
+  # The install scripts, run against a published release.
   install:
     if: github.event_name == 'pull_request'
     strategy:
@@ -92,26 +92,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # A pre-release is never the latest one. Drop this once v0.1.0 is out,
+      # so that finding the latest release is tested too.
+      LOPPER_VERSION: v0.1.0-rc.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # goreleaser derives the version from tags
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: tools/go.mod
-          cache: false
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          version: "~> v2"
-          args: release --snapshot --clean
       - name: install.sh
         if: runner.os != 'Windows'
         run: |
-          python3 .github/scripts/release-server.py dist 8765 &
-          for _ in $(seq 50); do curl -sfI http://127.0.0.1:8765/releases/tag/v0.0.0 >/dev/null && break; sleep 0.2; done
-          sed 's#^repo="https://github.com/shinokamix/lopper"#repo="http://127.0.0.1:8765"#' install.sh >"$RUNNER_TEMP/install.sh"
-          for _ in 1 2; do LOPPER_INSTALL_DIR="$RUNNER_TEMP/bin" sh "$RUNNER_TEMP/install.sh"; done
+          for _ in 1 2; do LOPPER_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh; done
           "$RUNNER_TEMP/bin/lopper" --version
           test "$(ls -A "$RUNNER_TEMP/bin")" = lopper # no staging file left
       - name: install.ps1 in Windows PowerShell 5.1

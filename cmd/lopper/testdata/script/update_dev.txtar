@@ -1,0 +1,6 @@
+# A binary built from source has no release to compare with: update
+# refuses before reaching the network, and does not replace it.
+
+! exec lopper update
+stderr '(?i)built from source'
+! stdout .

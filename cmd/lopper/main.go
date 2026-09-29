@@ -28,21 +28,27 @@ func run() int {
 	// simply never delivered.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := fang.Execute(ctx, cli.NewRoot(),
-		fang.WithVersion(buildVersion()), fang.WithCommit(commit)); err != nil {
+	v, release := buildVersions()
+	if err := fang.Execute(ctx, cli.NewRoot(release), fang.WithVersion(v), fang.WithCommit(commit)); err != nil {
 		return 1
 	}
 	return 0
 }
 
-// buildVersion falls back to the module version recorded by
-// `go install …@version` when goreleaser did not set one.
-func buildVersion() string {
+// buildVersions returns the displayed version and the version eligible
+// for updates. GoReleaser stamps version; go install records the module
+// version. Local builds record VCS settings, even on a clean release tag.
+func buildVersions() (display, release string) {
 	if version != "dev" {
-		return version
+		return version, version
 	}
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs" {
+				return info.Main.Version, "dev"
+			}
+		}
+		return info.Main.Version, info.Main.Version
 	}
-	return version
+	return version, version
 }

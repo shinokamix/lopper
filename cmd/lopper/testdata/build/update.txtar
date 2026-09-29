@@ -1,0 +1,26 @@
+# Resolve the local module before committing, so the tagged build is clean.
+env GOWORK=off
+env GOPROXY=off
+exec go build -mod=mod -o ../warmup.exe .
+exec git init -q
+exec git add main.go go.mod go.sum
+exec git -c core.hooksPath=empty-hooks -c user.name=lopper -c user.email=test@lopper.invalid commit -qm init
+exec git tag v0.0.1
+exec go build -o ../source.exe .
+
+# A clean tag changes the displayed version, but must not enable updates.
+exec ../source.exe --version
+stdout 'v0.0.1'
+env HTTPS_PROXY=http://127.0.0.1:1
+! exec ../source.exe update
+stderr '(?i)built from source'
+! stdout .
+exec ../source.exe --version
+stdout 'v0.0.1'
+
+# GoReleaser stamps the release version explicitly. That build can update
+# and reaches the network, which this script blocks.
+exec go build -ldflags='-X main.version=0.0.1' -o ../release.exe .
+! exec ../release.exe update
+stderr '(?i)find latest release'
+! stderr '(?i)built from source'

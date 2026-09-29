@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -136,7 +137,7 @@ func TestInstallReplacesBinaryWithTheOneForThisPlatform(t *testing.T) {
 			if got := readExe(t, u); got != "new binary" {
 				t.Errorf("binary after update = %q, want the release's", got)
 			}
-			if tc.goos != "windows" {
+			if runtime.GOOS != "windows" { // no permission bits there
 				if info, err := os.Stat(u.Exe); err != nil || info.Mode().Perm()&0o111 == 0 {
 					t.Errorf("updated binary is not executable: %v %v", info.Mode(), err)
 				}

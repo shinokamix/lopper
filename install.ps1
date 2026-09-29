@@ -62,22 +62,24 @@
 			}
 		}
 
-		$want = Get-Content "$tmp\checksums.txt" | ForEach-Object {
+		# Files are named with -LiteralPath: -Path reads [ and ] as wildcards,
+		# and a Move-Item whose path matches nothing silently does nothing.
+		$want = Get-Content -LiteralPath "$tmp\checksums.txt" | ForEach-Object {
 			$sum, $file = $_ -split '  ', 2
 			if ($file -eq $archive) { $sum }
 		}
 		if (-not $want) { throw "lopper install: $archive is not listed in checksums.txt" }
-		if ((Get-FileHash -Algorithm SHA256 "$tmp\$archive").Hash -ne $want) {
+		if ((Get-FileHash -Algorithm SHA256 -LiteralPath "$tmp\$archive").Hash -ne $want) {
 			throw "lopper install: $archive does not match its checksum"
 		}
 
-		Expand-Archive "$tmp\$archive" -DestinationPath "$tmp\x"
+		Expand-Archive -LiteralPath "$tmp\$archive" -DestinationPath "$tmp\x"
 		New-Item -ItemType Directory -Force $dir | Out-Null
 		# Copied beside the target, then renamed over it. A running
 		# lopper.exe cannot be replaced or deleted, but can be renamed away;
 		# each install renames it to a name of its own, as the one renamed
 		# before may still run. Those that no longer do are deleted here.
-		Copy-Item "$tmp\x\lopper.exe" $stage
+		Copy-Item -LiteralPath "$tmp\x\lopper.exe" $stage
 		# Run before it replaces anything: an antivirus may have taken it away.
 		try {
 			& $stage --version | Out-Null
@@ -86,22 +88,22 @@
 		}
 		if ($LASTEXITCODE) { throw "lopper install: the downloaded lopper.exe exited with $LASTEXITCODE" }
 		$exe = Join-Path $dir 'lopper.exe'
-		Get-ChildItem $dir -Filter '.lopper-*.old' -Force | Remove-Item -Force -ErrorAction SilentlyContinue
+		Get-ChildItem -LiteralPath $dir -Filter '.lopper-*.old' -Force | Remove-Item -Force -ErrorAction SilentlyContinue
 		$old = $null
-		if (Test-Path $exe) {
+		if (Test-Path -LiteralPath $exe) {
 			$old = Join-Path $dir ".lopper-$([Guid]::NewGuid()).old"
-			Move-Item $exe $old
+			Move-Item -LiteralPath $exe $old
 		}
 		try {
-			Move-Item $stage $exe
+			Move-Item -LiteralPath $stage $exe
 		} catch {
-			if ($old) { Move-Item $old $exe }
+			if ($old) { Move-Item -LiteralPath $old $exe }
 			throw
 		}
 		Write-Host "Installed lopper $tag to $exe"
 	} finally {
-		Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
-		Remove-Item -Force $stage -ErrorAction SilentlyContinue
+		Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+		Remove-Item -Force -LiteralPath $stage -ErrorAction SilentlyContinue
 	}
 
 	# The user's PATH is read and written as stored, unexpanded: written
@@ -111,12 +113,16 @@
 	if (($path -split ';') -notcontains $dir) {
 		Set-ItemProperty 'HKCU:\Environment' Path (($path.TrimEnd(';'), $dir) -join ';' -replace '^;') -Type ExpandString
 		# Setting any variable through [Environment] tells running programs,
-		# Explorer among them, to reread the environment; this one goes again.
-		[Environment]::SetEnvironmentVariable('LOPPER_INSTALL', '1', 'User')
-		[Environment]::SetEnvironmentVariable('LOPPER_INSTALL', $null, 'User')
-		$env:Path = "$env:Path;$dir"
+		# Explorer among them, to reread the environment; this one, named so
+		# that it cannot be one of the user's, goes again.
+		$ping = "LOPPER_INSTALL_$([Guid]::NewGuid().ToString('N'))"
+		[Environment]::SetEnvironmentVariable($ping, '1', 'User')
+		[Environment]::SetEnvironmentVariable($ping, $null, 'User')
 		Write-Host "Added $dir to your PATH; open a new terminal to run lopper there"
 	}
+	# This terminal may have been opened before $dir went into PATH, by this
+	# install or an earlier one.
+	if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }
 
 	# A lopper.exe installed some other way would still run instead.
 	$found = Get-Command lopper -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1

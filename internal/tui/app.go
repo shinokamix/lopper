@@ -33,23 +33,30 @@ type app struct {
 	scan    func(context.Context) <-chan engine.Event
 	remove  func(ctx context.Context, wt lopper.Worktree, force bool) error
 	measure func(context.Context, lopper.Worktree) *int64
-	gen     int                // counts scans
-	stop    context.CancelFunc // stops the current scan
-	events  <-chan engine.Event
-	store   *store
-	keys    keyMap
-	theme   theme
-	help    help.Model
-	spin    spinner.Model
-	list    list
+	updates Updates
+	// offer is the update screen, shown before the scan while not nil;
+	// restart is set to run the installed release once the TUI quits.
+	offer    *offer
+	installs installs
+	restart  bool
+	gen      int                // counts scans
+	stop     context.CancelFunc // stops the current scan
+	events   <-chan engine.Event
+	store    *store
+	keys     keyMap
+	theme    theme
+	help     help.Model
+	spin     spinner.Model
+	list     list
 	// removal is the removal screen, shown over the list while not nil.
 	removal *removal
 	width   int
 	height  int
 }
 
-// Run starts the TUI and a scan feeding it.
-func Run(ctx context.Context, eng *engine.Engine, opts engine.Options) error {
+// Run starts the TUI and a scan feeding it, once any newer release has
+// been offered.
+func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates Updates) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -58,19 +65,48 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options) error {
 		scan:    func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
 		remove:  eng.Remove,
 		measure: eng.Measure,
+		updates: updates,
+		store:   newStore(),
 		keys:    defaultKeys(),
 		theme:   newTheme(true),
 		help:    help.New(),
 		spin:    spinner.New(spinner.WithSpinner(spinner.Dot)),
 		list:    newList(pathAliases()),
 	}
-	a.startScan(ctx)
-	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
+	if updates.Latest != "" {
+		a.offer = &offer{tag: updates.Latest}
+	} else {
+		a.startScan(ctx)
+	}
+	if err := a.run(cancel); err != nil || !a.restart {
+		return err
+	}
+	return updates.Restart()
+}
+
+// run runs the TUI until it ends, however it does, then cancels a.ctx
+// and waits for an install that started: once cancelled, only for the
+// binary being put in place, not for the download.
+func (a *app) run(cancel context.CancelFunc, opts ...tea.ProgramOption) error {
+	_, err := tea.NewProgram(a, append(opts, tea.WithContext(a.ctx))...).Run()
+	cancel()
+	a.installs.close()
 	return err
 }
 
 func (a *app) Init() tea.Cmd {
-	return tea.Batch(a.waitEvent(), tea.RequestBackgroundColor, a.spin.Tick)
+	var next tea.Cmd
+	if a.offer == nil {
+		next = a.waitEvent()
+	}
+	return tea.Batch(next, tea.RequestBackgroundColor, a.spin.Tick)
+}
+
+// startScanning leaves the update screen for the list and scans.
+func (a *app) startScanning() tea.Cmd {
+	a.offer = nil
+	a.startScan(a.ctx)
+	return tea.Batch(a.waitEvent(), a.spin.Tick)
 }
 
 // startScan starts a scan into an empty list, stopping the one before.
@@ -124,13 +160,20 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case removedMsg:
 		cmd := a.removed(msg)
 		return a, cmd
+	case installedMsg:
+		a.offer.phase, a.offer.err = installed, msg.err
+		if msg.err != nil {
+			a.offer.phase = offered // to try again, put it off or skip it
+		}
 	case frameMsg:
 		if rm := msg.rm; rm == a.removal && rm.frame < frames {
 			rm.frame++
 			return a, rm.nextFrame()
 		}
 	case spinner.TickMsg:
-		if !a.store.scanning && (a.removal == nil || a.removal.phase != removing) {
+		busy := (a.offer != nil && a.offer.phase == installing) ||
+			(a.offer == nil && a.store.scanning) || (a.removal != nil && a.removal.phase == removing)
+		if !busy {
 			return a, nil // stop ticking
 		}
 		var cmd tea.Cmd
@@ -142,6 +185,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 	case tea.KeyPressMsg:
+		if a.offer != nil {
+			cmd := a.offerKey(msg)
+			return a, cmd
+		}
 		if a.removal != nil {
 			cmd := a.removalKey(msg)
 			return a, cmd
@@ -191,8 +238,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.removal = nil
 		case key.Matches(msg, a.keys.rescan):
 			a.removal = nil
-			a.startScan(a.ctx)
-			return tea.Batch(a.waitEvent(), a.spin.Tick)
+			return a.startScanning()
 		case key.Matches(msg, a.keys.up):
 			rm.offset-- // View keeps it in range
 		case key.Matches(msg, a.keys.down):
@@ -234,6 +280,8 @@ func (a *app) View() tea.View {
 	spin := strings.TrimSpace(a.spin.View())
 	var screen string
 	switch {
+	case a.offer != nil:
+		screen = a.offer.view(a.theme, a.help, a.keys, a.updates, spin, w, max(a.height-1, 1))
 	case a.removal != nil && a.removal.phase == finished:
 		screen = a.removal.summary(a.theme, a.help, a.keys, w, max(a.height-1, 1))
 	case a.removal != nil:

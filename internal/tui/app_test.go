@@ -513,9 +513,18 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	if n := len(plainLines(a)); n > 8 {
 		t.Errorf("%d lines on an 8-line screen:\n%s", n, view(a))
 	}
+	// One line is left for the error: it keeps how to update, as
+	// installing again is not offered.
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 6})
-	if screen := view(a); !strings.Contains(screen, "esc not now") || !strings.Contains(screen, "s skip this version") || !strings.Contains(screen, "q quit") {
-		t.Errorf("after the error, a small screen lost the way out:\n%s", screen)
+	for _, want := range []string{"run sudo lopper update", "esc not now", "s skip this version", "q quit"} {
+		if !strings.Contains(view(a), want) {
+			t.Errorf("after the error, a 34×6 screen lacks %q:\n%s", want, view(a))
+		}
+	}
+	for _, l := range plainLines(a) {
+		if w := ansi.StringWidth(l); w > 34 {
+			t.Errorf("line is %d cells wide on a 34-cell screen: %q", w, l)
+		}
 	}
 	if n := len(plainLines(a)); n > 6 {
 		t.Errorf("%d lines on a 6-line screen:\n%s", n, view(a))

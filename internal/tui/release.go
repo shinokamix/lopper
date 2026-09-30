@@ -204,12 +204,16 @@ func fitParts(parts []part, height, width int) []part {
 		parts = slices.Delete(slices.Clone(parts), least, least+1)
 	}
 	if len(parts) == 1 && len(parts[0].lines) > height {
-		if height <= 0 {
+		l, rank := parts[0].lines, parts[0].rank
+		switch {
+		case height <= 0:
 			return nil
+		case height == 1: // no room for the first line too: only the end is kept
+			end := strings.Join(l, " ")
+			return []part{{[]string{ansi.TruncateLeft(end, ansi.StringWidth(end)-width+1, "…")}, rank}}
 		}
-		l := parts[0].lines
 		head := ansi.Truncate(l[0]+"…", width, "…")
-		parts = []part{{append([]string{head}, l[len(l)-height+1:]...), parts[0].rank}}
+		parts = []part{{append([]string{head}, l[len(l)-height+1:]...), rank}}
 	}
 	return parts
 }

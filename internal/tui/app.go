@@ -163,7 +163,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case installedMsg:
 		a.offer.phase, a.offer.err = installed, msg.err
 		if msg.err != nil {
-			a.offer.phase = offered // to try again, or skip
+			a.offer.phase = offered // to try again, put it off or skip it
 		}
 	case frameMsg:
 		if rm := msg.rm; rm == a.removal && rm.frame < frames {

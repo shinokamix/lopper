@@ -427,57 +427,54 @@ func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	}
 }
 
-// While the release installs, q quits at once and stops the download,
-// which could otherwise hold lopper open for minutes.
-func TestQuitWhileInstallingStopsIt(t *testing.T) {
-	a, _, _ := updatingApp(t, func(ctx context.Context, _ string) error {
-		<-ctx.Done() // a download that never ends
-		return ctx.Err()
-	})
-	install := press(a, tea.KeyEnter)
-	if screen := view(a); !strings.Contains(screen, "installing…") || !strings.Contains(screen, "q quit") {
-		t.Errorf("installing screen does not offer q:\n%s", screen)
-	}
-	if _, isQuit := press(a, 'q')().(tea.QuitMsg); !isQuit || a.restart {
-		t.Error("q did not quit while installing")
-	}
-	done := make(chan struct{})
-	go func() { settle(a, install); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the install went on after q")
-	}
-}
-
 // brokenTerminal fails every read, as a terminal that went away does.
 type brokenTerminal struct{}
 
 func (brokenTerminal) Read([]byte) (int, error) { return 0, errors.New("input/output error") }
 
-// A TUI ended by its terminal failing stops the download as q does,
-// rather than wait for it.
-func TestTerminalErrorWhileInstallingStopsIt(t *testing.T) {
-	started := make(chan struct{})
-	a, _, _ := updatingApp(t, func(ctx context.Context, _ string) error {
-		close(started)
-		<-ctx.Done() // a download that never ends
-		return ctx.Err()
-	})
-	var cancel context.CancelFunc
-	a.ctx, cancel = context.WithCancel(a.ctx)
-	defer cancel()
-	go settle(a, press(a, tea.KeyEnter))
-	<-started
-	done := make(chan error)
-	go func() { done <- a.run(cancel, tea.WithInput(brokenTerminal{}), tea.WithOutput(io.Discard)) }()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Error("TUI ended by a failing terminal reports no error")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the install went on after the terminal failed")
+// However the TUI ends while the release installs, by q or by its
+// terminal failing, it does so at once and stops the download, which
+// could otherwise hold lopper open for minutes.
+func TestEndingWhileInstallingStopsIt(t *testing.T) {
+	typed := func(keys string) io.Reader {
+		r, w := io.Pipe() // left open: only the keys end the TUI
+		go func() { _, _ = w.Write([]byte(keys)) }()
+		return r
+	}
+	for _, tc := range []struct {
+		name    string
+		input   io.Reader
+		failure bool
+	}{
+		{"q", typed("q"), false},
+		{"terminal error", brokenTerminal{}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			started := make(chan struct{})
+			a, _, _ := updatingApp(t, func(ctx context.Context, _ string) error {
+				close(started)
+				<-ctx.Done() // a download that never ends
+				return ctx.Err()
+			})
+			var cancel context.CancelFunc
+			a.ctx, cancel = context.WithCancel(a.ctx)
+			defer cancel()
+			go a.install()()
+			<-started
+			if screen := view(a); !strings.Contains(screen, "installing…") || !strings.Contains(screen, "q quit") {
+				t.Errorf("installing screen does not offer q:\n%s", screen)
+			}
+			done := make(chan error)
+			go func() { done <- a.run(cancel, tea.WithInput(tc.input), tea.WithOutput(io.Discard)) }()
+			select {
+			case err := <-done:
+				if (err != nil) != tc.failure || a.restart {
+					t.Errorf("TUI ended with %v, restart %v", err, a.restart)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the install went on after the TUI ended")
+			}
+		})
 	}
 }
 

@@ -39,8 +39,6 @@ type offer struct {
 	tag   string
 	phase offerPhase
 	err   error // why the last install failed
-	// cancel stops the install while it downloads.
-	cancel context.CancelFunc
 }
 
 type offerPhase int
@@ -57,7 +55,7 @@ func (o *offer) retryable() bool {
 	return !errors.Is(o.err, fs.ErrPermission)
 }
 
-// installs lets Run wait for the install that runs when the TUI quits.
+// installs lets run wait for the install that runs when the TUI quits.
 // On Windows, Install moves lopper away before moving the new binary into
 // its place: exiting between the two would leave neither, so nothing may
 // end the process while it runs, not even a signal that ends the TUI.
@@ -89,11 +87,9 @@ func (s *installs) close() {
 
 // install returns the command installing the offered release.
 func (a *app) install() tea.Cmd {
-	ctx, cancel := context.WithCancel(a.ctx)
-	install, tag, gate := a.updates.Install, a.offer.tag, &a.installs
-	a.offer.phase, a.offer.err, a.offer.cancel = installing, nil, cancel
+	install, ctx, tag, gate := a.updates.Install, a.ctx, a.offer.tag, &a.installs
+	a.offer.phase, a.offer.err = installing, nil
 	return func() tea.Msg {
-		defer cancel()
 		if !gate.start() {
 			return nil
 		}
@@ -105,12 +101,7 @@ func (a *app) install() tea.Cmd {
 func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch o := a.offer; {
 	case key.Matches(msg, a.keys.quit):
-		if o.phase == installing {
-			// Stops the download, so that exiting waits at most for the
-			// binary being put in place.
-			o.cancel()
-		}
-		return tea.Quit
+		return tea.Quit // run stops an install still downloading
 	case o.phase == offered && o.retryable() && key.Matches(msg, a.keys.install):
 		return tea.Batch(a.install(), a.spin.Tick)
 	case o.phase == offered && key.Matches(msg, a.keys.later):

@@ -1,12 +1,22 @@
+<div align="center">
+
 # lopper
 
-Find and safely remove stale git worktrees across your whole machine.
+Find and remove unused Git worktrees.
 
-AI coding agents and `git worktree add` leave checkouts scattered over your
-disk. `lopper` finds them, explains which ones are safe to delete — and why —
-and removes them without losing work.
+[![Release](https://img.shields.io/github/v/release/shinokamix/lopper?style=flat-square&color=8250df)](https://github.com/shinokamix/lopper/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/shinokamix/lopper/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/shinokamix/lopper/actions/workflows/ci.yml)
 
-> Status: early development.
+<img src="docs/demo.gif" alt="lopper removes four merged worktrees and, after a warning, two with uncommitted work" width="800">
+
+</div>
+
+Git worktrees can stay on disk after a task is done, along with their
+dependencies and build output.
+
+lopper finds worktrees across repositories and shows their status and
+disk usage. Choose which ones to remove in the terminal UI. Your branches
+stay in the repository.
 
 ## Install
 
@@ -22,27 +32,38 @@ Windows, in PowerShell:
 irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
 ```
 
+With Go:
+
+```sh
+go install github.com/shinokamix/lopper/cmd/lopper@latest
+```
+
+Binaries are also on the [releases page](https://github.com/shinokamix/lopper/releases/latest).
+
 ## Usage
 
 ```sh
-lopper              # interactive TUI, scans your home and temporary directories
-lopper ~/code       # scan specific paths
-lopper scan --json  # machine-readable output for scripts
-lopper rm ../wt     # remove an existing worktree unless it holds work; --force anyway
-lopper update       # install the latest release over this one
+lopper              # interactive UI, scans home and temporary directories
+lopper ~/code       # scan a specific directory
+lopper scan --json  # JSON output
+lopper rm ../wt     # remove if safe
+lopper update       # update to the latest release
 ```
 
-While it runs, `lopper` checks in the background whether a newer release is
-out and, if so, offers it before scanning the next time you start it. A release
-you put off with `esc` is offered again a day later, and one you skip with `s`
-is not offered again. It asks GitHub at most once a day (an hour
-after it could not reach it), and `LOPPER_NO_UPDATE_CHECK=1` turns this off.
-Nothing else leaves your machine.
+In the TUI, `space` selects a worktree, `d` opens the removal confirmation,
+`enter` confirms and `q` quits. `lopper rm` requires `--force` for unsafe
+worktrees.
+
+## Update checks
+
+lopper checks GitHub for updates in the background.
+Set `LOPPER_NO_UPDATE_CHECK=1` to disable the check.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues go through
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

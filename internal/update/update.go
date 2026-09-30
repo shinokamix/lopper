@@ -229,6 +229,11 @@ func (u *Updater) Install(ctx context.Context, tag string) error {
 	if err != nil {
 		return fmt.Errorf("%s of %s: %w", name, tag, err)
 	}
+	// Once replace starts, it is not stopped: on Windows that could leave
+	// no binary.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	err = replace(u.Exe, bin, u.OS == "windows")
 	if errors.Is(err, fs.ErrPermission) {
 		if u.OS == "windows" {

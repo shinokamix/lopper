@@ -413,28 +413,26 @@ func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	}
 }
 
-// While the release installs, q is offered and quits once it is done:
-// quitting before would leave lopper waiting with nothing on the screen.
-func TestQuitWhileInstallingWaitsForIt(t *testing.T) {
-	a, _, _ := updatingApp(t, func(context.Context, string) error { return nil })
-	press(a, tea.KeyEnter) // the install runs until installedMsg
-	if screen := view(a); !strings.Contains(screen, "q quit after installing") {
+// While the release installs, q quits at once and stops the download,
+// which could otherwise hold lopper open for minutes.
+func TestQuitWhileInstallingStopsIt(t *testing.T) {
+	a, _, _ := updatingApp(t, func(ctx context.Context, _ string) error {
+		<-ctx.Done() // a download that never ends
+		return ctx.Err()
+	})
+	install := press(a, tea.KeyEnter)
+	if screen := view(a); !strings.Contains(screen, "installing…") || !strings.Contains(screen, "q quit") {
 		t.Errorf("installing screen does not offer q:\n%s", screen)
 	}
-	if cmd := press(a, 'q'); cmd != nil {
-		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
-			t.Fatal("q quit while installing")
-		}
+	if _, isQuit := press(a, 'q')().(tea.QuitMsg); !isQuit || a.restart {
+		t.Error("q did not quit while installing")
 	}
-	if screen := view(a); !strings.Contains(screen, "quitting after it") {
-		t.Errorf("screen does not say lopper quits once installed:\n%s", screen)
-	}
-	_, cmd := a.Update(installedMsg{})
-	if cmd == nil {
-		t.Fatal("lopper did not quit once installed")
-	}
-	if _, isQuit := cmd().(tea.QuitMsg); !isQuit || a.restart {
-		t.Errorf("once installed, lopper did not quit without restarting")
+	done := make(chan struct{})
+	go func() { settle(a, install); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the install went on after q")
 	}
 }
 

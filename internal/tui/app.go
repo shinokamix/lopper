@@ -157,9 +157,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.offer.phase = offered // to try again, or skip
 		}
-		if a.offer.quitting {
-			return a, tea.Quit
-		}
 	case frameMsg:
 		if rm := msg.rm; rm == a.removal && rm.frame < frames {
 			rm.frame++

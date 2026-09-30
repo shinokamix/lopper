@@ -213,6 +213,41 @@ func TestInstallKeepsBinaryWhenDownloadIsNotTheReleased(t *testing.T) {
 	}
 }
 
+// cancelAfter cancels the install once path has been downloaded, as
+// quitting lopper does.
+type cancelAfter struct {
+	release
+	path   string
+	cancel context.CancelFunc
+}
+
+func (c cancelAfter) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := c.release.RoundTrip(req)
+	if req.URL.Path == c.path {
+		c.cancel()
+	}
+	return resp, err
+}
+
+// An install cancelled while it downloads does not go on to replace the
+// binary: quitting lopper then leaves the running version.
+func TestInstallCancelledWhileDownloadingKeepsBinary(t *testing.T) {
+	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
+	archive := tarball(t, "new binary")
+	ctx, cancel := context.WithCancel(t.Context())
+	u := updater(t, "darwin", nil)
+	u.Client.Transport = cancelAfter{release{
+		dl + "lopper_darwin_arm64.tar.gz": file(archive),
+		dl + "checksums.txt":              file(sums(map[string][]byte{"lopper_darwin_arm64.tar.gz": archive})),
+	}, dl + "lopper_darwin_arm64.tar.gz", cancel}
+	if err := u.Install(ctx, "v0.2.0"); !errors.Is(err, context.Canceled) {
+		t.Errorf("Install = %v, want it cancelled", err)
+	}
+	if got := readExe(t, u); got != "old binary" {
+		t.Errorf("binary = %q, want it untouched", got)
+	}
+}
+
 func TestLatestFollowsReleasesLatestRedirect(t *testing.T) {
 	u := updater(t, "darwin", release{
 		"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.2.0"),

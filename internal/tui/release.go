@@ -38,8 +38,8 @@ type offer struct {
 	tag   string
 	phase offerPhase
 	err   error // why the last install failed
-	// quitting is set to quit once the release is installed.
-	quitting bool
+	// cancel stops the install while it downloads.
+	cancel context.CancelFunc
 }
 
 type offerPhase int
@@ -88,9 +88,11 @@ func (s *installs) close() {
 
 // install returns the command installing the offered release.
 func (a *app) install() tea.Cmd {
-	install, ctx, tag, gate := a.updates.Install, a.ctx, a.offer.tag, &a.installs
-	a.offer.phase, a.offer.err = installing, nil
+	ctx, cancel := context.WithCancel(a.ctx)
+	install, tag, gate := a.updates.Install, a.offer.tag, &a.installs
+	a.offer.phase, a.offer.err, a.offer.cancel = installing, nil, cancel
 	return func() tea.Msg {
+		defer cancel()
 		if !gate.start() {
 			return nil
 		}
@@ -101,11 +103,12 @@ func (a *app) install() tea.Cmd {
 
 func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch o := a.offer; {
-	case o.phase == installing:
-		// Quit once installed, as quitting now would leave lopper waiting
-		// for it with nothing on the screen.
-		o.quitting = o.quitting || key.Matches(msg, a.keys.quitLater)
 	case key.Matches(msg, a.keys.quit):
+		if o.phase == installing {
+			// Stops the download, so that exiting waits at most for the
+			// binary being put in place.
+			o.cancel()
+		}
 		return tea.Quit
 	case o.phase == offered && o.retryable() && key.Matches(msg, a.keys.install):
 		return tea.Batch(a.install(), a.spin.Tick)
@@ -143,13 +146,8 @@ func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, wi
 			keys = bindings{k.skip, k.quit}
 		}
 	case installing:
-		status := spin + " installing…"
-		if o.quitting {
-			status += " quitting after it"
-		} else {
-			keys = bindings{k.quitLater}
-		}
-		parts = []part{{title, 2}, {wrap(status), 1}}
+		parts = []part{{title, 2}, {wrap(spin + " installing…"), 1}}
+		keys = bindings{k.quit}
 	case installed:
 		parts = []part{{wrap(t.title.Render("Updated to lopper " + o.tag)), 1}, {wrap("Restart lopper to use it."), 2}}
 		keys = bindings{k.restart, k.quit}

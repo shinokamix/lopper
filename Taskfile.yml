@@ -123,3 +123,8 @@ tasks:
       - git -C {{.DIR}}/repo worktree add -q -b unpushed ../wt-unpushed
       - git -C {{.DIR}}/wt-unpushed commit -q --allow-empty -m work
       - echo "fixture ready — try task run -- {{.DIR}}"
+
+  demo:
+    desc: Record the README animation into docs/demo.gif (needs ttyd and ffmpeg)
+    cmds:
+      - go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape

@@ -412,6 +412,62 @@ func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	}
 }
 
+// While the release installs, q is offered and quits once it is done:
+// quitting before would leave lopper waiting with nothing on the screen.
+func TestQuitWhileInstallingWaitsForIt(t *testing.T) {
+	a, _, _ := updatingApp(t, func(context.Context, string) error { return nil })
+	press(a, tea.KeyEnter) // the install runs until installedMsg
+	if screen := view(a); !strings.Contains(screen, "q quit after installing") {
+		t.Errorf("installing screen does not offer q:\n%s", screen)
+	}
+	if cmd := press(a, 'q'); cmd != nil {
+		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
+			t.Fatal("q quit while installing")
+		}
+	}
+	if screen := view(a); !strings.Contains(screen, "quitting after it") {
+		t.Errorf("screen does not say lopper quits once installed:\n%s", screen)
+	}
+	_, cmd := a.Update(installedMsg{})
+	if cmd == nil {
+		t.Fatal("lopper did not quit once installed")
+	}
+	if _, isQuit := cmd().(tea.QuitMsg); !isQuit || a.restart {
+		t.Errorf("once installed, lopper did not quit without restarting")
+	}
+}
+
+// On a small screen, every way out of the update screen stays visible.
+func TestUpdateScreenFitsSmallScreen(t *testing.T) {
+	a, _, _ := updatingApp(t, func(context.Context, string) error {
+		return fmt.Errorf("cannot write to /usr/local/bin: %w; run sudo lopper update", fs.ErrPermission)
+	})
+	a.Update(tea.WindowSizeMsg{Width: 34, Height: 8})
+	lines := plainLines(a)
+	for _, want := range []string{"enter update", "esc skip this version", "q quit"} {
+		if !strings.Contains(view(a), want) {
+			t.Errorf("small update screen lacks %q:\n%s", want, view(a))
+		}
+	}
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > 34 {
+			t.Errorf("line is %d cells wide on a 34-cell screen: %q", w, l)
+		}
+	}
+	if len(lines) > 8 {
+		t.Errorf("%d lines on an 8-line screen:\n%s", len(lines), view(a))
+	}
+
+	settle(a, press(a, tea.KeyEnter))
+	a.Update(tea.WindowSizeMsg{Width: 34, Height: 6})
+	if screen := view(a); !strings.Contains(screen, "esc skip this version") || !strings.Contains(screen, "q quit") {
+		t.Errorf("after the error, a small screen lost the way out:\n%s", screen)
+	}
+	if n := len(plainLines(a)); n > 6 {
+		t.Errorf("%d lines on a 6-line screen:\n%s", n, view(a))
+	}
+}
+
 func plainLines(a *app) []string {
 	return strings.Split(ansi.Strip(a.View().Content), "\n")
 }

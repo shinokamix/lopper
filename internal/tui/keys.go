@@ -8,24 +8,25 @@ type keyMap struct {
 	// On the removal screen.
 	scroll, confirm, stop, rescan, back key.Binding
 	// On the update screen.
-	install, skip, restart key.Binding
+	install, skip, restart, quitLater key.Binding
 }
 
 func defaultKeys() keyMap {
 	return keyMap{
-		up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		toggle:  key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "select")),
-		remove:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove")),
-		quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		scroll:  key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("↑/↓", "scroll")),
-		confirm: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "remove")),
-		stop:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "stop after this one")),
-		rescan:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "scan again")),
-		back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		install: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "update")),
-		skip:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "skip this version")),
-		restart: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restart")),
+		up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		toggle:    key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "select")),
+		remove:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove")),
+		quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		scroll:    key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("↑/↓", "scroll")),
+		confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "remove")),
+		stop:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "stop after this one")),
+		rescan:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "scan again")),
+		back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		install:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "update")),
+		skip:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "skip this version")),
+		restart:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restart")),
+		quitLater: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit after installing")),
 	}
 }
 

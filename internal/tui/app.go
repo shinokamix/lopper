@@ -77,7 +77,9 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates U
 	} else {
 		a.startScan(ctx)
 	}
-	if _, err := tea.NewProgram(a, tea.WithContext(ctx)).Run(); err != nil || !a.restart {
+	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
+	a.offer.waitInstall()
+	if err != nil || !a.restart {
 		return err
 	}
 	return updates.Restart()
@@ -153,6 +155,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.offer.phase, a.offer.err = installed, msg.err
 		if msg.err != nil {
 			a.offer.phase = offered // to try again, or skip
+		}
+		if a.offer.quitting {
+			return a, tea.Quit
 		}
 	case frameMsg:
 		if rm := msg.rm; rm == a.removal && rm.frame < frames {
@@ -270,7 +275,7 @@ func (a *app) View() tea.View {
 	var screen string
 	switch {
 	case a.offer != nil:
-		screen = a.offer.view(a.theme, a.help, a.keys, a.updates, spin, w)
+		screen = a.offer.view(a.theme, a.help, a.keys, a.updates, spin, w, max(a.height-1, 1))
 	case a.removal != nil && a.removal.phase == finished:
 		screen = a.removal.summary(a.theme, a.help, a.keys, w, max(a.height-1, 1))
 	case a.removal != nil:

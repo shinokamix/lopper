@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"strings"
+	"sync"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -38,8 +40,6 @@ type offer struct {
 	err   error // why the last install failed
 	// quitting is set to quit once the release is installed.
 	quitting bool
-	// done is closed once the last install has returned.
-	done chan struct{}
 }
 
 type offerPhase int
@@ -56,24 +56,47 @@ func (o *offer) retryable() bool {
 	return !errors.Is(o.err, fs.ErrPermission)
 }
 
-// waitInstall returns once no install runs. On Windows, Install moves
-// lopper away before moving the new binary into its place: exiting
-// between the two would leave neither, so nothing may end the process
-// while it runs, not even a signal that ends the TUI.
-func (o *offer) waitInstall() {
-	if o != nil && o.done != nil {
-		<-o.done
-	}
+// installs lets Run wait for the install that runs when the TUI quits.
+// On Windows, Install moves lopper away before moving the new binary into
+// its place: exiting between the two would leave neither, so nothing may
+// end the process while it runs, not even a signal that ends the TUI.
+type installs struct {
+	mu      sync.Mutex
+	closed  bool
+	running sync.WaitGroup
 }
 
+// start reports whether an install may start: not once the TUI quit,
+// which may drop the command running it before it does.
+func (s *installs) start() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
+	s.running.Add(1)
+	return true
+}
+
+// close keeps any install from starting and waits for the one running.
+func (s *installs) close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	s.running.Wait()
+}
+
+// install returns the command installing the offered release.
 func (a *app) install() tea.Cmd {
-	install, ctx, tag := a.updates.Install, a.ctx, a.offer.tag
-	done := make(chan struct{})
-	a.offer.phase, a.offer.err, a.offer.done = installing, nil, done
-	return tea.Batch(func() tea.Msg {
-		defer close(done)
+	install, ctx, tag, gate := a.updates.Install, a.ctx, a.offer.tag, &a.installs
+	a.offer.phase, a.offer.err = installing, nil
+	return func() tea.Msg {
+		if !gate.start() {
+			return nil
+		}
+		defer gate.running.Done()
 		return installedMsg{install(ctx, tag)}
-	}, a.spin.Tick)
+	}
 }
 
 func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -85,7 +108,7 @@ func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, a.keys.quit):
 		return tea.Quit
 	case o.phase == offered && o.retryable() && key.Matches(msg, a.keys.install):
-		return a.install()
+		return tea.Batch(a.install(), a.spin.Tick)
 	case o.phase == offered && key.Matches(msg, a.keys.skip):
 		a.updates.Skip(o.tag)
 		return a.startScanning()
@@ -96,50 +119,97 @@ func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// view renders the screen in width and height, keeping the key help
-// whole: without it, there is no telling how to go on.
+// view renders the screen in width and height. The key help is kept
+// whole, as without it there is no telling how to go on; of the rest,
+// what matters least goes first when it does not fit.
 func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, width, height int) string {
 	w := max(width-1, 1) // each line is indented by one
 	wrap := func(s string) []string { return strings.Split(ansi.Wrap(s, w, ""), "\n") }
-	text := append(wrap(t.title.Render("Update available: lopper "+u.Current+" → "+o.tag)), "")
+	title := wrap(t.title.Render("Update available: lopper " + u.Current + " → " + o.tag))
+	var parts []part
 	var keys bindings
 	switch o.phase {
 	case offered:
+		parts = append(parts, part{title, 2})
 		if o.err != nil {
-			text = append(append(text, wrap(t.failure.Render("update failed: "+o.err.Error()))...), "")
+			// Its end may say how to update instead: kept when cut short.
+			parts = append(parts, part{wrap(t.failure.Render("update failed: " + o.err.Error())), 1})
 		}
 		// The link is not wrapped: cut short, it still leads there.
 		notes := u.Repo + "/releases/tag/" + o.tag
-		text = append(text, "What's new:", t.subtle.Hyperlink(notes).Render(notes))
+		parts = append(parts, part{[]string{"What's new:", t.subtle.Hyperlink(notes).Render(notes)}, 3})
 		keys = bindings{k.install, k.skip, k.quit}
 		if !o.retryable() {
 			keys = bindings{k.skip, k.quit}
 		}
 	case installing:
+		status := spin + " installing…"
 		if o.quitting {
-			text = append(text, wrap(spin+" installing… quitting after it")...)
+			status += " quitting after it"
 		} else {
-			text = append(text, wrap(spin+" installing…")...)
 			keys = bindings{k.quitLater}
 		}
+		parts = []part{{title, 2}, {wrap(status), 1}}
 	case installed:
-		text = append(wrap(t.title.Render("Updated to lopper "+o.tag)), "")
-		text = append(text, wrap("Restart lopper to use it.")...)
+		parts = []part{{wrap(t.title.Render("Updated to lopper " + o.tag)), 1}, {wrap("Restart lopper to use it."), 2}}
 		keys = bindings{k.restart, k.quit}
 	}
 
 	keyHelp := helpLines(h, keys, w)
-	if room := height - len(keyHelp) - 1; len(text) > room {
-		text = text[:max(room, 0)]
-		for len(text) > 0 && text[len(text)-1] == "" {
-			text = text[:len(text)-1]
-		}
+	room := height
+	if len(keyHelp) > 0 {
+		room -= len(keyHelp) + 1 // and a blank line above
 	}
-	lines := text
-	if len(text) > 0 && len(keyHelp) > 0 {
+	var lines []string
+	for _, p := range fitParts(parts, room, w) {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, p.lines...)
+	}
+	if len(lines) > 0 && len(keyHelp) > 0 {
 		lines = append(lines, "")
 	}
 	return " " + strings.Join(append(lines, keyHelp...), "\n ")
+}
+
+// part is a paragraph of the update screen, and how much it matters: 1
+// most.
+type part struct {
+	lines []string
+	rank  int
+}
+
+// fitParts drops the parts that matter least until the rest fit in height
+// lines, blank lines between them included. The last one left, if still
+// too long, keeps its first line and its end, which of an error says
+// what to do about it.
+func fitParts(parts []part, height, width int) []part {
+	size := func() int {
+		n := len(parts) - 1
+		for _, p := range parts {
+			n += len(p.lines)
+		}
+		return n
+	}
+	for len(parts) > 1 && size() > height {
+		least := 0
+		for i, p := range parts {
+			if p.rank > parts[least].rank {
+				least = i
+			}
+		}
+		parts = slices.Delete(slices.Clone(parts), least, least+1)
+	}
+	if len(parts) == 1 && len(parts[0].lines) > height {
+		if height <= 0 {
+			return nil
+		}
+		l := parts[0].lines
+		head := ansi.Truncate(l[0]+"…", width, "…")
+		parts = []part{{append([]string{head}, l[len(l)-height+1:]...), parts[0].rank}}
+	}
+	return parts
 }
 
 // helpLines renders keys on one line of width if they fit, and one key

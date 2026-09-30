@@ -36,17 +36,18 @@ type app struct {
 	updates Updates
 	// offer is the update screen, shown before the scan while not nil;
 	// restart is set to run the installed release once the TUI quits.
-	offer   *offer
-	restart bool
-	gen     int                // counts scans
-	stop    context.CancelFunc // stops the current scan
-	events  <-chan engine.Event
-	store   *store
-	keys    keyMap
-	theme   theme
-	help    help.Model
-	spin    spinner.Model
-	list    list
+	offer    *offer
+	installs installs
+	restart  bool
+	gen      int                // counts scans
+	stop     context.CancelFunc // stops the current scan
+	events   <-chan engine.Event
+	store    *store
+	keys     keyMap
+	theme    theme
+	help     help.Model
+	spin     spinner.Model
+	list     list
 	// removal is the removal screen, shown over the list while not nil.
 	removal *removal
 	width   int
@@ -78,7 +79,7 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates U
 		a.startScan(ctx)
 	}
 	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
-	a.offer.waitInstall()
+	a.installs.close()
 	if err != nil || !a.restart {
 		return err
 	}

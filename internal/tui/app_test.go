@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/spinner"
@@ -437,10 +438,11 @@ func TestQuitWhileInstallingWaitsForIt(t *testing.T) {
 	}
 }
 
-// On a small screen, every way out of the update screen stays visible.
+// On a small screen, every way out of the update screen stays visible,
+// and so does what to do about an install that failed.
 func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	a, _, _ := updatingApp(t, func(context.Context, string) error {
-		return fmt.Errorf("cannot write to /usr/local/bin: %w; run sudo lopper update", fs.ErrPermission)
+		return fmt.Errorf("cannot write to /usr/local/bin: open /usr/local/bin/.lopper-update-3141592: %w; run sudo lopper update", fs.ErrPermission)
 	})
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 8})
 	lines := plainLines(a)
@@ -459,6 +461,15 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	}
 
 	settle(a, press(a, tea.KeyEnter))
+	text := strings.Join(strings.Fields(view(a)), " ")
+	for _, want := range []string{"update failed", "run sudo lopper update", "esc skip this version", "q quit"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("after the error, small update screen lacks %q:\n%s", want, view(a))
+		}
+	}
+	if n := len(plainLines(a)); n > 8 {
+		t.Errorf("%d lines on an 8-line screen:\n%s", n, view(a))
+	}
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 6})
 	if screen := view(a); !strings.Contains(screen, "esc skip this version") || !strings.Contains(screen, "q quit") {
 		t.Errorf("after the error, a small screen lost the way out:\n%s", screen)
@@ -466,6 +477,46 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	if n := len(plainLines(a)); n > 6 {
 		t.Errorf("%d lines on a 6-line screen:\n%s", n, view(a))
 	}
+}
+
+// Quitting may drop the command that would install before it runs: then
+// no install starts, and lopper exits rather than wait for it.
+func TestInstallDroppedByQuitNeitherRunsNorHoldsExit(t *testing.T) {
+	var calls int
+	a, _, _ := updatingApp(t, func(context.Context, string) error { calls++; return nil })
+	cmd := a.install()
+	exited := make(chan struct{})
+	go func() { a.installs.close(); close(exited) }()
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exit waits for an install that never started")
+	}
+	if msg := cmd(); msg != nil || calls != 0 {
+		t.Errorf("install ran after the TUI quit: %v, %d calls", msg, calls)
+	}
+}
+
+// An install that started is waited for on exit: on Windows, exiting
+// midway could leave no lopper binary.
+func TestExitWaitsForRunningInstall(t *testing.T) {
+	started, finish := make(chan struct{}), make(chan struct{})
+	a, _, _ := updatingApp(t, func(context.Context, string) error {
+		close(started)
+		<-finish
+		return nil
+	})
+	go a.install()()
+	<-started
+	exited := make(chan struct{})
+	go func() { a.installs.close(); close(exited) }()
+	select {
+	case <-exited:
+		t.Fatal("exit did not wait for the running install")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(finish)
+	<-exited
 }
 
 func plainLines(a *app) []string {

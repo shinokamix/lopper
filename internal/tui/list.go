@@ -36,7 +36,9 @@ type list struct {
 	// it is being typed.
 	query     string
 	searching bool
-	allKeys   bool // the key help lists every key
+	// allKeys shows every key in place of the rows, scrolled by keysOffset.
+	allKeys    bool
+	keysOffset int
 }
 
 func newList(aliases []alias) list {
@@ -221,6 +223,7 @@ func (l *list) targets(s *store) (rows []*row) {
 // row below it, or above when it was the last, instead of to the top. The
 // totals change, so the list shown largest first is ranked again.
 func (l *list) drop(s *store, id lopper.ID) {
+	l.pin(s) // a hidden row the cursor was on is not the one it shows
 	if order := l.ids(s); id == l.cursor {
 		i := l.current(order)
 		switch {
@@ -335,44 +338,61 @@ func (l *list) footer(t theme, s *store, h help.Model, k keyMap, spin string, wi
 }
 
 // keyHelp renders the keys of the list: while searching, those of the
-// search; otherwise the main ones, or every one when asked.
+// search; with every key shown, how to scroll and close them; otherwise
+// the main ones.
 func (l *list) keyHelp(h help.Model, k keyMap) string {
 	if l.searching {
 		return h.ShortHelpView(bindings{k.done, k.clear, k.move})
 	}
-	find := k.search
-	if l.query != "" {
-		find = k.clear
-	}
 	if l.allKeys {
-		less := k.help
-		less.SetHelp("?", "fewer keys")
-		groups := [][]key.Binding{{k.up, k.down, k.toggle}, {k.remove, find, k.sort}, {less, k.quit}}
-		// The groups side by side, or, where they do not fit, one under
-		// another: cut off, a group would hide its keys.
-		width := h.Width()
-		h.SetWidth(0)
-		view := h.FullHelpView(groups)
-		if lipgloss.Width(view) > width { // its widest line
-			var stacked []string
-			for _, g := range groups {
-				stacked = append(stacked, h.FullHelpView([][]key.Binding{g}))
-			}
-			view = strings.Join(stacked, "\n")
-		}
-		return strings.ReplaceAll(view, "\n", "\n ")
+		hide := k.help
+		hide.SetHelp("?", "close")
+		return fitKeys(h, bindings{k.scroll, k.quit}, hide)
 	}
-	// ? comes last and stays: where the others do not all fit, it is how
-	// to find them, so they give way instead, the last first.
-	keys := bindings{k.toggle, k.remove, find, k.sort, k.quit}
+	return fitKeys(h, bindings{k.toggle, k.remove, l.find(k), k.sort, k.quit}, k.help)
+}
+
+// find is the key that searches, or clears the search once there is one.
+func (l *list) find(k keyMap) key.Binding {
+	if l.query != "" {
+		return k.clear
+	}
+	return k.search
+}
+
+// fitKeys renders keys and then last in h.Width() cells. last stays: where
+// the others do not all fit, it is how to find them, so they give way
+// instead, the last first.
+func fitKeys(h help.Model, keys bindings, last key.Binding) string {
 	width := h.Width()
 	h.SetWidth(0) // measured whole, not cut off
 	for ; len(keys) > 0; keys = keys[:len(keys)-1] {
-		if line := h.ShortHelpView(append(keys, k.help)); ansi.StringWidth(line) <= width {
+		if line := h.ShortHelpView(append(keys, last)); ansi.StringWidth(line) <= width {
 			return line
 		}
 	}
-	return h.ShortHelpView(bindings{k.help})
+	return h.ShortHelpView(bindings{last})
+}
+
+// keysView renders every key of the list into height lines, in place of
+// the rows: in groups side by side, or one under another where they do
+// not fit, as cut off a group would hide its keys; scrolled where they
+// are taller than the screen.
+func (l *list) keysView(h help.Model, k keyMap, width, height int) string {
+	groups := [][]key.Binding{{k.up, k.down, k.toggle}, {k.remove, l.find(k), k.sort, k.quit}}
+	h.SetWidth(0)
+	view := h.FullHelpView(groups)
+	if lipgloss.Width(view) > width-1 { // its widest line
+		var stacked []string
+		for _, g := range groups {
+			stacked = append(stacked, h.FullHelpView([][]key.Binding{g}))
+		}
+		view = strings.Join(stacked, "\n")
+	}
+	lines := strings.Split(view, "\n")
+	l.keysOffset = max(min(l.keysOffset, len(lines)-height), 0)
+	lines = lines[l.keysOffset:min(len(lines), l.keysOffset+height)]
+	return " " + strings.Join(lines, "\n ")
 }
 
 // view renders the grouped rows into height lines. It scrolls just

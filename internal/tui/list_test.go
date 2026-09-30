@@ -266,9 +266,8 @@ func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
 }
 
 // The key help shows the main keys, ending with ?, which stays however
-// narrow the screen; ? shows every key, the list making room for them,
-// and ? again hides them. On a narrow screen, every key still shows.
-func TestQuestionMarkShowsEveryKey(t *testing.T) {
+// narrow the screen.
+func TestKeyHelpEndsWithQuestionMark(t *testing.T) {
 	a := searchApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
 	if v := view(a); strings.Contains(v, "↑/k") || !strings.Contains(v, "? more keys") {
@@ -278,28 +277,68 @@ func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	if keys := plainLines(a)[len(plainLines(a))-1]; !strings.HasSuffix(strings.TrimSpace(keys), "? more keys") {
 		t.Errorf("on a narrow screen, ? gave way to other keys: %q", keys)
 	}
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-	press(a, '?')
-	v := strings.Join(strings.Fields(view(a)), " ")
-	for _, want := range []string{"↑/k up", "↓/j down", "space select", "d remove", "/ search", "s sort", "q quit", "? fewer keys"} {
-		if !strings.Contains(v, want) {
-			t.Errorf("every key help lacks %q:\n%s", want, v)
-		}
+}
+
+// ? shows every key in place of the list, within the screen however
+// small: where they do not fit, ↓ scrolls to the rest. ? or esc goes
+// back to the list.
+func TestQuestionMarkShowsEveryKey(t *testing.T) {
+	every := []string{"↑/k up", "↓/j down", "space select", "d remove", "/ search", "s sort", "q quit"}
+	for _, size := range []tea.WindowSizeMsg{{Width: 100, Height: 12}, {Width: 28, Height: 12}} {
+		t.Run(fmt.Sprintf("%dx%d", size.Width, size.Height), func(t *testing.T) {
+			a := searchApp()
+			a.Update(size)
+			press(a, '?')
+			var frames []string
+			for range len(every) {
+				lines := plainLines(a)
+				if len(lines) > size.Height {
+					t.Fatalf("%d lines on a %d-line screen:\n%s", len(lines), size.Height, view(a))
+				}
+				if keys := strings.TrimSpace(lines[len(lines)-1]); !strings.HasSuffix(keys, "? close") {
+					t.Errorf("key help does not say how to close the keys: %q", keys)
+				}
+				frames = append(frames, strings.Join(strings.Fields(view(a)), " "))
+				press(a, tea.KeyDown)
+			}
+			seen := strings.Join(frames, "\n")
+			for _, want := range every {
+				if !strings.Contains(seen, want) {
+					t.Errorf("scrolling through every key never shows %q:\n%s", want, seen)
+				}
+			}
+			if strings.Contains(seen, "fix/typo") {
+				t.Errorf("rows show beside every key:\n%s", seen)
+			}
+
+			press(a, '?')
+			if v := view(a); strings.Contains(v, "↑/k") || !strings.Contains(v, "fix/typo") {
+				t.Errorf("? again does not go back to the list:\n%s", v)
+			}
+		})
 	}
-	if n := len(plainLines(a)); n > 12 {
-		t.Errorf("%d lines on a 12-line screen:\n%s", n, view(a))
-	}
-	press(a, '?')
-	if v := view(a); strings.Contains(v, "↑/k") {
-		t.Errorf("? again does not hide the keys:\n%s", v)
+}
+
+// Removing a selected row the search hides leaves the cursor on the row
+// it shows, which the next d acts on.
+func TestRemovingAHiddenRowKeepsTheCursor(t *testing.T) {
+	a, _ := removalApp(t)
+	sized(a, "match-a", "/r", 30)
+	sized(a, "match-b", "/r", 20)
+	sized(a, "hidden", "/r", 10)
+	press(a, tea.KeyDown)
+	press(a, tea.KeyDown)
+	press(a, ' ') // hidden, the last row: the cursor stays on it
+	typeText(a, "/match")
+	press(a, tea.KeyEnter)
+	if got := statusLine(plainLines(a)); !strings.HasPrefix(got, "/w/match-a ") {
+		t.Fatalf("cursor shows %q, want /w/match-a", got)
 	}
 
-	a.Update(tea.WindowSizeMsg{Width: 28, Height: 30})
-	press(a, '?')
-	v = strings.Join(strings.Fields(view(a)), " ")
-	for _, want := range []string{"↑/k up", "space select", "d remove", "/ search", "s sort", "q quit", "? fewer keys"} {
-		if !strings.Contains(v, want) {
-			t.Errorf("every key help on a 28-cell screen lacks %q:\n%s", want, view(a))
-		}
+	press(a, 'd')
+	settle(a, press(a, tea.KeyEnter))
+	press(a, tea.KeyEscape)
+	if got := statusLine(plainLines(a)); got != "/w/match-a" {
+		t.Errorf("removing the hidden row moved the cursor to %q", got)
 	}
 }

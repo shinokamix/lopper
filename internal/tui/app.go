@@ -235,6 +235,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := a.removalKey(msg)
 			return a, cmd
 		}
+		if a.list.allKeys {
+			cmd := a.keysKey(msg)
+			return a, cmd
+		}
 		if a.list.searching {
 			if msg.String() == "ctrl+c" {
 				return a, tea.Quit
@@ -254,7 +258,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := a.startRanking()
 			return a, cmd
 		case key.Matches(msg, a.keys.help):
-			a.list.allKeys = !a.list.allKeys
+			a.list.allKeys = true
 		case key.Matches(msg, a.keys.remove):
 			if rows := a.list.targets(a.store); len(rows) > 0 {
 				a.removal = newRemoval(rows)
@@ -264,6 +268,22 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return a, nil
+}
+
+// keysKey handles a key while every key is shown: they scroll, and ? or
+// esc goes back to the list.
+func (a *app) keysKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, a.keys.quit):
+		return tea.Quit
+	case key.Matches(msg, a.keys.help), key.Matches(msg, a.keys.back):
+		a.list.allKeys, a.list.keysOffset = false, 0
+	case key.Matches(msg, a.keys.up):
+		a.list.keysOffset-- // View keeps it in range
+	case key.Matches(msg, a.keys.down):
+		a.list.keysOffset++
+	}
+	return nil
 }
 
 func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -327,10 +347,10 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 }
 
 // Screen layout, inside a margin: a blank line, the header and a blank
-// line, the list, then a blank line, the status line and the key help,
-// one line or, with every key, several.
+// line, the list or every key, then a blank line, the status line and the
+// key help.
 const (
-	chromeLines = 4 // above and below the list, not counting the footer
+	chromeLines = 6
 	margin      = 2
 )
 
@@ -346,9 +366,15 @@ func (a *app) View() tea.View {
 	case a.removal != nil:
 		screen = a.removal.view(a.theme, a.help, a.keys, spin, w, max(a.height-1, 1))
 	default:
-		foot := a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
-		body := a.list.view(a.theme, a.store, spin, w, max(a.height-chromeLines-strings.Count(foot, "\n")-1, 1))
-		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" + foot
+		height := max(a.height-chromeLines, 1)
+		var body string
+		if a.list.allKeys {
+			body = a.list.keysView(a.help, a.keys, w, height)
+		} else {
+			body = a.list.view(a.theme, a.store, spin, w, height)
+		}
+		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" +
+			a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
 	}
 	// Scrolling counts one screen line per line: a line wider than the
 	// screen would wrap and push the list down, so none may be.

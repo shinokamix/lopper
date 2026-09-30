@@ -48,10 +48,12 @@ type Updater struct {
 }
 
 // checkEvery is how long Refresh trusts the latest release it found,
-// and retryEvery how long it waits after failing to find one.
+// retryEvery how long it waits after failing to find one, and
+// postponeFor how long Postpone keeps a release from being offered.
 const (
-	checkEvery = 24 * time.Hour
-	retryEvery = time.Hour
+	checkEvery  = 24 * time.Hour
+	retryEvery  = time.Hour
+	postponeFor = 24 * time.Hour
 )
 
 // New returns an Updater for the running binary.
@@ -77,14 +79,18 @@ func New() (*Updater, error) {
 }
 
 // Available returns the latest release the last Refresh found if it is
-// newer than current and not skipped, and "" otherwise. It reads only
-// the cache, so that starting lopper never waits for the network.
+// newer than current, not skipped and not postponed, and "" otherwise.
+// It reads only the cache, so that starting lopper never waits for the
+// network.
 func (u *Updater) Available(current string) string {
 	latest, _ := u.read(latestFile)
 	if latest == "" || !Newer(current, latest) {
 		return ""
 	}
 	if skipped, _ := u.read(skippedFile); skipped == latest {
+		return ""
+	}
+	if postponed, when := u.read(postponedFile); postponed == latest && time.Since(when) < postponeFor {
 		return ""
 	}
 	return latest
@@ -120,10 +126,16 @@ func (u *Updater) Skip(tag string) {
 	u.write(skippedFile, tag)
 }
 
+// Postpone keeps Available from offering release tag for a day.
+func (u *Updater) Postpone(tag string) {
+	u.write(postponedFile, tag)
+}
+
 // Files in Cache.
 const (
-	latestFile  = "latest-release"  // what Refresh found, "" if it failed
-	skippedFile = "skipped-release" // what Skip was told
+	latestFile    = "latest-release"    // what Refresh found, "" if it failed
+	skippedFile   = "skipped-release"   // what Skip was told
+	postponedFile = "postponed-release" // what Postpone was told, and when
 )
 
 // read returns the release kept in a file in Cache, if any, and when it

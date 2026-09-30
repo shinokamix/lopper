@@ -22,8 +22,9 @@ type Updates struct {
 	Repo    string // where release notes are, under releases/tag/<tag>
 	// Install puts release tag in place of the running binary.
 	Install func(ctx context.Context, tag string) error
-	// Skip keeps release tag from being offered again.
-	Skip func(tag string)
+	// Postpone keeps release tag from being offered for a while, and Skip
+	// from being offered again.
+	Postpone, Skip func(tag string)
 	// Restart runs the installed release in place of this process. It
 	// returns only if it fails.
 	Restart func() error
@@ -112,6 +113,9 @@ func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case o.phase == offered && o.retryable() && key.Matches(msg, a.keys.install):
 		return tea.Batch(a.install(), a.spin.Tick)
+	case o.phase == offered && key.Matches(msg, a.keys.later):
+		a.updates.Postpone(o.tag)
+		return a.startScanning()
 	case o.phase == offered && key.Matches(msg, a.keys.skip):
 		a.updates.Skip(o.tag)
 		return a.startScanning()
@@ -141,9 +145,9 @@ func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, wi
 		// The link is not wrapped: cut short, it still leads there.
 		notes := u.Repo + "/releases/tag/" + o.tag
 		parts = append(parts, part{[]string{"What's new:", t.subtle.Hyperlink(notes).Render(notes)}, 3})
-		keys = bindings{k.install, k.skip, k.quit}
+		keys = bindings{k.install, k.later, k.skip, k.quit}
 		if !o.retryable() {
-			keys = bindings{k.skip, k.quit}
+			keys = bindings{k.later, k.skip, k.quit}
 		}
 	case installing:
 		parts = []part{{title, 2}, {wrap(spin + " installing…"), 1}}

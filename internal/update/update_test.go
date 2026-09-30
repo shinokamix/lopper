@@ -379,6 +379,29 @@ func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {
 	}
 }
 
+// A postponed release is offered again a day later, and a later one at
+// once.
+func TestAvailableOffersPostponedReleaseADayLater(t *testing.T) {
+	u := updater(t, "darwin", release{})
+	cache(t, u, "v0.4.0", time.Hour)
+	u.Postpone("v0.4.0")
+	if got := u.Available("0.1.0"); got != "" {
+		t.Errorf("Available right after postponing v0.4.0 = %q, want nothing", got)
+	}
+	then := time.Now().Add(-25 * time.Hour)
+	if err := os.Chtimes(filepath.Join(u.Cache, postponedFile), then, then); err != nil {
+		t.Fatal(err)
+	}
+	if got := u.Available("0.1.0"); got != "v0.4.0" {
+		t.Errorf("Available a day after postponing = %q, want v0.4.0", got)
+	}
+	u.Postpone("v0.4.0")
+	u.write(latestFile, "v0.5.0")
+	if got := u.Available("0.1.0"); got != "v0.5.0" {
+		t.Errorf("Available once v0.5.0 is out = %q, want v0.5.0", got)
+	}
+}
+
 // Where lopper cannot write, retrying is no use: the error says how to
 // update instead.
 func TestInstallWhereNotWritableSaysHow(t *testing.T) {

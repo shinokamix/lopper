@@ -319,11 +319,12 @@ func rawLine(a *app, text string) string {
 }
 
 // updatingApp is the app as Run starts it with release v0.2.0 to offer.
-// scans counts the scans started, skipped the releases skipped.
-func updatingApp(t *testing.T, install func(context.Context, string) error) (a *app, scans *int, skipped *[]string) {
+// scans counts the scans started, put off the releases postponed or
+// skipped, as "postpone <tag>" or "skip <tag>".
+func updatingApp(t *testing.T, install func(context.Context, string) error) (a *app, scans *int, putOff *[]string) {
 	a = testApp()
 	a.ctx = t.Context()
-	scans, skipped = new(int), new([]string)
+	scans, putOff = new(int), new([]string)
 	a.scan = func(context.Context) <-chan engine.Event {
 		*scans++
 		ch := make(chan engine.Event)
@@ -332,34 +333,46 @@ func updatingApp(t *testing.T, install func(context.Context, string) error) (a *
 	}
 	a.updates = Updates{
 		Current: "v0.1.0", Latest: "v0.2.0", Repo: "https://github.com/shinokamix/lopper",
-		Install: install,
-		Skip:    func(tag string) { *skipped = append(*skipped, tag) },
+		Install:  install,
+		Postpone: func(tag string) { *putOff = append(*putOff, "postpone "+tag) },
+		Skip:     func(tag string) { *putOff = append(*putOff, "skip "+tag) },
 	}
 	a.offer = &offer{tag: "v0.2.0"}
 	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
-	return a, scans, skipped
+	return a, scans, putOff
 }
 
 // A newer release is offered on its own screen before anything is
-// scanned; skipping it scans with the running version and is remembered.
+// scanned. Esc puts it off and s skips it: either scans with the running
+// version, and is remembered.
 func TestNewerReleaseIsOfferedBeforeTheScan(t *testing.T) {
-	a, scans, skipped := updatingApp(t, nil)
-	screen := view(a)
-	for _, want := range []string{"lopper v0.1.0 → v0.2.0", "https://github.com/shinokamix/lopper/releases/tag/v0.2.0", "enter update", "esc skip this version"} {
-		if !strings.Contains(screen, want) {
-			t.Errorf("update screen lacks %q:\n%s", want, screen)
-		}
-	}
-	if *scans != 0 {
-		t.Errorf("scan started while the update is offered")
-	}
+	for _, tc := range []struct {
+		key  rune
+		want string
+	}{
+		{tea.KeyEscape, "postpone v0.2.0"},
+		{'s', "skip v0.2.0"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			a, scans, putOff := updatingApp(t, nil)
+			screen := view(a)
+			for _, want := range []string{"lopper v0.1.0 → v0.2.0", "https://github.com/shinokamix/lopper/releases/tag/v0.2.0", "enter update", "esc not now", "s skip this version"} {
+				if !strings.Contains(screen, want) {
+					t.Errorf("update screen lacks %q:\n%s", want, screen)
+				}
+			}
+			if *scans != 0 {
+				t.Errorf("scan started while the update is offered")
+			}
 
-	settle(a, press(a, tea.KeyEscape))
-	if screen := view(a); *scans != 1 || strings.Contains(screen, "v0.2.0") {
-		t.Errorf("skipping did not go on to scan (%d scans):\n%s", *scans, screen)
-	}
-	if !slices.Equal(*skipped, []string{"v0.2.0"}) {
-		t.Errorf("skipped %q, want v0.2.0", *skipped)
+			settle(a, press(a, tc.key))
+			if screen := view(a); *scans != 1 || strings.Contains(screen, "v0.2.0") {
+				t.Errorf("did not go on to scan (%d scans):\n%s", *scans, screen)
+			}
+			if !slices.Equal(*putOff, []string{tc.want}) {
+				t.Errorf("remembered %q, want %q", *putOff, tc.want)
+			}
+		})
 	}
 }
 
@@ -395,7 +408,7 @@ func TestOfferedReleaseIsInstalledWithEnter(t *testing.T) {
 }
 
 // Where lopper may not write, installing again would fail again: only
-// skipping is offered, with the error saying how to update instead.
+// putting it off is offered, with the error saying how to update instead.
 func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	var tries int
 	a, _, _ := updatingApp(t, func(context.Context, string) error {
@@ -405,7 +418,7 @@ func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	settle(a, press(a, tea.KeyEnter))
 	settle(a, press(a, tea.KeyEnter))
 	screen := view(a)
-	if tries != 1 || strings.Contains(screen, "enter update") || !strings.Contains(screen, "esc skip") {
+	if tries != 1 || strings.Contains(screen, "enter update") || !strings.Contains(screen, "esc not now") {
 		t.Errorf("install without permission is offered again (%d tries):\n%s", tries, screen)
 	}
 	if !strings.Contains(screen, "run sudo lopper update") {
@@ -444,7 +457,7 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	})
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 8})
 	lines := plainLines(a)
-	for _, want := range []string{"enter update", "esc skip this version", "q quit"} {
+	for _, want := range []string{"enter update", "esc not now", "s skip this version", "q quit"} {
 		if !strings.Contains(view(a), want) {
 			t.Errorf("small update screen lacks %q:\n%s", want, view(a))
 		}
@@ -460,7 +473,7 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 
 	settle(a, press(a, tea.KeyEnter))
 	text := strings.Join(strings.Fields(view(a)), " ")
-	for _, want := range []string{"update failed", "run sudo lopper update", "esc skip this version", "q quit"} {
+	for _, want := range []string{"update failed", "run sudo lopper update", "esc not now", "s skip this version", "q quit"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("after the error, small update screen lacks %q:\n%s", want, view(a))
 		}
@@ -469,7 +482,7 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 		t.Errorf("%d lines on an 8-line screen:\n%s", n, view(a))
 	}
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 6})
-	if screen := view(a); !strings.Contains(screen, "esc skip this version") || !strings.Contains(screen, "q quit") {
+	if screen := view(a); !strings.Contains(screen, "esc not now") || !strings.Contains(screen, "s skip this version") || !strings.Contains(screen, "q quit") {
 		t.Errorf("after the error, a small screen lost the way out:\n%s", screen)
 	}
 	if n := len(plainLines(a)); n > 6 {

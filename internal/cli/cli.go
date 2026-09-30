@@ -101,11 +101,12 @@ func offerUpdates(ctx context.Context, version string) (updates tui.Updates, sto
 	}()
 	stop = func() { cancel(); <-done }
 	return tui.Updates{
-		Current: "v" + strings.TrimPrefix(version, "v"),
-		Latest:  latest,
-		Repo:    update.Repo,
-		Install: u.Install,
-		Skip:    u.Skip,
-		Restart: func() error { stop(); return u.Restart() },
+		Current:  "v" + strings.TrimPrefix(version, "v"),
+		Latest:   latest,
+		Repo:     update.Repo,
+		Install:  u.Install,
+		Postpone: u.Postpone,
+		Skip:     u.Skip,
+		Restart:  func() error { stop(); return u.Restart() },
 	}, stop
 }

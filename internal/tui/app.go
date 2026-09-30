@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -28,6 +29,15 @@ type eventMsg struct {
 	ev  engine.Event
 }
 
+// rankMsg re-ranks the list shown largest first while a scan goes on: once
+// a second rather than on every size. seq tells which ticking it is from:
+// a newer one replaces it.
+type rankMsg struct{ seq int }
+
+// rankEvery is how often the list shown largest first is re-ranked while
+// a scan goes on.
+const rankEvery = time.Second
+
 type app struct {
 	ctx     context.Context
 	scan    func(context.Context) <-chan engine.Event
@@ -40,6 +50,7 @@ type app struct {
 	installs installs
 	restart  bool
 	gen      int                // counts scans
+	ranking  int                // counts the tickings that re-rank the list
 	stop     context.CancelFunc // stops the current scan
 	events   <-chan engine.Event
 	store    *store
@@ -106,7 +117,7 @@ func (a *app) Init() tea.Cmd {
 func (a *app) startScanning() tea.Cmd {
 	a.offer = nil
 	a.startScan(a.ctx)
-	return tea.Batch(a.waitEvent(), a.spin.Tick)
+	return tea.Batch(a.waitEvent(), a.startRanking(), a.spin.Tick)
 }
 
 // startScan starts a scan into an empty list, stopping the one before.
@@ -118,7 +129,9 @@ func (a *app) startScan(ctx context.Context) {
 	a.gen++
 	a.events = a.scan(ctx)
 	a.store = newStore()
+	bySize := a.list.bySize // the order chosen outlasts the scan
 	a.list = newList(a.list.aliases)
+	a.list.bySize = bySize
 }
 
 // waitEvent bridges the engine channel into Bubble Tea messages.
@@ -132,6 +145,21 @@ func (a *app) waitEvent() tea.Cmd {
 		}
 		return eventMsg{gen, ev}
 	}
+}
+
+// startRanking starts re-ranking the list now and then, when it is shown
+// largest first and a scan goes on.
+func (a *app) startRanking() tea.Cmd {
+	if !a.list.bySize || !a.store.scanning {
+		return nil
+	}
+	a.ranking++
+	return a.nextRank()
+}
+
+func (a *app) nextRank() tea.Cmd {
+	seq := a.ranking
+	return tea.Tick(rankEvery, func(time.Time) tea.Msg { return rankMsg{seq} })
 }
 
 // removeNext removes the next item of the removal screen. One the scan
@@ -155,8 +183,22 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil // from a scan replaced by a new one
 		}
 		a.store.apply(msg.ev)
+		if _, done := msg.ev.(engine.ScanDone); done {
+			a.list.rank(a.store) // the final order, at once
+		}
 		next := a.waitEvent()
 		return a, next
+	case rankMsg:
+		if msg.seq != a.ranking || !a.list.bySize || !a.store.scanning {
+			return a, nil // replaced, or no longer needed: ScanDone ranked it last
+		}
+		a.list.rank(a.store)
+		next := a.nextRank()
+		return a, next
+	case tea.PasteMsg:
+		if a.offer == nil && a.removal == nil && a.list.searching {
+			a.list.search(a.list.query + strings.ReplaceAll(msg.Content, "\n", " "))
+		}
 	case removedMsg:
 		cmd := a.removed(msg)
 		return a, cmd
@@ -193,9 +235,30 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := a.removalKey(msg)
 			return a, cmd
 		}
+		if a.list.allKeys {
+			cmd := a.keysKey(msg)
+			return a, cmd
+		}
+		if a.list.searching {
+			if msg.String() == "ctrl+c" {
+				return a, tea.Quit
+			}
+			a.list.searchKey(msg, a.keys, a.store)
+			return a, nil
+		}
 		switch {
 		case key.Matches(msg, a.keys.quit):
 			return a, tea.Quit
+		case key.Matches(msg, a.keys.search):
+			a.list.searching = true
+		case key.Matches(msg, a.keys.clear) && a.list.query != "":
+			a.list.search("")
+		case key.Matches(msg, a.keys.sort):
+			a.list.sort(a.store)
+			cmd := a.startRanking()
+			return a, cmd
+		case key.Matches(msg, a.keys.help):
+			a.list.allKeys = true
 		case key.Matches(msg, a.keys.remove):
 			if rows := a.list.targets(a.store); len(rows) > 0 {
 				a.removal = newRemoval(rows)
@@ -205,6 +268,22 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return a, nil
+}
+
+// keysKey handles a key while every key is shown: they scroll, and ? or
+// esc goes back to the list.
+func (a *app) keysKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, a.keys.quit):
+		return tea.Quit
+	case key.Matches(msg, a.keys.help), key.Matches(msg, a.keys.back):
+		a.list.allKeys, a.list.keysOffset = false, 0
+	case key.Matches(msg, a.keys.up):
+		a.list.keysOffset-- // View keeps it in range
+	case key.Matches(msg, a.keys.down):
+		a.list.keysOffset++
+	}
+	return nil
 }
 
 func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -268,8 +347,8 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 }
 
 // Screen layout, inside a margin: a blank line, the header and a blank
-// line, the list, then a blank line, the status line and
-// the key help.
+// line, the list or every key, then a blank line, the status line and the
+// key help.
 const (
 	chromeLines = 6
 	margin      = 2
@@ -287,9 +366,15 @@ func (a *app) View() tea.View {
 	case a.removal != nil:
 		screen = a.removal.view(a.theme, a.help, a.keys, spin, w, max(a.height-1, 1))
 	default:
-		body := a.list.view(a.theme, a.store, spin, w, max(a.height-chromeLines, 1))
-		screen = header(a.theme, a.store, a.spin.View(), w) + "\n\n" +
-			body + "\n\n" + a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
+		height := max(a.height-chromeLines, 1)
+		var body string
+		if a.list.allKeys {
+			body = a.list.keysView(a.help, a.keys, w, height)
+		} else {
+			body = a.list.view(a.theme, a.store, spin, w, height)
+		}
+		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" +
+			a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
 	}
 	// Scrolling counts one screen line per line: a line wider than the
 	// screen would wrap and push the list down, so none may be.

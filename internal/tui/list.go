@@ -15,24 +15,62 @@ import (
 )
 
 // list is the worktree list screen. It reads rows from the store and
-// owns its UI state: the cursor, the scroll position and the selection.
+// owns its UI state: the cursor, the scroll position, the selection, the
+// order and the search.
 type list struct {
-	// cursor follows a worktree, not a position: rows are sorted, and a
-	// worktree found later may land above the cursor.
-	cursor   lopper.ID
-	offset   int // first visible line of the body
+	// cursor follows a worktree, not a position: a worktree found later
+	// may land above the cursor.
+	cursor lopper.ID
+	offset int // first visible line of the body
+	// line is the screen line of the cursor row: the row stays on it while
+	// the list changes around it, until the user moves.
+	line     int
+	moved    bool
 	selected map[lopper.ID]bool
 	aliases  []alias // shorten paths, longest directory first
+	// bySize shows the largest worktrees first, as ranked by ranks: a
+	// scan re-ranks them now and then rather than on every size.
+	bySize bool
+	ranks  ranks
+	// query hides the rows that do not match it; searching is set while
+	// it is being typed.
+	query     string
+	searching bool
+	// allKeys shows every key in place of the rows, scrolled by keysOffset.
+	allKeys    bool
+	keysOffset int
 }
 
 func newList(aliases []alias) list {
-	return list{selected: map[lopper.ID]bool{}, aliases: aliases}
+	return list{selected: map[lopper.ID]bool{}, aliases: aliases, moved: true}
 }
 
-// ids returns worktree IDs in display order.
-func ids(s *store) []lopper.ID {
-	var out []lopper.ID
+// groups returns the groups shown: the rows matching the query, in the
+// order found or largest first.
+func (l *list) groups(s *store) []group {
+	terms := strings.Fields(strings.ToLower(l.query))
+	var out []group
 	for _, g := range s.groups() {
+		var rows []*row
+		for _, r := range g.rows {
+			if matches(r, terms) {
+				rows = append(rows, r)
+			}
+		}
+		if len(rows) > 0 {
+			out = append(out, group{repo: g.repo, rows: rows, found: g.found})
+		}
+	}
+	if l.bySize {
+		l.ranks.sort(out)
+	}
+	return out
+}
+
+// ids returns the IDs of the rows shown, in display order.
+func (l *list) ids(s *store) []lopper.ID {
+	var out []lopper.ID
+	for _, g := range l.groups(s) {
 		for _, r := range g.rows {
 			out = append(out, r.worktree.ID)
 		}
@@ -52,7 +90,7 @@ func (l *list) current(order []lopper.ID) int {
 }
 
 func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
-	order := ids(s)
+	order := l.ids(s)
 	if len(order) == 0 {
 		return
 	}
@@ -72,30 +110,121 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 		// its new state at once, and holding space selects a run of rows.
 		i = min(i+1, len(order)-1)
 	}
-	l.cursor = order[i]
+	l.cursor, l.moved = order[i], true
 }
 
-// targets returns what the remove key acts on, in display order: the
-// selected rows, or the row under the cursor when none is selected.
-func (l *list) targets(s *store) (rows []*row) {
-	order := ids(s)
-	if len(order) == 0 {
-		return nil
+// sort switches between the order found and largest first. The cursor
+// row keeps its place on screen while the others move around it.
+func (l *list) sort(s *store) {
+	l.pin(s)
+	l.bySize = !l.bySize
+	l.rank(s)
+}
+
+// rank ranks the rows by their size now, when shown largest first.
+func (l *list) rank(s *store) {
+	if l.bySize {
+		l.pin(s)
+		l.ranks = sizeRanks(s.groups())
 	}
-	cursor := order[l.current(order)]
-	for _, id := range order {
-		if picked := l.selected[id] || len(l.selected) == 0 && id == cursor; !picked {
-			continue
+}
+
+// pin puts the cursor on the worktree it shows, before the rows move: it
+// shows the first row while the user has not moved, and that row may
+// not stay first.
+func (l *list) pin(s *store) {
+	if order := l.ids(s); len(order) > 0 {
+		l.cursor = order[l.current(order)]
+	}
+}
+
+// search changes the query to q.
+func (l *list) search(q string) {
+	l.query, l.moved = q, true
+}
+
+// searchKey handles a key typed into the search: enter keeps the query,
+// esc clears it, the arrows move the cursor and text goes into it.
+func (l *list) searchKey(msg tea.KeyPressMsg, k keyMap, s *store) {
+	switch {
+	case key.Matches(msg, k.done):
+		l.searching = false
+	case key.Matches(msg, k.clear):
+		l.searching = false
+		l.search("")
+	case key.Matches(msg, k.move):
+		l.update(msg, k, s)
+	case msg.Code == tea.KeyBackspace:
+		q := []rune(l.query)
+		l.search(string(q[:max(len(q)-1, 0)]))
+	case msg.Text != "":
+		l.search(l.query + msg.Text)
+	}
+}
+
+// matches reports whether r matches every term: a term matches a row
+// whose branch or path contains it, or with a fact that starts with it
+// once counts are left out, so "merged" matches "merged" and not "not
+// merged", and "unpushed" matches "3 unpushed". "safe" matches the rows
+// safe to delete.
+func matches(r *row, terms []string) bool {
+	for _, term := range terms {
+		if !matchesTerm(r, term) {
+			return false
 		}
-		rows = append(rows, s.byID[id])
+	}
+	return true
+}
+
+func matchesTerm(r *row, term string) bool {
+	if term == "safe" && r.safe {
+		return true
+	}
+	for _, s := range []string{branchName(r.worktree), r.worktree.Path, r.worktree.Repo.Path} {
+		if strings.Contains(strings.ToLower(s), term) {
+			return true
+		}
+	}
+	for _, n := range facts(r) {
+		if strings.HasPrefix(strings.TrimLeft(strings.ToLower(n.Text), "0123456789 "), term) {
+			return true
+		}
+	}
+	return false
+}
+
+// targets returns what the remove key acts on: the selected rows, shown
+// or hidden by the search, or the row under the cursor when none is
+// selected.
+func (l *list) targets(s *store) (rows []*row) {
+	order := l.ids(s)
+	if len(l.selected) == 0 {
+		if len(order) == 0 {
+			return nil
+		}
+		return []*row{s.byID[order[l.current(order)]]}
+	}
+	shown := map[lopper.ID]bool{}
+	for _, id := range order {
+		shown[id] = true
+		if l.selected[id] {
+			rows = append(rows, s.byID[id])
+		}
+	}
+	for _, id := range s.order {
+		if l.selected[id] && !shown[id] {
+			rows = append(rows, s.byID[id])
+		}
 	}
 	return rows
 }
 
 // drop takes a removed worktree off the list. The cursor moves to the
-// row below it, or above when it was the last, instead of to the top.
+// row below it, or above when it was the last, instead of to the top. The
+// totals change, so the list shown largest first is ranked again.
 func (l *list) drop(s *store, id lopper.ID) {
-	if order := ids(s); id == l.cursor {
+	l.pin(s) // a hidden row the cursor was on is not the one it shows
+	if order := l.ids(s); id == l.cursor {
 		i := l.current(order)
 		switch {
 		case i+1 < len(order):
@@ -106,13 +235,15 @@ func (l *list) drop(s *store, id lopper.ID) {
 	}
 	delete(l.selected, id)
 	s.remove(id)
+	l.rank(s)
 }
 
 // Row layout: rows are indented under their repository and drawn on a
 // band one cell wider than the text on each side. The band is faint for
 // selected rows, brighter under the cursor and brightest for a selected
 // row under the cursor, as with range selection in lazygit; the status
-// line shows the cursor row's path.
+// line shows the cursor row's path. The branch column is as wide
+// whatever the branches, so the facts never move as worktrees are found.
 //
 //	 lopper  ~/code                               2 worktrees · 1.5 GB
 //	░  feature/login  merged                                1.2 GB ░
@@ -120,23 +251,49 @@ func (l *list) drop(s *store, id lopper.ID) {
 const (
 	rowIndent = 3
 	sizeWidth = 9
-	// minNameWidth is how much of a branch a narrow screen still shows.
+	// minNameWidth is how much of a branch a narrow screen still shows,
+	// maxNameWidth how much a wide one gives it.
 	minNameWidth = 12
+	maxNameWidth = 40
 )
 
-// header renders the title and the scan status.
-func header(t theme, s *store, spin string, width int) string {
-	title := " " + t.title.Render("lopper")
+// nameWidth is the width of the branch column on a width-wide screen: a
+// third of what the size leaves, so the facts have the rest.
+func nameWidth(width int) int {
+	room := width - rowIndent - 2 - (sizeWidth + 1) - 1
+	return min(max(room/3, minNameWidth), maxNameWidth)
+}
+
+// header renders the title, the search and, at the right end, the order
+// and the scan status.
+func (l *list) header(t theme, s *store, spin string, width int) string {
+	left := " " + t.title.Render("lopper")
+	switch {
+	case l.searching && l.query == "":
+		left += "  / " + t.caret.Render(" ") + t.subtle.Render("branch, path, safe, merged…")
+	case l.searching:
+		left += "  / " + l.query + t.caret.Render(" ")
+	case l.query != "":
+		left += "  / " + l.query
+	}
+	shown, found := len(l.ids(s)), len(s.order)
 	var status string
 	switch {
 	case s.err != nil:
 		status = t.failure.Render("scan failed: " + s.err.Error())
+	case s.scanning && l.query != "":
+		status = t.subtle.Render(fmt.Sprintf("%s scanning · %d of %d found", spin, shown, found))
 	case s.scanning:
-		status = t.subtle.Render(fmt.Sprintf("%s scanning · %d found", spin, len(s.order)))
+		status = t.subtle.Render(fmt.Sprintf("%s scanning · %d found", spin, found))
+	case l.query != "":
+		status = t.subtle.Render(fmt.Sprintf("%d of %s", shown, plural(found, "worktree")))
 	default:
-		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(len(s.order), "worktree"), plural(len(s.groups()), "repository")))
+		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(found, "worktree"), plural(len(s.groups()), "repository")))
 	}
-	return spread(title, status+" ", width)
+	if l.bySize {
+		status = t.subtle.Render("largest first · ") + status
+	}
+	return spread(left, status+" ", width)
 }
 
 // footer renders the status line and the key help below it. The status
@@ -144,18 +301,31 @@ func header(t theme, s *store, spin string, width int) string {
 // end under the size column, what is selected; the help drops the keys
 // that do not fit.
 func (l *list) footer(t theme, s *store, h help.Model, k keyMap, spin string, width int) string {
+	order := l.ids(s)
+	shown := map[lopper.ID]bool{}
+	for _, id := range order {
+		shown[id] = true
+	}
 	var picked []*row
+	hidden := 0
 	for id := range l.selected {
 		if r, ok := s.byID[id]; ok {
 			picked = append(picked, r)
+			if !shown[id] {
+				hidden++
+			}
 		}
 	}
 	right := ""
 	if len(picked) > 0 {
-		right = t.selected.Render(fmt.Sprintf("%d selected · %s", len(picked), sizeText(picked, spin))) + " "
+		n := fmt.Sprintf("%d selected", len(picked))
+		if hidden > 0 {
+			n += fmt.Sprintf(" (%d hidden)", hidden)
+		}
+		right = t.selected.Render(n+" · "+sizeText(picked, spin)) + " "
 	}
 	where := ""
-	if order := ids(s); len(order) > 0 {
+	if len(order) > 0 {
 		wt := s.byID[order[l.current(order)]].worktree
 		room := width - 1 - ansi.StringWidth(right)
 		if right != "" {
@@ -164,30 +334,92 @@ func (l *list) footer(t theme, s *store, h help.Model, k keyMap, spin string, wi
 		where = t.subtle.Render(fitPath(abbrev(wt.Path, l.aliases), max(room, 0)))
 	}
 	h.SetWidth(max(width-2, 0))
-	return spread(" "+where, right, width) + "\n " + h.View(k)
+	return spread(" "+where, right, width) + "\n " + l.keyHelp(h, k)
 }
 
-// view renders the grouped rows into height lines, scrolling just enough
-// to keep the cursor row visible. Sizes still being measured show spin,
-// the spinner's frame.
+// keyHelp renders the keys of the list: while searching, those of the
+// search; with every key shown, how to scroll and close them; otherwise
+// the main ones.
+func (l *list) keyHelp(h help.Model, k keyMap) string {
+	if l.searching {
+		return h.ShortHelpView(bindings{k.done, k.clear, k.move})
+	}
+	if l.allKeys {
+		hide := k.help
+		hide.SetHelp("?", "close")
+		return fitKeys(h, bindings{k.scroll, k.quit}, hide)
+	}
+	return fitKeys(h, bindings{k.toggle, k.remove, l.find(k), k.sort, k.quit}, k.help)
+}
+
+// find is the key that searches, or clears the search once there is one.
+func (l *list) find(k keyMap) key.Binding {
+	if l.query != "" {
+		return k.clear
+	}
+	return k.search
+}
+
+// fitKeys renders keys and then last in h.Width() cells. last stays: where
+// the others do not all fit, it is how to find them, so they give way
+// instead, the last first.
+func fitKeys(h help.Model, keys bindings, last key.Binding) string {
+	width := h.Width()
+	h.SetWidth(0) // measured whole, not cut off
+	for ; len(keys) > 0; keys = keys[:len(keys)-1] {
+		if line := h.ShortHelpView(append(keys, last)); ansi.StringWidth(line) <= width {
+			return line
+		}
+	}
+	return h.ShortHelpView(bindings{last})
+}
+
+// keysView renders every key of the list into height lines, in place of
+// the rows: in groups side by side, or one under another where they do
+// not fit, as cut off a group would hide its keys; scrolled where they
+// are taller than the screen.
+func (l *list) keysView(h help.Model, k keyMap, width, height int) string {
+	groups := [][]key.Binding{{k.up, k.down, k.toggle}, {k.remove, l.find(k), k.sort, k.quit}}
+	h.SetWidth(0)
+	view := h.FullHelpView(groups)
+	if lipgloss.Width(view) > width-1 { // its widest line
+		var stacked []string
+		for _, g := range groups {
+			stacked = append(stacked, h.FullHelpView([][]key.Binding{g}))
+		}
+		view = strings.Join(stacked, "\n")
+	}
+	lines := strings.Split(view, "\n")
+	l.keysOffset = max(min(l.keysOffset, len(lines)-height), 0)
+	lines = lines[l.keysOffset:min(len(lines), l.keysOffset+height)]
+	return " " + strings.Join(lines, "\n ")
+}
+
+// view renders the grouped rows into height lines. It scrolls just
+// enough to keep the cursor row visible when the user moves, and keeps
+// the cursor row on its screen line when the list changes around it.
+// Sizes still being measured show spin, the spinner's frame.
 func (l *list) view(t theme, s *store, spin string, width, height int) string {
-	groups := s.groups()
+	groups := l.groups(s)
 	if len(groups) == 0 {
-		msg := "no worktrees found"
-		if s.scanning {
+		var msg string
+		switch {
+		case l.query != "" && s.scanning:
+			msg = "no matches yet"
+		case l.query != "":
+			msg = "no matches"
+		case s.scanning:
 			msg = "looking for worktrees…"
+		default:
+			msg = "no worktrees found"
 		}
 		return " " + t.subtle.Render(msg)
 	}
-	order := ids(s)
+	order := l.ids(s)
 	cursor := order[l.current(order)]
 
-	var all []*row
-	for _, g := range groups {
-		all = append(all, g.rows...)
-	}
-	names, notes := columns(all)
-
+	names := nameWidth(width)
+	notes := max(width-rowIndent-2-(sizeWidth+1)-1-names, 0)
 	var lines []string
 	var top, at int // the lines that must stay visible: from top to the cursor row
 	for gi, g := range groups {
@@ -207,12 +439,17 @@ func (l *list) view(t theme, s *store, spin string, width, height int) string {
 	}
 
 	// View keeps the scroll position so the list only moves when the
-	// cursor would leave the screen.
-	off := min(l.offset, top)
+	// cursor would leave the screen, or the cursor row on its line when
+	// the user did not move it.
+	off := l.offset
+	if !l.moved {
+		off = at - l.line
+	}
+	off = min(off, top)
 	off = max(off, at-height+1)
 	off = min(off, at) // on a one-line screen, show the cursor row
 	off = max(min(off, len(lines)-height), 0)
-	l.offset = off
+	l.offset, l.line, l.moved = off, at-off, false
 	return strings.Join(lines[off:min(len(lines), off+height)], "\n")
 }
 
@@ -225,7 +462,11 @@ func (l *list) repoLine(t theme, g group, spin string, width int) string {
 	if g.repo.Path == "" {
 		name, where = "unknown repository", ""
 	}
-	right := plural(len(g.rows), "worktree") + " · " + sizeText(g.rows, spin) + " "
+	count := plural(g.found, "worktree")
+	if len(g.rows) < g.found {
+		count = fmt.Sprintf("%d of %s", len(g.rows), count)
+	}
+	right := count + " · " + sizeText(g.rows, spin) + " "
 	room := width - 1 - ansi.StringWidth(name) - 2 - ansi.StringWidth(right) - 2
 	left := " " + t.repo.Render(name)
 	if room >= 8 {
@@ -246,13 +487,17 @@ func columns(rows []*row) (names, notes int) {
 	return names, notes
 }
 
+// rowLine renders a row of the list. A row still being measured is
+// faint until its size arrives.
 func (l *list) rowLine(t theme, r *row, atCursor bool, spin string, names, notes, width int) string {
 	base, name := lipgloss.NewStyle(), lipgloss.NewStyle()
 	if l.selected[r.worktree.ID] {
 		base, name = t.picked, t.selected
+	} else if r.facts.SizeBytes == nil && !r.final {
+		base = base.Faint(true)
 	}
 	if atCursor {
-		base = t.cursor
+		base = base.Inherit(t.cursor)
 		if l.selected[r.worktree.ID] {
 			base = t.pickedCursor
 		}

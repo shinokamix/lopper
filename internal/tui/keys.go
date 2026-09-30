@@ -5,6 +5,10 @@ import "charm.land/bubbles/v2/key"
 // keyMap defines every key binding; help text is generated from it.
 type keyMap struct {
 	up, down, toggle, remove, quit key.Binding
+	// On the list: its order, its search and its key help.
+	sort, search, help key.Binding
+	// While searching.
+	done, clear, move key.Binding
 	// On the removal screen.
 	scroll, confirm, stop, rescan, back key.Binding
 	// On the update screen.
@@ -18,6 +22,12 @@ func defaultKeys() keyMap {
 		toggle:  key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "select")),
 		remove:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove")),
 		quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		sort:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
+		search:  key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "more keys")),
+		done:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "done")),
+		clear:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear search")),
+		move:    key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "move")),
 		scroll:  key.NewBinding(key.WithKeys("up", "k", "down", "j"), key.WithHelp("↑/↓", "scroll")),
 		confirm: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "remove")),
 		stop:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "stop after this one")),
@@ -30,12 +40,7 @@ func defaultKeys() keyMap {
 	}
 }
 
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.up, k.down, k.toggle, k.remove, k.quit}
-}
-func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
-
-// bindings is key help for a screen other than the list.
+// bindings is a set of keys to show help for.
 type bindings []key.Binding
 
 func (b bindings) ShortHelp() []key.Binding  { return b }

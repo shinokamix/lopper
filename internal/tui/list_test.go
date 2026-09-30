@@ -89,6 +89,39 @@ func TestSShowsLargestFirst(t *testing.T) {
 	}
 }
 
+// Sorting moves rows, never the cursor to another worktree: the row
+// under it, even the first one the user has not moved from, is what d
+// acts on after as before.
+func TestSortKeepsTheCursorOnItsWorktree(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	sized(a, "small", "/r/one", 10)
+	sized(a, "large", "/r/two", 1000)
+
+	press(a, 's')
+	if got := statusLine(plainLines(a)); got != "/w/small" {
+		t.Errorf("sorting moved the cursor from small to %q", got)
+	}
+}
+
+// Removing worktrees changes the totals: the list shown largest first is
+// ranked again, not left in the order from before.
+func TestLargestFirstAfterRemoving(t *testing.T) {
+	a, _ := removalApp(t)
+	sized(a, "a-big", "/r/alpha", 1000)
+	sized(a, "a-small", "/r/alpha", 10)
+	sized(a, "b-mid", "/r/beta", 500)
+	a.Update(eventMsg{ev: engine.ScanDone{}})
+	press(a, 's')
+
+	press(a, 'd') // a-big, under the cursor
+	settle(a, press(a, tea.KeyEnter))
+	press(a, tea.KeyEscape)
+	if got, want := order(t, a, "alpha", "beta"), []string{"beta", "alpha"}; !slices.Equal(got, want) {
+		t.Errorf("after removing a-big, largest first shows %q, want beta (500 B) above alpha (10 B):\n%s", got, view(a))
+	}
+}
+
 // Shown largest first while the scan goes on, the list is re-ranked
 // once a second, not on every size, and the row under the cursor stays
 // on its screen line as rows land above it; the end of the scan ranks
@@ -234,7 +267,7 @@ func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
 
 // The key help shows the main keys, ending with ?, which stays however
 // narrow the screen; ? shows every key, the list making room for them,
-// and ? again hides them.
+// and ? again hides them. On a narrow screen, every key still shows.
 func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	a := searchApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
@@ -259,5 +292,14 @@ func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	press(a, '?')
 	if v := view(a); strings.Contains(v, "↑/k") {
 		t.Errorf("? again does not hide the keys:\n%s", v)
+	}
+
+	a.Update(tea.WindowSizeMsg{Width: 28, Height: 30})
+	press(a, '?')
+	v = strings.Join(strings.Fields(view(a)), " ")
+	for _, want := range []string{"↑/k up", "space select", "d remove", "/ search", "s sort", "q quit", "? fewer keys"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("every key help on a 28-cell screen lacks %q:\n%s", want, view(a))
+		}
 	}
 }

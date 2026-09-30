@@ -114,6 +114,7 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 // sort switches between the order found and largest first. The cursor
 // row keeps its place on screen while the others move around it.
 func (l *list) sort(s *store) {
+	l.pin(s)
 	l.bySize = !l.bySize
 	l.rank(s)
 }
@@ -121,7 +122,17 @@ func (l *list) sort(s *store) {
 // rank ranks the rows by their size now, when shown largest first.
 func (l *list) rank(s *store) {
 	if l.bySize {
+		l.pin(s)
 		l.ranks = sizeRanks(s.groups())
+	}
+}
+
+// pin puts the cursor on the worktree it shows, before the rows move: it
+// shows the first row while the user has not moved, and that row may
+// not stay first.
+func (l *list) pin(s *store) {
+	if order := l.ids(s); len(order) > 0 {
+		l.cursor = order[l.current(order)]
 	}
 }
 
@@ -207,7 +218,8 @@ func (l *list) targets(s *store) (rows []*row) {
 }
 
 // drop takes a removed worktree off the list. The cursor moves to the
-// row below it, or above when it was the last, instead of to the top.
+// row below it, or above when it was the last, instead of to the top. The
+// totals change, so the list shown largest first is ranked again.
 func (l *list) drop(s *store, id lopper.ID) {
 	if order := l.ids(s); id == l.cursor {
 		i := l.current(order)
@@ -220,6 +232,7 @@ func (l *list) drop(s *store, id lopper.ID) {
 	}
 	delete(l.selected, id)
 	s.remove(id)
+	l.rank(s)
 }
 
 // Row layout: rows are indented under their repository and drawn on a
@@ -334,12 +347,20 @@ func (l *list) keyHelp(h help.Model, k keyMap) string {
 	if l.allKeys {
 		less := k.help
 		less.SetHelp("?", "fewer keys")
-		lines := strings.Split(h.FullHelpView([][]key.Binding{
-			{k.up, k.down, k.toggle},
-			{k.remove, find, k.sort},
-			{less, k.quit},
-		}), "\n")
-		return strings.Join(lines, "\n ")
+		groups := [][]key.Binding{{k.up, k.down, k.toggle}, {k.remove, find, k.sort}, {less, k.quit}}
+		// The groups side by side, or, where they do not fit, one under
+		// another: cut off, a group would hide its keys.
+		width := h.Width()
+		h.SetWidth(0)
+		view := h.FullHelpView(groups)
+		if lipgloss.Width(view) > width { // its widest line
+			var stacked []string
+			for _, g := range groups {
+				stacked = append(stacked, h.FullHelpView([][]key.Binding{g}))
+			}
+			view = strings.Join(stacked, "\n")
+		}
+		return strings.ReplaceAll(view, "\n", "\n ")
 	}
 	// ? comes last and stays: where the others do not all fit, it is how
 	// to find them, so they give way instead, the last first.

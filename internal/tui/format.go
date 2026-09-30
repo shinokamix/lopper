@@ -10,19 +10,14 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// facts is what a row shows about its worktree. "merged" gets its color
-// only on a safe row: users delete merged rows without looking closer.
+// facts is what a row shows about its worktree. "merged" is in its color
+// whether or not the row is safe, as on GitHub: work that would be lost
+// comes first, in its own color.
 func facts(r *row) []lopper.Note {
 	if !r.checked {
 		return []lopper.Note{{Text: "checking…"}}
 	}
-	notes := lopper.Notes(r.worktree, r.facts)
-	for i, n := range notes {
-		if n.Kind == lopper.NoteMerged && !r.safe {
-			notes[i].Kind = lopper.NotePlain
-		}
-	}
-	return notes
+	return lopper.Notes(r.worktree, r.facts)
 }
 
 // noteSep separates the notes of a row.

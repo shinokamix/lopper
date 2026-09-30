@@ -3,7 +3,6 @@ package tui
 import (
 	"cmp"
 	"slices"
-	"strings"
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -60,15 +59,14 @@ func (s *store) apply(ev engine.Event) {
 
 // group is the worktrees of one repository.
 type group struct {
-	repo lopper.Repo
-	rows []*row
+	repo  lopper.Repo
+	rows  []*row
+	found int // worktrees found in the repository, shown or not
 }
 
-// groups returns rows grouped by repository, largest first: groups by
-// their total size and rows within a group by their own, so what frees
-// the most space is on top. Sizes still being measured count as zero;
-// names break ties, keeping the order stable until sizes arrive.
-// TODO: filtering, other sort orders.
+// groups returns rows grouped by repository in the order they were
+// found: a row, once shown, keeps its place as facts arrive, and new
+// rows and repositories are added at the end.
 func (s *store) groups() []group {
 	if s.grouped == nil {
 		s.grouped = s.group()
@@ -77,44 +75,71 @@ func (s *store) groups() []group {
 }
 
 func (s *store) group() []group {
-	byRepo := map[string]*group{}
-	var out []*group
+	byRepo := map[string]int{}
+	var out []group
 	for _, id := range s.order {
 		r := s.byID[id]
-		g, ok := byRepo[r.worktree.Repo.Path]
+		i, ok := byRepo[r.worktree.Repo.Path]
 		if !ok {
-			g = &group{repo: r.worktree.Repo}
-			byRepo[r.worktree.Repo.Path] = g
-			out = append(out, g)
+			i = len(out)
+			byRepo[r.worktree.Repo.Path] = i
+			out = append(out, group{repo: r.worktree.Repo})
 		}
-		g.rows = append(g.rows, r)
+		out[i].rows = append(out[i].rows, r)
+		out[i].found++
 	}
-	for _, g := range out {
-		slices.SortFunc(g.rows, func(a, b *row) int {
-			return cmp.Or(
-				cmp.Compare(sizeOf(b), sizeOf(a)),
-				cmp.Compare(branchName(a.worktree), branchName(b.worktree)),
-				cmp.Compare(a.worktree.Path, b.worktree.Path))
+	return out
+}
+
+// ranks is a display order: the place of each worktree in its group and
+// of each group, by repository path. Those ranked later go last.
+type ranks struct {
+	rows  map[lopper.ID]int
+	repos map[string]int
+}
+
+// sizeRanks ranks groups largest first: groups by the total of their
+// known sizes and rows within a group by their own, so what frees the
+// most space is on top. Rows still being measured go after the measured
+// ones; ties keep the order found.
+func sizeRanks(groups []group) ranks {
+	rk := ranks{rows: map[lopper.ID]int{}, repos: map[string]int{}}
+	totals := map[string]int64{}
+	measured := func(r *row) int64 { // -1 while unknown, after every size
+		if r.facts.SizeBytes == nil {
+			return -1
+		}
+		return *r.facts.SizeBytes
+	}
+	for _, g := range groups {
+		rows := slices.Clone(g.rows)
+		slices.SortStableFunc(rows, func(a, b *row) int { return cmp.Compare(measured(b), measured(a)) })
+		for i, r := range rows {
+			rk.rows[r.worktree.ID] = i
+			totals[g.repo.Path] += sizeOf(r)
+		}
+	}
+	byTotal := slices.Clone(groups)
+	slices.SortStableFunc(byTotal, func(a, b group) int {
+		return cmp.Compare(totals[b.repo.Path], totals[a.repo.Path])
+	})
+	for i, g := range byTotal {
+		rk.repos[g.repo.Path] = i
+	}
+	return rk
+}
+
+// sort orders groups and their rows by rk in place; those it does not
+// rank, found since, go last in the order found.
+func (rk ranks) sort(groups []group) {
+	for _, g := range groups {
+		slices.SortStableFunc(g.rows, func(a, b *row) int {
+			return cmp.Compare(rankOf(rk.rows, a.worktree.ID), rankOf(rk.rows, b.worktree.ID))
 		})
 	}
-	total := func(g *group) int64 {
-		var n int64
-		for _, r := range g.rows {
-			n += sizeOf(r)
-		}
-		return n
-	}
-	slices.SortFunc(out, func(a, b *group) int {
-		return cmp.Or(
-			cmp.Compare(total(b), total(a)),
-			cmp.Compare(strings.ToLower(repoName(a.repo.Path)), strings.ToLower(repoName(b.repo.Path))),
-			cmp.Compare(a.repo.Path, b.repo.Path))
+	slices.SortStableFunc(groups, func(a, b group) int {
+		return cmp.Compare(rankOf(rk.repos, a.repo.Path), rankOf(rk.repos, b.repo.Path))
 	})
-	groups := make([]group, len(out))
-	for i, g := range out {
-		groups[i] = *g
-	}
-	return groups
 }
 
 // sizeOf is a row's size, zero while unknown.
@@ -158,4 +183,12 @@ func totalSize(rows []*row) *int64 {
 		*total += *r.facts.SizeBytes
 	}
 	return total
+}
+
+// rankOf is the rank of k in m, after all of them when it has none.
+func rankOf[K comparable](m map[K]int, k K) int {
+	if i, ok := m[k]; ok {
+		return i
+	}
+	return len(m)
 }

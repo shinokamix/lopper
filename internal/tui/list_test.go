@@ -1,0 +1,263 @@
+package tui
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/shinokamix/lopper/internal/engine"
+	"github.com/shinokamix/lopper/internal/lopper"
+)
+
+// sized reports worktree id of repository repo, measured at size.
+func sized(a *app, id, repo string, size int64) {
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: lopper.ID(id), Path: "/w/" + id, Branch: id, Repo: lopper.Repo{Path: repo},
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(id), Facts: lopper.Facts{SizeBytes: &size}}})
+}
+
+// typeText types s as a terminal sends it, one key per character.
+func typeText(a *app, s string) {
+	for _, c := range s {
+		a.Update(tea.KeyPressMsg{Code: c, Text: string(c)})
+	}
+}
+
+// order returns the lines of the view that contain the texts, in the
+// order they are shown.
+func order(t *testing.T, a *app, texts ...string) []string {
+	t.Helper()
+	lines := plainLines(a)
+	slices.SortStableFunc(texts, func(x, y string) int { return lineWith(t, lines, x) - lineWith(t, lines, y) })
+	return texts
+}
+
+// Rows stay where they were found while the scan fills them in: a size
+// arriving does not move a row, and a longer branch found later does not
+// push the facts of the others aside.
+func TestRowsHoldStillWhileTheScanGoesOn(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "small", Branch: "small", Repo: lopper.Repo{Path: "/r/one"}}}})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "large", Branch: "large", Repo: lopper.Repo{Path: "/r/two"}}}})
+	lines := plainLines(a)
+	at := lineWith(t, lines, "small")
+	factsAt := strings.Index(lines[at], "checking…")
+
+	size := int64(2_000_000_000)
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "large", Facts: lopper.Facts{SizeBytes: &size}}})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "long", Branch: "feature/a-branch-longer-than-any-before", Repo: lopper.Repo{Path: "/r/two"}}}})
+
+	lines = plainLines(a)
+	if now := lineWith(t, lines, "small"); now != at {
+		t.Errorf("row moved from line %d to %d as the scan went on:\n%s", at, now, strings.Join(lines, "\n"))
+	}
+	if now := strings.Index(lines[at], "checking…"); now != factsAt {
+		t.Errorf("facts moved from column %d to %d when a longer branch was found:\n%s", factsAt, now, strings.Join(lines, "\n"))
+	}
+}
+
+// s shows the largest worktrees first, groups by their total and rows
+// by their own, with the rows still being measured after the others; s
+// again returns to the order found.
+func TestSShowsLargestFirst(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	sized(a, "a-one", "/r/alpha", 100)
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a-new", Branch: "a-new", Repo: lopper.Repo{Path: "/r/alpha"}}}})
+	sized(a, "a-two", "/r/alpha", 300)
+	sized(a, "z-huge", "/r/zeta", 1000)
+
+	press(a, 's')
+	if got, want := order(t, a, "a-one", "a-new", "a-two", "zeta"), []string{"zeta", "a-two", "a-one", "a-new"}; !slices.Equal(got, want) {
+		t.Errorf("largest first shows %q, want %q:\n%s", got, want, view(a))
+	}
+	if !strings.Contains(plainLines(a)[1], "largest first") {
+		t.Errorf("header does not say the list is shown largest first: %q", plainLines(a)[1])
+	}
+
+	press(a, 's')
+	if got, want := order(t, a, "zeta", "a-two", "a-one", "a-new"), []string{"a-one", "a-new", "a-two", "zeta"}; !slices.Equal(got, want) {
+		t.Errorf("s again shows %q, want the order found %q:\n%s", got, want, view(a))
+	}
+	if strings.Contains(view(a), "largest first") {
+		t.Errorf("header still says largest first:\n%s", view(a))
+	}
+}
+
+// Shown largest first while the scan goes on, the list is re-ranked
+// once a second, not on every size, and the row under the cursor stays
+// on its screen line as rows land above it; the end of the scan ranks
+// it for the last time.
+func TestLargestFirstReranksAroundTheCursor(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 10}) // four lines of list
+	for i := 1; i <= 8; i++ {
+		sized(a, fmt.Sprintf("r%d", i), "/r", int64(900-100*i)) // r1 800 B … r8 100 B
+	}
+	press(a, 's')
+	for range 6 {
+		press(a, tea.KeyDown)
+	}
+	view(a)             // r7 on the last line shown
+	press(a, tea.KeyUp) // r6, above it
+	lines := plainLines(a)
+	at := lineWith(t, lines, "r6")
+
+	sized(a, "r9", "/r", 850)  // above r1
+	sized(a, "r10", "/r", 250) // between r6 and r7
+	if lines := plainLines(a); lineWith(t, lines, "r6") != at || !strings.Contains(lines[at+1], "r7") {
+		t.Errorf("list changed before its re-ranking:\n%s", strings.Join(lines, "\n"))
+	}
+
+	a.Update(rankMsg{a.ranking})
+	lines = plainLines(a)
+	if now := lineWith(t, lines, "r6"); now != at {
+		t.Errorf("cursor row moved from line %d to %d when rows landed above it:\n%s", at, now, strings.Join(lines, "\n"))
+	}
+	if !strings.Contains(lines[at+1], "r10") {
+		t.Errorf("r10 (250 B) is not ranked below r6 (300 B):\n%s", strings.Join(lines, "\n"))
+	}
+	if got := statusLine(lines); got != "/w/r6" {
+		t.Errorf("cursor left r6: status line shows %q", got)
+	}
+
+	sized(a, "r11", "/r", 275)
+	a.Update(eventMsg{ev: engine.ScanDone{}})
+	if lines := plainLines(a); !strings.Contains(lines[at+1], "r11") {
+		t.Errorf("the end of the scan did not rank r11 (275 B) below r6 (300 B):\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// search reports three worktrees: feature/login, safe to delete, and
+// fix/typo, with uncommitted work, in app; chore/deps, with unpushed
+// commits, in api.
+func searchApp() *app {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	clean, dirty, ahead := 0, 3, 2
+	for _, wt := range []struct {
+		id, repo string
+		facts    lopper.Facts
+		safe     bool
+	}{
+		{"feature/login", "/r/app", lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}, true},
+		{"fix/typo", "/r/app", lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.NotMerged)}, false},
+		{"chore/deps", "/r/api", lopper.Facts{Dirty: &clean, Unpushed: &ahead, Merged: new(lopper.NotMerged)}, false},
+	} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+			ID: lopper.ID(wt.id), Path: "/w/" + wt.id, Branch: wt.id, Repo: lopper.Repo{Path: wt.repo},
+		}}})
+		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(wt.id), Facts: wt.facts, Safe: wt.safe}})
+	}
+	return a
+}
+
+// / shows only the rows matching every word typed: by branch or path,
+// or by a fact, without its count and not inside another one, so
+// "merged" leaves out "not merged". esc shows every row again.
+func TestSearchShowsMatchingRows(t *testing.T) {
+	all := []string{"feature/login", "fix/typo", "chore/deps"}
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{"merged", []string{"feature/login"}},
+		{"safe", []string{"feature/login"}},
+		{"unpushed", []string{"chore/deps"}},
+		{"APP not", []string{"fix/typo"}},
+		{"nothing", nil},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			a := searchApp()
+			typeText(a, "/"+tc.query)
+			v := view(a)
+			for _, branch := range all {
+				if shown := strings.Contains(v, branch); shown != slices.Contains(tc.want, branch) {
+					t.Errorf("%s shown: %v, want %v:\n%s", branch, shown, !shown, v)
+				}
+			}
+			if !strings.Contains(plainLines(a)[1], "/ "+tc.query) {
+				t.Errorf("header does not show the query: %q", plainLines(a)[1])
+			}
+			press(a, tea.KeyEscape)
+			for _, branch := range all {
+				if !strings.Contains(view(a), branch) {
+					t.Errorf("esc did not show %s again:\n%s", branch, view(a))
+				}
+			}
+		})
+	}
+}
+
+// While searching, letters go into the query rather than act as keys;
+// enter ends the search and keeps its rows, and the keys act again.
+func TestKeysTypedIntoTheSearch(t *testing.T) {
+	a := searchApp()
+	typeText(a, "/deps") // d removes, s sorts
+	v := view(a)
+	if strings.Contains(v, "Remove") || strings.Contains(v, "largest first") || !strings.Contains(plainLines(a)[1], "/ deps") {
+		t.Errorf("letters typed into the search acted as keys:\n%s", v)
+	}
+	press(a, tea.KeyEnter)
+	press(a, 's')
+	v = view(a)
+	if !strings.Contains(v, "largest first") || strings.Contains(v, "feature/login") {
+		t.Errorf("after enter, s does not sort the rows found:\n%s", v)
+	}
+}
+
+// Rows hidden by the search stay selected: the footer counts them and
+// removing acts on them, as the confirmation shows.
+func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
+	a := searchApp()
+	press(a, tea.KeyDown)
+	press(a, ' ') // fix/typo
+	typeText(a, "/login")
+	press(a, tea.KeyEnter)
+	lines := plainLines(a)
+	if got := statusLine(lines); !strings.Contains(got, "1 selected (1 hidden)") {
+		t.Errorf("status line does not count the selected row the search hides: %q", got)
+	}
+	if !strings.Contains(lines[lineWith(t, lines, "app")], "1 of 2 worktrees") {
+		t.Errorf("repository header does not say a row is hidden: %q", lines[lineWith(t, lines, "app")])
+	}
+	press(a, 'd')
+	if v := view(a); !strings.Contains(v, "fix/typo") || strings.Contains(v, "feature/login") {
+		t.Errorf("remove does not act on the hidden selected row:\n%s", v)
+	}
+}
+
+// The key help shows the main keys, ending with ?, which stays however
+// narrow the screen; ? shows every key, the list making room for them,
+// and ? again hides them.
+func TestQuestionMarkShowsEveryKey(t *testing.T) {
+	a := searchApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	if v := view(a); strings.Contains(v, "↑/k") || !strings.Contains(v, "? more keys") {
+		t.Errorf("key help is not the main keys:\n%s", v)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	if keys := plainLines(a)[len(plainLines(a))-1]; !strings.HasSuffix(strings.TrimSpace(keys), "? more keys") {
+		t.Errorf("on a narrow screen, ? gave way to other keys: %q", keys)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	press(a, '?')
+	v := strings.Join(strings.Fields(view(a)), " ")
+	for _, want := range []string{"↑/k up", "↓/j down", "space select", "d remove", "/ search", "s sort", "q quit", "? fewer keys"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("every key help lacks %q:\n%s", want, v)
+		}
+	}
+	if n := len(plainLines(a)); n > 12 {
+		t.Errorf("%d lines on a 12-line screen:\n%s", n, view(a))
+	}
+	press(a, '?')
+	if v := view(a); strings.Contains(v, "↑/k") {
+		t.Errorf("? again does not hide the keys:\n%s", v)
+	}
+}

@@ -89,7 +89,6 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	}})
 
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	a.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // from chore/deps in api to fix/login in app
 	lines := plainLines(a)
 	i := lineWith(t, lines, "fix/login")
 	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), filepath.FromSlash("app  ~/code ")) {
@@ -140,9 +139,9 @@ func TestLongPathsFitTheScreen(t *testing.T) {
 	}
 }
 
-// A row shows "merged" in its color only when the worktree is safe to
-// delete: users delete merged rows without looking closer.
-func TestFactsColorMergedOnlyWhenSafe(t *testing.T) {
+// A row shows "merged" in its color whether or not the worktree is safe
+// to delete, after the work deleting it would lose.
+func TestFactsShowMergedInItsColor(t *testing.T) {
 	clean, dirty := 0, 1
 	merged, notMerged := new(lopper.MergedFF), new(lopper.NotMerged)
 	cases := []struct {
@@ -152,8 +151,8 @@ func TestFactsColorMergedOnlyWhenSafe(t *testing.T) {
 		marked bool // "merged" is in its color
 	}{
 		{"merged", row{checked: true, safe: true, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "merged", true},
-		{"merged but dirty", row{checked: true, facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", false},
-		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "moved by hand · merged", false},
+		{"merged but dirty", row{checked: true, facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", true},
+		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "moved by hand · merged", true},
 		{"not merged and unchecked", row{checked: true, facts: lopper.Facts{Unpushed: &clean, Merged: notMerged}}, "couldn't check · not merged", false},
 		{"folder gone", row{checked: true, safe: true, worktree: lopper.Worktree{Prunable: true}}, "folder gone", false},
 		{"no facts yet", row{}, "checking…", false},
@@ -193,19 +192,6 @@ func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted +2") {
 		t.Errorf("narrow row does not lead with the work at stake and count the rest: %q", row)
-	}
-}
-
-func TestCursorStaysOnWorktreeWhenOneSortsAbove(t *testing.T) {
-	a := testApp()
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "m", Path: "/w/middle", Branch: "middle"}}})
-	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "z", Path: "/w/zulu", Branch: "zulu"}}})
-	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Path: "/w/alpha", Branch: "alpha"}}})
-
-	if got := statusLine(plainLines(a)); got != "/w/zulu" { // matches no alias, so shown exactly as given
-		t.Errorf("cursor left zulu when alpha sorted above it: status line shows %q", got)
 	}
 }
 
@@ -306,7 +292,8 @@ func TestSelectionAndCursorBandsDiffer(t *testing.T) {
 // onBand reports whether the row showing text is drawn on style's background.
 func onBand(a *app, text string, style lipgloss.Style) bool {
 	bg := style.Render(" ")
-	return strings.Contains(rawLine(a, text), bg[:strings.Index(bg, "m")+1])
+	bg = bg[strings.Index(bg, "48;"):strings.Index(bg, "m")] // the background's parameters
+	return strings.Contains(rawLine(a, text), bg+"m")
 }
 
 // rawLine returns the styled line of the view containing text, or "".
@@ -582,27 +569,6 @@ func lineWith(t *testing.T, lines []string, s string) int {
 	}
 	t.Fatalf("no line with %q in:\n%s", s, strings.Join(lines, "\n"))
 	return 0
-}
-
-func TestLargestWorktreesComeFirst(t *testing.T) {
-	a := testApp()
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	found := func(id, branch, repo string, size int64) {
-		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
-			ID: lopper.ID(id), Path: "/w/" + id, Branch: branch, Repo: lopper.Repo{Path: repo},
-		}}})
-		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(id), Facts: lopper.Facts{SizeBytes: &size}}})
-	}
-	// By name, alpha and a-one would come first; by size they come last.
-	found("a1", "a-one", "/r/alpha", 100)
-	found("a2", "a-two", "/r/alpha", 300)
-	found("z1", "z-huge", "/r/zeta", 1000)
-
-	lines := plainLines(a)
-	zeta, two, one := lineWith(t, lines, "zeta"), lineWith(t, lines, "a-two"), lineWith(t, lines, "a-one")
-	if zeta >= two || two >= one {
-		t.Errorf("want repo zeta (1 kB) above alpha (400 B), and a-two (300 B) above a-one (100 B):\n%s", strings.Join(lines, "\n"))
-	}
 }
 
 // Scrolling assumes one screen line per line of the view, so on a narrow

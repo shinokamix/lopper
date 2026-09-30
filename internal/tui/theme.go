@@ -25,6 +25,7 @@ type theme struct {
 	// pickedCursor is the band under the cursor when its row is selected.
 	pickedCursor lipgloss.Style
 	selected     lipgloss.Style // text of selected rows
+	caret        lipgloss.Style // where typed text goes
 	failure      lipgloss.Style
 	note         map[lopper.NoteKind]lipgloss.Style
 }
@@ -42,6 +43,7 @@ func newTheme(isDark bool) theme {
 		picked:       plain.Background(c("#EEEEEE", "#2A2A2A")),
 		pickedCursor: plain.Background(c("#C8C8C8", "#4C4C4C")),
 		selected:     plain.Bold(true),
+		caret:        plain.Reverse(true),
 		failure:      plain.Foreground(c("#CF222E", "#F85149")),
 		note: map[lopper.NoteKind]lipgloss.Style{
 			lopper.NotePlain:  subtle,

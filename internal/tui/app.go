@@ -78,12 +78,20 @@ func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates U
 	} else {
 		a.startScan(ctx)
 	}
-	_, err := tea.NewProgram(a, tea.WithContext(ctx)).Run()
-	a.installs.close()
-	if err != nil || !a.restart {
+	if err := a.run(cancel); err != nil || !a.restart {
 		return err
 	}
 	return updates.Restart()
+}
+
+// run runs the TUI until it ends, however it does, then cancels a.ctx
+// and waits for an install that started: once cancelled, only for the
+// binary being put in place, not for the download.
+func (a *app) run(cancel context.CancelFunc, opts ...tea.ProgramOption) error {
+	_, err := tea.NewProgram(a, append(opts, tea.WithContext(a.ctx))...).Run()
+	cancel()
+	a.installs.close()
+	return err
 }
 
 func (a *app) Init() tea.Cmd {

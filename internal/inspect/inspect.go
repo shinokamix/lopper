@@ -4,7 +4,10 @@ package inspect
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,7 +20,7 @@ type Inspector struct {
 	Git gitx.Runner
 }
 
-// Quick gathers cheap facts: working tree state and merge status.
+// Quick gathers working tree state, index flags, and merge status.
 // A fact that git cannot provide stays nil and the git error is recorded
 // in Facts.Errors, so verdict can refuse to call the worktree safe.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
@@ -33,6 +36,11 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		fail("read status", err)
 	} else {
 		f.Dirty = new(countLines(out))
+	}
+	if n, err := in.uncheckedFiles(ctx, wt.Path); err != nil {
+		fail("check index flags", err)
+	} else {
+		f.UncheckedFiles = &n
 	}
 	// Commits reachable from HEAD but neither on a remote nor in the base branch.
 	args := []string{"rev-list", "--count", "HEAD", "--not", "--remotes"}
@@ -58,6 +66,52 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		}
 	}
 	return f
+}
+
+// Index flags can hide edits from status. Assume-unchanged always leaves
+// a file unchecked. Skip-worktree does too when a path exists, but missing
+// paths are normal in a sparse checkout.
+func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error) {
+	out, err := in.Git.Run(ctx, dir, "ls-files", "--cached", "-v", "-z")
+	if err != nil {
+		return 0, err
+	}
+	unchecked := make(map[string]bool)
+	for out != "" {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		var record string
+		var terminated bool
+		record, out, terminated = strings.Cut(out, "\x00")
+		if !terminated || len(record) < 3 || record[1] != ' ' || !strings.ContainsRune("HSMRCK?hsmrck", rune(record[0])) {
+			return 0, errors.New("invalid ls-files record")
+		}
+		path := record[2:]
+		if !filepath.IsLocal(filepath.FromSlash(path)) || path == "." {
+			return 0, errors.New("invalid ls-files path")
+		}
+		for component := range strings.SplitSeq(path, "/") {
+			if component == "" || component == "." || component == ".." {
+				return 0, errors.New("invalid ls-files path")
+			}
+		}
+		tag := record[0]
+		if tag >= 'a' && tag <= 'z' {
+			unchecked[path] = true
+		} else if tag == 'S' {
+			_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(path)))
+			switch {
+			case err == nil:
+				unchecked[path] = true
+			case errors.Is(err, fs.ErrNotExist):
+				// Git deliberately omits these files in sparse checkouts.
+			default:
+				return 0, fmt.Errorf("check %q: %w", path, err)
+			}
+		}
+	}
+	return len(unchecked), nil
 }
 
 // Slow gathers expensive facts that require walking the directory.

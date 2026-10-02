@@ -178,9 +178,9 @@ func searchApp() *app {
 		facts    lopper.Facts
 		safe     bool
 	}{
-		{"feature/login", "/r/app", lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}, true},
-		{"fix/typo", "/r/app", lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.NotMerged)}, false},
-		{"chore/deps", "/r/api", lopper.Facts{Dirty: &clean, Unpushed: &ahead, Merged: new(lopper.NotMerged)}, false},
+		{"feature/login", "/r/app", lopper.Facts{UncheckedFiles: new(0), Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}, true},
+		{"fix/typo", "/r/app", lopper.Facts{UncheckedFiles: new(0), Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.NotMerged)}, false},
+		{"chore/deps", "/r/api", lopper.Facts{UncheckedFiles: new(0), Dirty: &clean, Unpushed: &ahead, Merged: new(lopper.NotMerged)}, false},
 	} {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 			ID: lopper.ID(wt.id), Path: "/w/" + wt.id, Branch: wt.id, Repo: lopper.Repo{Path: wt.repo},

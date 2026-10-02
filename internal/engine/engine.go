@@ -142,6 +142,10 @@ func (e *NotSafeError) Error() string {
 	for _, n := range lopper.Notes(e.Worktree, e.Facts) {
 		why = append(why, n.Text)
 	}
+	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
+		why = append(why, "index flags prevent checking files for edits, assume-unchanged or skip-worktree")
+	}
+	why = append(why, e.Facts.Errors...)
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 

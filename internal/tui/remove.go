@@ -207,7 +207,7 @@ func (rm *removal) listing(t theme, spin string, width int) listing {
 	}
 	repoW = min(repoW, width/5) // the branch says more: a long name gives way
 	headings := map[int]string{
-		workSection:     t.failure.Render("work in these will be lost"),
+		workSection:     t.failure.Render("removal may lose work"),
 		checkingSection: t.subtle.Render("still checking"),
 	}
 	plain := lipgloss.NewStyle()

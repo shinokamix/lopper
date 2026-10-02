@@ -85,7 +85,7 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	dirty, unpushed := 3, 2
 	a.Update(eventMsg{ev: engine.FactsUpdated{
 		ID:    "wt",
-		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed, Merged: new(lopper.NotMerged)},
+		Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &dirty, Unpushed: &unpushed, Merged: new(lopper.NotMerged)},
 	}})
 
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -150,9 +150,10 @@ func TestFactsShowMergedInItsColor(t *testing.T) {
 		want   string
 		marked bool // "merged" is in its color
 	}{
-		{"merged", row{checked: true, safe: true, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "merged", true},
-		{"merged but dirty", row{checked: true, facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", true},
-		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: merged}}, "moved by hand · merged", true},
+		{"merged", row{checked: true, safe: true, facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &clean, Unpushed: &clean, Merged: merged}}, "merged", true},
+		{"merged but dirty", row{checked: true, facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &dirty, Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", true},
+		{"merged but hidden files", row{checked: true, facts: lopper.Facts{UncheckedFiles: new(2), Dirty: &clean, Unpushed: &clean, Merged: merged}}, "2 unchecked · merged", true},
+		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &clean, Unpushed: &clean, Merged: merged}}, "moved by hand · merged", true},
 		{"not merged and unchecked", row{checked: true, facts: lopper.Facts{Unpushed: &clean, Merged: notMerged}}, "couldn't check · not merged", false},
 		{"folder gone", row{checked: true, safe: true, worktree: lopper.Worktree{Prunable: true}}, "folder gone", false},
 		{"no facts yet", row{}, "checking…", false},
@@ -182,7 +183,7 @@ func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	}}})
 	dirty, clean := 3, 0
 	a.Update(eventMsg{ev: engine.FactsUpdated{
-		ID: "wt", Facts: lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.MergedFF)},
+		ID: "wt", Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.MergedFF)},
 	}})
 
 	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
@@ -192,6 +193,22 @@ func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted +2") {
 		t.Errorf("narrow row does not lead with the work at stake and count the rest: %q", row)
+	}
+}
+
+func TestNarrowRowShowsUncheckedFilesBeforeMerged(t *testing.T) {
+	a := testApp()
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: "/w/wt", Branch: "fix/login",
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{
+		ID: "wt", Facts: lopper.Facts{Dirty: new(0), UncheckedFiles: new(2), Unpushed: new(0), Merged: new(lopper.MergedFF)},
+	}})
+	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	lines := plainLines(a)
+	line := lines[lineWith(t, lines, "fix/login")]
+	if !strings.Contains(line, "2 unchecked +1") {
+		t.Errorf("narrow row hides the unchecked files: %q", line)
 	}
 }
 
@@ -226,7 +243,7 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
 	clean := 0
-	merged := lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}
+	merged := lopper.Facts{UncheckedFiles: new(0), Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}
 	measured := merged
 	measured.SizeBytes = new(int64(1000))
 	for _, id := range []string{"measured", "measuring"} {
@@ -583,7 +600,7 @@ func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 	dirty, unpushed, size := 3, 2, int64(1_200_000_000)
 	a.Update(eventMsg{ev: engine.FactsUpdated{
 		ID:    "wt",
-		Facts: lopper.Facts{Dirty: &dirty, Unpushed: &unpushed, SizeBytes: &size},
+		Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: &dirty, Unpushed: &unpushed, SizeBytes: &size},
 	}})
 	a.Update(tea.KeyPressMsg{Code: ' '})
 

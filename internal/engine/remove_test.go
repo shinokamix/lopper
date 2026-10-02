@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,5 +91,48 @@ func TestRemoveLetsGitGuardLateWork(t *testing.T) {
 	}
 	if _, err := os.Stat(late); err != nil {
 		t.Errorf("file written late is gone: %v", err)
+	}
+}
+
+func TestRemoveRechecksIndexFlagsAfterScan(t *testing.T) {
+	repo, path := gitRepo(t)
+	file := filepath.Join(path, "tracked.txt")
+	if err := os.WriteFile(file, []byte("committed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, path, "add", "tracked.txt")
+	git(t, path, "commit", "-q", "-m", "tracked file")
+	git(t, repo, "merge", "-q", "work")
+
+	eng := New()
+	var wt lopper.Worktree
+	checked := false
+	for ev := range eng.Scan(t.Context(), Options{Roots: []string{path}}) {
+		switch ev := ev.(type) {
+		case WorktreeFound:
+			wt = ev.Worktree
+		case FactsUpdated:
+			if ev.Final {
+				checked = ev.Safe
+			}
+		case ScanDone:
+			if ev.Err != nil {
+				t.Fatal(ev.Err)
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("clean merged worktree was not scanned as safe")
+	}
+	git(t, path, "update-index", "--skip-worktree", "tracked.txt")
+	if err := os.WriteFile(file, []byte("hidden edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := eng.Remove(t.Context(), wt, false)
+	if _, ok := errors.AsType[*NotSafeError](err); !ok {
+		t.Fatalf("Remove = %v, want refusal after an index flag changed", err)
+	}
+	if content, err := os.ReadFile(file); err != nil || string(content) != "hidden edit\n" {
+		t.Fatalf("content = %q, error = %v, want preserved hidden edit", content, err)
 	}
 }

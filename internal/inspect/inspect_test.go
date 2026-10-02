@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -81,6 +82,9 @@ func wantFacts(t *testing.T, f lopper.Facts, dirty, unpushed int, merged lopper.
 	}
 	if f.Dirty == nil || *f.Dirty != dirty {
 		t.Errorf("Dirty = %v, want %d", ptr(f.Dirty), dirty)
+	}
+	if f.UncheckedFiles == nil || *f.UncheckedFiles != 0 {
+		t.Errorf("UncheckedFiles = %v, want 0", ptr(f.UncheckedFiles))
 	}
 	if f.Unpushed == nil || *f.Unpushed != unpushed {
 		t.Errorf("Unpushed = %v, want %d", ptr(f.Unpushed), unpushed)
@@ -163,11 +167,112 @@ func TestQuickStatusFails(t *testing.T) {
 	if f.Dirty != nil {
 		t.Errorf("Dirty = %d, want unknown", *f.Dirty)
 	}
-	if len(f.Errors) != 1 || !strings.HasPrefix(f.Errors[0], "could not read status: ") {
-		t.Fatalf("Errors = %q, want one status error", f.Errors)
+	if f.UncheckedFiles != nil || len(f.Errors) != 2 || !strings.HasPrefix(f.Errors[0], "could not read status: ") ||
+		!strings.HasPrefix(f.Errors[1], "could not check index flags: ") {
+		t.Fatalf("UncheckedFiles = %v, errors = %q, want unknown and status/index errors", ptr(f.UncheckedFiles), f.Errors)
 	}
 	if strings.Contains(f.Errors[0], "\n") {
 		t.Errorf("error is not a single line: %q", f.Errors[0])
+	}
+}
+
+func TestQuickMissingAssumeUnchangedFilesRemainUnchecked(t *testing.T) {
+	for _, flags := range [][]string{{"--assume-unchanged"}, {"--assume-unchanged", "--skip-worktree"}} {
+		t.Run(strings.Join(flags, "+"), func(t *testing.T) {
+			repo := setup(t)
+			wt := addWorktree(t, repo, "-b", "merged")
+			for _, flag := range flags {
+				git(t, wt.Path, "update-index", flag, "README")
+			}
+			if err := os.Remove(filepath.Join(wt.Path, "README")); err != nil {
+				t.Fatal(err)
+			}
+			f := quick(t, wt)
+			if f.UncheckedFiles == nil || *f.UncheckedFiles != 1 || len(f.Errors) != 0 {
+				t.Errorf("UncheckedFiles = %v, errors = %q, want 1 and no errors", ptr(f.UncheckedFiles), f.Errors)
+			}
+		})
+	}
+}
+
+func TestQuickIndexFlagsWithUnusualPathsAndBrokenSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows filenames cannot contain newlines")
+	}
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "merged")
+	names := []string{"line\nbreak", " leading space"}
+	for _, name := range names {
+		writeFile(t, filepath.Join(wt.Path, name), "committed\n")
+	}
+	link := filepath.Join(wt.Path, "broken")
+	if err := os.Symlink("missing", link); err != nil {
+		t.Fatal(err)
+	}
+	git(t, wt.Path, "add", ".")
+	git(t, wt.Path, "commit", "-q", "-m", "unusual filenames")
+	git(t, wt.Path, "update-index", "--skip-worktree", "--", "broken")
+	for _, name := range names {
+		git(t, wt.Path, "update-index", "--assume-unchanged", "--", name)
+		writeFile(t, filepath.Join(wt.Path, name), "hidden edit\n")
+	}
+	f := quick(t, wt)
+	if f.Dirty == nil || *f.Dirty != 0 || f.UncheckedFiles == nil || *f.UncheckedFiles != 3 || len(f.Errors) != 0 {
+		t.Errorf("Dirty = %v, UncheckedFiles = %v, errors = %q, want 0, 3, and no errors", ptr(f.Dirty), ptr(f.UncheckedFiles), f.Errors)
+	}
+}
+
+// indexOutput replaces only the index listing, so status and history still
+// come from the real repository when testing failures at the Git boundary.
+type indexOutput struct {
+	gitx.Runner
+	out string
+	err error
+}
+
+func (g indexOutput) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	if args[0] == "ls-files" {
+		return g.out, g.err
+	}
+	return g.Runner.Run(ctx, dir, args...)
+}
+
+func TestQuickIndexFlagsFailClosed(t *testing.T) {
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "merged")
+	cases := []struct {
+		name string
+		out  string
+		err  error
+	}{
+		{"git failure", "", errors.New("index unavailable")},
+		{"truncated record", "H README", nil},
+		{"missing tag separator", "HREADME\x00", nil},
+		{"unknown tag", "X README\x00", nil},
+		{"empty path", "H \x00", nil},
+		{"path outside worktree", "S ../outside\x00", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: tc.out, err: tc.err}}).Quick(t.Context(), wt)
+			if f.Dirty == nil || *f.Dirty != 0 || f.UncheckedFiles != nil || len(f.Errors) != 1 ||
+				!strings.HasPrefix(f.Errors[0], "could not check index flags: ") {
+				t.Errorf("Dirty = %v, UncheckedFiles = %v, errors = %q, want 0, unknown, and index error", ptr(f.Dirty), ptr(f.UncheckedFiles), f.Errors)
+			}
+		})
+	}
+}
+
+func TestQuickIndexFlagPathErrorIsUnknown(t *testing.T) {
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "merged")
+	if err := os.Symlink("loop", filepath.Join(wt.Path, "loop")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// Resolving a parent symlink loop fails with an error other than ENOENT.
+	f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: "S loop/file\x00"}}).Quick(t.Context(), wt)
+	if f.UncheckedFiles != nil || len(f.Errors) != 1 || !strings.HasPrefix(f.Errors[0], "could not check index flags: ") {
+		t.Errorf("UncheckedFiles = %v, errors = %q, want unknown and path error", ptr(f.UncheckedFiles), f.Errors)
 	}
 }
 

@@ -206,9 +206,10 @@ func runRaw(ctx context.Context, dir string, env []string, args ...string) (stri
 // MergeBlobsUnchanged checks whether applying ancestor..other to current leaves
 // its contents unchanged. merge-file uses Git's built-in text merge, bypasses
 // attribute merge drivers, and with --stdout writes no repository objects.
+// It merges temporary files: --object-id needs Git 2.43.
 func MergeBlobsUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
-	var content string
-	for _, id := range []string{current, ancestor, other} {
+	var blobs [3]string
+	for i, id := range []string{current, ancestor, other} {
 		blob, err := r.RunRaw(ctx, dir, "cat-file", "blob", id)
 		if err != nil {
 			return false, err
@@ -216,18 +217,27 @@ func MergeBlobsUnchanged(ctx context.Context, r Runner, dir, current, ancestor, 
 		if strings.IndexByte(blob, 0) >= 0 {
 			return false, nil
 		}
-		if id == current {
-			content = blob
+		blobs[i] = blob
+	}
+	tmp, err := os.MkdirTemp("", "lopper-merge-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(tmp)
+	paths := []string{filepath.Join(tmp, "current"), filepath.Join(tmp, "ancestor"), filepath.Join(tmp, "other")}
+	for i, path := range paths {
+		if err := os.WriteFile(path, []byte(blobs[i]), 0o600); err != nil {
+			return false, err
 		}
 	}
-	out, err := r.RunRaw(ctx, dir, "merge-file", "--object-id", "--stdout", "--quiet", "--diff3", current, ancestor, other)
+	out, err := r.RunRaw(ctx, dir, "merge-file", "--stdout", "--quiet", "--diff3", paths[0], paths[1], paths[2])
 	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() > 0 && e.ExitCode() <= 127 {
 		return false, nil // merge-file returns the number of conflicts
 	}
 	if err != nil {
 		return false, err
 	}
-	return out == content, nil
+	return out == blobs[0], nil
 }
 
 // blankFilters appends GIT_CONFIG_KEY_n/VALUE_n pairs that set every

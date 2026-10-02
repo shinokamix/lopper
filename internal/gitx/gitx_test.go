@@ -46,6 +46,29 @@ func FuzzParseWorktreeList(f *testing.F) {
 	})
 }
 
+func TestCheckVersion(t *testing.T) {
+	cases := []struct {
+		out string
+		ok  bool
+	}{
+		{"git version 2.36.0", true},
+		{"git version 2.39.5 (Apple Git-154)", true},
+		{"git version 2.47.1.windows.1", true},
+		{"git version 2.45.0.rc1.12.gabcdef", true},
+		{"git version 3.0.0", true},
+		{"git version 2.35.8", false},
+		{"git version 2.34.1", false},
+		{"git version 1.99.0", false},
+		{"git version", false},
+		{"hub version 2.14.2", false},
+	}
+	for _, tc := range cases {
+		if err := checkVersion(tc.out); (err == nil) != tc.ok {
+			t.Errorf("checkVersion(%q) = %v, want ok=%v", tc.out, err, tc.ok)
+		}
+	}
+}
+
 func TestCheck(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

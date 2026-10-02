@@ -19,14 +19,36 @@ import (
 // ErrGitNotFound is returned by Check when no git binary is in PATH.
 var ErrGitNotFound = errors.New("git not found in PATH: lopper needs git to inspect worktrees")
 
-// Check verifies that a working git binary is available.
+// MinVersion is the oldest git lopper runs with: worktree list -z needs
+// 2.36, and older git ignores GIT_CONFIG_COUNT, which [Exec] relies on.
+var MinVersion = [2]int{2, 36}
+
+// Check verifies that a git binary of at least MinVersion is available.
 func Check(ctx context.Context) error {
-	err := exec.CommandContext(ctx, "git", "version").Run()
+	out, err := exec.CommandContext(ctx, "git", "version").Output()
 	if errors.Is(err, exec.ErrNotFound) {
 		return ErrGitNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("git version: %w", err)
+	}
+	return checkVersion(strings.TrimSpace(string(out)))
+}
+
+// checkVersion checks `git version` output, such as "git version 2.39.5
+// (Apple Git-154)" or "git version 2.47.1.windows.1", against MinVersion.
+func checkVersion(out string) error {
+	need := fmt.Sprintf("lopper needs git %d.%d or newer", MinVersion[0], MinVersion[1])
+	var version string
+	var major, minor int
+	if _, err := fmt.Sscanf(out, "git version %s", &version); err != nil {
+		return fmt.Errorf("unrecognized git version %q: %s", out, need)
+	}
+	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
+		return fmt.Errorf("unrecognized git version %q: %s", out, need)
+	}
+	if major < MinVersion[0] || major == MinVersion[0] && minor < MinVersion[1] {
+		return fmt.Errorf("git %s is too old: %s", version, need)
 	}
 	return nil
 }
@@ -109,6 +131,7 @@ var repoVars = map[string]bool{
 	"GIT_NO_REPLACE_OBJECTS":           true,
 	"GIT_REPLACE_REF_BASE":             true,
 	"GIT_PREFIX":                       true,
+	"GIT_INTERNAL_SUPER_PREFIX":        true, // older git, such as 2.36
 	"GIT_SHALLOW_FILE":                 true,
 	"GIT_COMMON_DIR":                   true,
 }

@@ -266,11 +266,12 @@ func TestQuickIndexFlagsFailClosed(t *testing.T) {
 func TestQuickIndexFlagPathErrorIsUnknown(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "merged")
-	if err := os.Symlink("loop", filepath.Join(wt.Path, "loop")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+	// An overlong filename causes a lookup error on every supported OS.
+	path := strings.Repeat("a", 256)
+	if _, err := os.Lstat(filepath.Join(wt.Path, path)); err == nil || errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("fixture lookup = %v, want an error other than missing path", err)
 	}
-	// Resolving a parent symlink loop fails with an error other than ENOENT.
-	f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: "S loop/file\x00"}}).Quick(t.Context(), wt)
+	f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: "S " + path + "\x00"}}).Quick(t.Context(), wt)
 	if f.UncheckedFiles != nil || len(f.Errors) != 1 || !strings.HasPrefix(f.Errors[0], "could not check index flags: ") {
 		t.Errorf("UncheckedFiles = %v, errors = %q, want unknown and path error", ptr(f.UncheckedFiles), f.Errors)
 	}

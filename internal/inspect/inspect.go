@@ -72,8 +72,20 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 // a file unchecked. Skip-worktree does too when a path exists, but missing
 // paths are normal in a sparse checkout.
 func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error) {
-	out, err := in.Git.Run(ctx, dir, "ls-files", "--cached", "-v", "-z")
+	return in.uncheckedIndex(ctx, dir, true)
+}
+
+func (in Inspector) uncheckedIndex(ctx context.Context, dir string, sparse bool) (int, error) {
+	args := []string{"ls-files", "--cached", "-v", "-z"}
+	if sparse {
+		args = append(args, "--sparse")
+	}
+	out, err := in.Git.Run(ctx, dir, args...)
 	if err != nil {
+		// Older Git can inspect the same files with an expanded listing.
+		if e, ok := errors.AsType[*gitx.Error](err); sparse && ok && strings.Contains(e.Stderr, "unknown option `sparse'") {
+			return in.uncheckedIndex(ctx, dir, false)
+		}
 		return 0, err
 	}
 	unchecked := make(map[string]bool)
@@ -87,7 +99,16 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 		if !terminated || len(record) < 3 || record[1] != ' ' || !strings.ContainsRune("HSMRCK?hsmrck", rune(record[0])) {
 			return 0, errors.New("invalid ls-files record")
 		}
+		tag := record[0]
 		path := record[2:]
+		directory := strings.HasSuffix(path, "/")
+		if directory {
+			if !sparse || tag != 'S' {
+				return 0, errors.New("invalid ls-files sparse directory")
+			}
+			// Strip the slash before Lstat so a broken symlink still exists.
+			path = strings.TrimSuffix(path, "/")
+		}
 		if !filepath.IsLocal(filepath.FromSlash(path)) || path == "." {
 			return 0, errors.New("invalid ls-files path")
 		}
@@ -96,13 +117,17 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 				return 0, errors.New("invalid ls-files path")
 			}
 		}
-		tag := record[0]
 		if tag >= 'a' && tag <= 'z' {
 			unchecked[path] = true
 		} else if tag == 'S' {
 			_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(path)))
 			switch {
 			case err == nil:
+				if directory {
+					// Files may have appeared outside the sparse checkout.
+					// Read their individual flags before counting them.
+					return in.uncheckedIndex(ctx, dir, false)
+				}
 				unchecked[path] = true
 			case errors.Is(err, fs.ErrNotExist):
 				// Git deliberately omits these files in sparse checkouts.

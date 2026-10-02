@@ -3,12 +3,14 @@ package inspect
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -251,6 +253,9 @@ func TestQuickIndexFlagsFailClosed(t *testing.T) {
 		{"unknown tag", "X README\x00", nil},
 		{"empty path", "H \x00", nil},
 		{"path outside worktree", "S ../outside\x00", nil},
+		{"sparse directory outside worktree", "S ../outside/\x00", nil},
+		{"assumed sparse directory", "s excluded/\x00", nil},
+		{"non-sparse directory tag", "H excluded/\x00", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -274,6 +279,141 @@ func TestQuickIndexFlagPathErrorIsUnknown(t *testing.T) {
 	f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: "S " + path + "\x00"}}).Quick(t.Context(), wt)
 	if f.UncheckedFiles != nil || len(f.Errors) != 1 || !strings.HasPrefix(f.Errors[0], "could not check index flags: ") {
 		t.Errorf("UncheckedFiles = %v, errors = %q, want unknown and path error", ptr(f.UncheckedFiles), f.Errors)
+	}
+}
+
+// indexSize measures the data inspection reads from Git, without timing
+// assertions that depend on the filesystem or the test machine.
+type indexSize struct {
+	gitx.Runner
+	bytes int
+}
+
+func (g *indexSize) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := g.Runner.Run(ctx, dir, args...)
+	if args[0] == "ls-files" {
+		g.bytes += len(out)
+	}
+	return out, err
+}
+
+func sparseWorktree(t *testing.T, files int) lopper.Worktree {
+	t.Helper()
+	repo := setup(t)
+	for _, name := range []string{"included", "excluded"} {
+		if err := os.Mkdir(filepath.Join(repo, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(repo, "included", "file"), "included\n")
+	for i := range files {
+		writeFile(t, filepath.Join(repo, "excluded", fmt.Sprintf("file%d", i)), "committed\n")
+	}
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-qm", "sparse files")
+	wt := addWorktree(t, repo, "-b", "merged")
+	git(t, wt.Path, "sparse-checkout", "set", "--cone", "--sparse-index", "included")
+	return wt
+}
+
+func TestQuickSparseIndexKeepsMissingDirectoriesCompact(t *testing.T) {
+	wt := sparseWorktree(t, 512)
+	index := git(t, wt.Path, "rev-parse", "--git-path", "index")
+	before, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &indexSize{Runner: gitx.Exec{}}
+	f := (Inspector{Git: runner}).Quick(t.Context(), wt)
+	wantFacts(t, f, 0, 0, lopper.MergedFF)
+	if runner.bytes > 512 {
+		t.Errorf("inspection read %d bytes of index entries, want at most 512 for absent sparse directories", runner.bytes)
+	}
+	after, err := os.ReadFile(index)
+	if err != nil || !slices.Equal(before, after) {
+		t.Fatalf("inspection changed the index: %v", err)
+	}
+}
+
+// sparseOutput preserves a compact index snapshot at the Git boundary.
+// Expanded listings still use Git, unless the test injects a read error.
+type sparseOutput struct {
+	gitx.Runner
+	out         string
+	err         error
+	expandedErr error
+}
+
+func (g sparseOutput) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	if args[0] == "ls-files" {
+		if slices.Contains(args, "--sparse") {
+			return g.out, g.err
+		}
+		if g.expandedErr != nil {
+			return "", g.expandedErr
+		}
+	}
+	return g.Runner.Run(ctx, dir, args...)
+}
+
+func TestQuickSparseIndexRechecksFilesInPresentDirectory(t *testing.T) {
+	wt := sparseWorktree(t, 2)
+	compact := git(t, wt.Path, "ls-files", "--cached", "-v", "-z", "--sparse")
+	if err := os.Mkdir(filepath.Join(wt.Path, "excluded"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		writeFile(t, filepath.Join(wt.Path, "excluded", fmt.Sprintf("file%d", i)), "hidden edit\n")
+	}
+	git(t, wt.Path, "update-index", "--assume-unchanged", "excluded/file0", "excluded/file1")
+	f := (Inspector{Git: sparseOutput{Runner: gitx.Exec{}, out: compact}}).Quick(t.Context(), wt)
+	if f.Dirty == nil || *f.Dirty != 0 || f.UncheckedFiles == nil || *f.UncheckedFiles != 2 || len(f.Errors) != 0 {
+		t.Fatalf("UncheckedFiles = %v, errors = %q, want both files checked after the directory appeared", ptr(f.UncheckedFiles), f.Errors)
+	}
+}
+
+func TestQuickSparseIndexExistingPathsRequireSuccessfulExpansion(t *testing.T) {
+	for _, kind := range []string{"directory", "symlink", "broken symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			wt := sparseWorktree(t, 1)
+			compact := git(t, wt.Path, "ls-files", "--cached", "-v", "-z", "--sparse")
+			path := filepath.Join(wt.Path, "excluded")
+			if kind == "directory" {
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				target := "included"
+				if kind == "broken symlink" {
+					target = "missing"
+				}
+				if err := os.Symlink(target, path); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("symlinks unavailable: %v", err)
+					}
+					t.Fatal(err)
+				}
+			}
+			runner := sparseOutput{Runner: gitx.Exec{}, out: compact, expandedErr: errors.New("expanded index unavailable")}
+			f := (Inspector{Git: runner}).Quick(t.Context(), wt)
+			if f.UncheckedFiles != nil || len(f.Errors) != 1 || !strings.Contains(f.Errors[0], "expanded index unavailable") {
+				t.Fatalf("UncheckedFiles = %v, errors = %q, want unknown when expansion fails", ptr(f.UncheckedFiles), f.Errors)
+			}
+		})
+	}
+}
+
+func TestQuickIndexFlagsSupportsGitWithoutSparseListing(t *testing.T) {
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "merged")
+	git(t, wt.Path, "update-index", "--assume-unchanged", "README")
+	writeFile(t, filepath.Join(wt.Path, "README"), "hidden edit\n")
+	runner := sparseOutput{Runner: gitx.Exec{}, err: &gitx.Error{
+		Err: errors.New("exit status 129"), Stderr: "error: unknown option `sparse'",
+	}}
+	f := (Inspector{Git: runner}).Quick(t.Context(), wt)
+	if f.Dirty == nil || *f.Dirty != 0 || f.UncheckedFiles == nil || *f.UncheckedFiles != 1 || len(f.Errors) != 0 {
+		t.Fatalf("Dirty = %v, UncheckedFiles = %v, errors = %q, want hidden edits detected on older Git", ptr(f.Dirty), ptr(f.UncheckedFiles), f.Errors)
 	}
 }
 

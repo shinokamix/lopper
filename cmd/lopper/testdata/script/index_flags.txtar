@@ -58,15 +58,38 @@ exec lopper rm --force wt-assumed wt-skipped wt-both
 ! exists wt-skipped
 ! exists wt-both
 
-# Missing skip-worktree paths in a normal sparse checkout are expected.
+# Missing skip-worktree paths are expected with full and sparse indexes.
 exec git -C repo worktree add -q -b sparse ../wt-sparse
 exec git -C wt-sparse sparse-checkout set --cone included
 ! exists wt-sparse/excluded/file.txt
 exec lopper scan --json wt-sparse
 stdout '"safe": true'
 stdout '"unchecked_files": 0'
+exec git -C wt-sparse sparse-checkout reapply --sparse-index
+exec lopper scan --json wt-sparse
+stdout '"safe": true'
+stdout '"unchecked_files": 0'
 exec lopper rm wt-sparse
 ! exists wt-sparse
+
+# A file brought back outside the sparse checkout can still hide edits.
+exec git -C repo worktree add -q -b sparse-hidden ../wt-sparse-hidden
+exec git -C wt-sparse-hidden sparse-checkout set --cone --sparse-index included
+mkdir wt-sparse-hidden/excluded
+cp edited.txt wt-sparse-hidden/excluded/file.txt
+exec git -C wt-sparse-hidden update-index --assume-unchanged excluded/file.txt
+exec git -C wt-sparse-hidden status --porcelain
+! stdout .
+exec lopper scan --json wt-sparse-hidden
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-sparse-hidden
+stderr '1 unchecked.*index flags'
+cmp wt-sparse-hidden/excluded/file.txt edited.txt
+exec lopper rm --force wt-sparse-hidden
+! exists wt-sparse-hidden
 
 -- original.txt --
 committed content

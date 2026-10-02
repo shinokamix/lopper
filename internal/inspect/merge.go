@@ -30,23 +30,19 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 		return lopper.MergedFF, nil
 	}
 	commits := strings.Split(out, "\n")
-	ordinary := 0
 	for _, commit := range commits {
 		parents := len(strings.Fields(commit)) - 1
 		if parents <= 0 {
 			return lopper.NotMerged, nil
-		}
-		if parents == 1 {
-			ordinary++
 		}
 	}
 	local, err := in.nonemptyCommits(ctx, dir, base+".."+head)
 	if err != nil {
 		return lopper.NotMerged, err
 	}
-	// Do not silently drop empty commits, including a new one made after squash
-	// while the combined diff still matches.
-	if local != ordinary {
+	// Keep empty commits, including merges with no changes against their first
+	// parent, even when the combined diff still matches an earlier squash.
+	if local != len(commits) {
 		return lopper.NotMerged, nil
 	}
 	out, err = in.Git.Run(ctx, dir, "merge-base", "--all", base, head)
@@ -61,7 +57,7 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 }
 
 func (in Inspector) nonemptyCommits(ctx context.Context, dir, commits string) (int, error) {
-	out, err := in.Git.Run(ctx, dir, "log", "--no-merges", "--no-show-signature", "--format=%H",
+	out, err := in.Git.Run(ctx, dir, "log", "--diff-merges=first-parent", "--no-patch", "--no-show-signature", "--format=%H",
 		"--diff-filter=ACDMRTUXB", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-relative",
 		"--ignore-submodules=none", commits, "--")
 	if err != nil {

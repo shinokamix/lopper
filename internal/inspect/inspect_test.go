@@ -236,6 +236,37 @@ func TestQuickSquashCoversMergeResolution(t *testing.T) {
 	wantFacts(t, quick(t, wt), 0, 3, lopper.MergedSquash)
 }
 
+// A new merge with no changes against its first parent still needs to be kept.
+func TestQuickSquashKeepsEmptyMergeTail(t *testing.T) {
+	repo := setup(t)
+	initial := git(t, repo, "rev-parse", "HEAD")
+	wt := addWorktree(t, repo, "-b", "feature")
+	writeFile(t, filepath.Join(wt.Path, "feature.txt"), "feature\n")
+	git(t, wt.Path, "add", "feature.txt")
+	git(t, wt.Path, "commit", "-q", "-m", "feature")
+	git(t, repo, "checkout", "-q", "-b", "side", initial)
+	writeFile(t, filepath.Join(repo, "side.txt"), "side\n")
+	git(t, repo, "add", "side.txt")
+	git(t, repo, "commit", "-q", "-m", "side")
+	git(t, wt.Path, "merge", "-q", "--no-ff", "side", "-m", "nonempty merge")
+	git(t, repo, "checkout", "-q", "main")
+	git(t, repo, "merge", "-q", "--squash", "feature")
+	git(t, repo, "commit", "-q", "-m", "squash")
+	wantFacts(t, quick(t, wt), 0, 3, lopper.MergedSquash)
+
+	git(t, repo, "checkout", "-q", "-b", "side2", initial)
+	writeFile(t, filepath.Join(repo, "side.txt"), "side\n")
+	git(t, repo, "add", "side.txt")
+	git(t, repo, "commit", "-q", "-m", "same content on another branch")
+	git(t, repo, "checkout", "-q", "main")
+	git(t, wt.Path, "checkout", "-q", "--detach")
+	git(t, wt.Path, "merge", "-q", "--no-ff", "side2", "-m", "empty merge after squash")
+	if git(t, wt.Path, "rev-parse", "HEAD^{tree}") != git(t, wt.Path, "rev-parse", "HEAD~1^{tree}") {
+		t.Fatal("merge tail changed the tree, want an empty merge")
+	}
+	wantFacts(t, quick(t, wt), 0, 5, lopper.NotMerged)
+}
+
 func TestQuickContentMergeKeepsTrailingNewlineChange(t *testing.T) {
 	repo := setup(t)
 	writeFile(t, filepath.Join(repo, "content.txt"), "one\ntwo\nthree\nfour\nfive\nsix\n")

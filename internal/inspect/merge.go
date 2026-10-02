@@ -67,6 +67,31 @@ func (in Inspector) nonemptyCommits(ctx context.Context, dir, commits string) (i
 	return countLines(out), nil
 }
 
+// The limits below bound what one squash check reads.
+const (
+	// maxMergeSize is the largest file merged as text; a larger changed
+	// file counts as not merged.
+	maxMergeSize = 8 << 20
+	// maxReadSize is the most blob data one cat-file reads into memory,
+	// enough for the three versions of the largest file.
+	maxReadSize = 3 * maxMergeSize
+	// maxArgsSize keeps the paths given to one ls-tree within command
+	// line limits.
+	maxArgsSize = 16 << 10
+)
+
+// rawChange is one file of `git diff --raw`.
+type rawChange struct {
+	srcMode, dstMode, srcID, dstID, status, path string
+}
+
+// treeEntry is one object of `git ls-tree`.
+type treeEntry struct{ mode, id string }
+
+// textMerge names the blobs of one file that replaying ancestor..other
+// onto current must leave unchanged.
+type textMerge struct{ current, ancestor, other string }
+
 // contentMerge checks the entire branch's file changes against base.
 // Replaying them must leave every file unchanged, without conflicts.
 func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base string) (lopper.MergeKind, error) {
@@ -82,24 +107,24 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	if len(entries)%2 != 0 {
 		return lopper.NotMerged, errors.New("invalid raw diff output")
 	}
-	changes := make([][]string, 0, len(entries)/2)
+	changes := make([]rawChange, 0, len(entries)/2)
 	paths := make([]string, 0, len(entries)/2)
 	for i := 0; i < len(entries); i += 2 {
-		change := strings.Fields(strings.TrimPrefix(entries[i], ":"))
-		if len(change) != 5 {
+		f := strings.Fields(strings.TrimPrefix(entries[i], ":"))
+		if len(f) != 5 {
 			return lopper.NotMerged, fmt.Errorf("invalid raw diff entry: %q", entries[i])
 		}
-		changes = append(changes, change)
+		changes = append(changes, rawChange{f[0], f[1], f[2], f[3], f[4], entries[i+1]})
 		paths = append(paths, entries[i+1])
 	}
 	tree, err := in.treeEntries(ctx, dir, base, paths)
 	if err != nil {
 		return lopper.NotMerged, err
 	}
-	var merges [][3]string // blobs of base, ancestor and head
-	for i, change := range changes {
-		current, ok := tree[paths[i]]
-		if change[4] == "D" {
+	var merges []textMerge
+	for _, ch := range changes {
+		cur, ok := tree[ch.path]
+		if ch.status == "D" {
 			if ok {
 				return lopper.NotMerged, nil
 			}
@@ -108,32 +133,57 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 		if !ok {
 			return lopper.NotMerged, nil
 		}
-		if change[0] != change[1] && current[0] != change[1] {
+		if ch.srcMode != ch.dstMode && cur.mode != ch.dstMode {
 			return lopper.NotMerged, nil
 		}
-		if current[0] != change[1] && (!regularMode(current[0]) || !regularMode(change[1])) {
+		if cur.mode != ch.dstMode && (!regularMode(cur.mode) || !regularMode(ch.dstMode)) {
 			return lopper.NotMerged, nil
 		}
-		if current[2] == change[3] {
+		if cur.id == ch.dstID {
 			continue
 		}
-		if !regularMode(change[0]) || !regularMode(change[1]) || !regularMode(current[0]) {
+		// Base still has the file as the branch started from: the change
+		// is not in base, and a merge would only repeat that.
+		if cur.id == ch.srcID {
 			return lopper.NotMerged, nil
 		}
-		merges = append(merges, [3]string{current[2], change[2], change[3]})
+		if !regularMode(ch.srcMode) || !regularMode(ch.dstMode) || !regularMode(cur.mode) {
+			return lopper.NotMerged, nil
+		}
+		merges = append(merges, textMerge{cur.id, ch.srcID, ch.dstID})
+	}
+	if len(merges) == 0 {
+		return lopper.MergedSquash, nil
+	}
+	ids := make([]string, 0, 3*len(merges))
+	for _, m := range merges {
+		ids = append(ids, m.current, m.ancestor, m.other)
+	}
+	sizes, err := gitx.BlobSizes(ctx, in.Git, dir, ids)
+	if err != nil {
+		return lopper.NotMerged, err
+	}
+	if slices.ContainsFunc(ids, func(id string) bool { return sizes[id] > maxMergeSize }) {
+		return lopper.NotMerged, nil
 	}
 	// Blobs are read in batches, which bounds the memory they take.
-	for batch := range slices.Chunk(merges, 64) {
-		var ids []string
-		for _, m := range batch {
-			ids = append(ids, m[:]...)
+	for len(merges) > 0 {
+		n, size := 0, 0
+		for n < len(merges) {
+			m := merges[n]
+			next := sizes[m.current] + sizes[m.ancestor] + sizes[m.other]
+			if n > 0 && size+next > maxReadSize {
+				break
+			}
+			size += next
+			n++
 		}
-		blobs, err := gitx.ReadBlobs(ctx, in.Git, dir, ids)
+		blobs, err := gitx.ReadBlobs(ctx, in.Git, dir, ids[:3*n])
 		if err != nil {
 			return lopper.NotMerged, err
 		}
-		for _, m := range batch {
-			unchanged, err := gitx.MergeUnchanged(ctx, in.Git, dir, blobs[m[0]], blobs[m[1]], blobs[m[2]])
+		for _, m := range merges[:n] {
+			unchanged, err := gitx.MergeUnchanged(ctx, in.Git, dir, blobs[m.current], blobs[m.ancestor], blobs[m.other])
 			if err != nil {
 				return lopper.NotMerged, err
 			}
@@ -141,18 +191,19 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 				return lopper.NotMerged, nil
 			}
 		}
+		merges, ids = merges[n:], ids[3*n:]
 	}
 	return lopper.MergedSquash, nil
 }
 
-// treeEntries returns the mode, type and object of each of paths that
-// tree has, a subtree included. Paths go to ls-tree in batches that fit
-// a command line; -t keeps a tree listed when another path leads into it.
-func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []string) (map[string][]string, error) {
-	entries := make(map[string][]string, len(paths))
+// treeEntries returns the entry of each of paths that tree has, a
+// subtree included. Paths go to ls-tree in batches that fit a command
+// line; -t keeps a tree listed when another path leads into it.
+func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []string) (map[string]treeEntry, error) {
+	entries := make(map[string]treeEntry, len(paths))
 	for len(paths) > 0 {
 		n, size := 0, 0
-		for n < len(paths) && (n == 0 || size+len(paths[n]) < 16<<10) {
+		for n < len(paths) && (n == 0 || size+len(paths[n]) < maxArgsSize) {
 			size += len(paths[n]) + 1
 			n++
 		}
@@ -166,11 +217,11 @@ func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []s
 				continue
 			}
 			header, path, ok := strings.Cut(record, "\t")
-			fields := strings.Fields(header)
+			fields := strings.Fields(header) // mode, type, object
 			if !ok || len(fields) != 3 {
 				return nil, fmt.Errorf("invalid ls-tree entry: %q", record)
 			}
-			entries[path] = fields
+			entries[path] = treeEntry{mode: fields[0], id: fields[2]}
 		}
 		paths = paths[n:]
 	}

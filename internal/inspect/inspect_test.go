@@ -331,6 +331,29 @@ func TestQuickSquashOfManyFilesStartsFewProcesses(t *testing.T) {
 	}
 }
 
+// A file too large to merge in memory keeps the worktree, even when base
+// has its changes.
+func TestQuickSquashOfLargeFileIsNotMerged(t *testing.T) {
+	var b strings.Builder
+	for i := 0; b.Len() <= maxMergeSize; i++ {
+		fmt.Fprintf(&b, "line %d\n", i)
+	}
+	large := b.String()
+	repo := setup(t)
+	writeFile(t, filepath.Join(repo, "large.txt"), "one\ntwo\nthree\nfour\nfive\n"+large)
+	git(t, repo, "add", "large.txt")
+	git(t, repo, "commit", "-q", "-m", "large")
+	wt := addWorktree(t, repo, "-b", "feature")
+	writeFile(t, filepath.Join(wt.Path, "large.txt"), "feature\ntwo\nthree\nfour\nfive\n"+large)
+	git(t, wt.Path, "commit", "-q", "-am", "feature")
+	git(t, repo, "merge", "-q", "--squash", "feature")
+	git(t, repo, "commit", "-q", "-m", "squash")
+	writeFile(t, filepath.Join(repo, "large.txt"), "feature\ntwo\nthree\nfour\nfive\n"+large+"base\n")
+	git(t, repo, "commit", "-q", "-am", "later")
+
+	wantFacts(t, quick(t, wt), 0, 1, lopper.NotMerged)
+}
+
 type failingHistoryGit struct{ gitx.Runner }
 
 func (f failingHistoryGit) Run(ctx context.Context, dir string, args ...string) (string, error) {

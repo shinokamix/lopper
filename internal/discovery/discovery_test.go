@@ -23,7 +23,7 @@ type fakeGit struct {
 	calls []string
 }
 
-func (f *fakeGit) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
+func (f *fakeGit) RunRaw(ctx context.Context, dir, _ string, args ...string) (string, error) {
 	return f.Run(ctx, dir, args...)
 }
 

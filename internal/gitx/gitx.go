@@ -56,7 +56,7 @@ func checkVersion(out string) error {
 // Runner executes git in a directory. Tests can substitute a fake.
 type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
-	RunRaw(ctx context.Context, dir string, args ...string) (string, error)
+	RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error)
 }
 
 // Exec runs the git binary found in PATH.
@@ -87,13 +87,14 @@ type Runner interface {
 type Exec struct{}
 
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
-	out, err := Exec{}.RunRaw(ctx, dir, args...)
+	out, err := Exec{}.RunRaw(ctx, dir, "", args...)
 	return strings.TrimRight(out, "\n"), err
 }
 
-// RunRaw runs git and preserves stdout bytes, including
-// trailing newlines. It applies the same restrictions as Run.
-func (Exec) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
+// RunRaw runs git with stdin, if not empty, as its input and preserves
+// stdout bytes, including trailing newlines. It applies the same
+// restrictions as Run.
+func (Exec) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "LC_ALL=C")
 	var drivers []string
 	for _, d := range filterConfigs(dir, args) {
@@ -111,7 +112,7 @@ func (Exec) RunRaw(ctx context.Context, dir string, args ...string) (string, err
 	if len(drivers) > 0 {
 		env = blankFilters(env, strings.Join(drivers, "\x00"))
 	}
-	return runRaw(ctx, dir, env, args...)
+	return runRaw(ctx, dir, env, stdin, args...)
 }
 
 // repoVars are the variables `git rev-parse --local-env-vars` lists, which
@@ -164,8 +165,8 @@ func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (strin
 	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
-func (o OwnWorkTree) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
-	return o.Runner.RunRaw(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
+func (o OwnWorkTree) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
+	return o.Runner.RunRaw(ctx, dir, stdin, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
 // filterConfigs returns where to look up the filter drivers a git command
@@ -210,14 +211,17 @@ func worktreeArg(dir string, args []string) string {
 }
 
 func run(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	out, err := runRaw(ctx, dir, env, args...)
+	out, err := runRaw(ctx, dir, env, "", args...)
 	return strings.TrimRight(out, "\n"), err
 }
 
-func runRaw(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+func runRaw(ctx context.Context, dir string, env []string, stdin string, args ...string) (string, error) {
 	full := append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = env
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -226,21 +230,40 @@ func runRaw(ctx context.Context, dir string, env []string, args ...string) (stri
 	return stdout.String(), nil
 }
 
-// MergeBlobsUnchanged checks whether applying ancestor..other to current leaves
-// its contents unchanged. merge-file uses Git's built-in text merge, bypasses
-// attribute merge drivers, and with --stdout writes no repository objects.
-// It merges temporary files: --object-id needs Git 2.43.
-func MergeBlobsUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
-	var blobs [3]string
-	for i, id := range []string{current, ancestor, other} {
-		blob, err := r.RunRaw(ctx, dir, "cat-file", "blob", id)
-		if err != nil {
-			return false, err
+// ReadBlobs returns the contents of the blobs ids, read by one git process.
+// A blob that is missing, as in a partial clone, is an error.
+func ReadBlobs(ctx context.Context, r Runner, dir string, ids []string) (map[string]string, error) {
+	out, err := r.RunRaw(ctx, dir, strings.Join(ids, "\n")+"\n", "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	blobs := make(map[string]string, len(ids))
+	for range ids {
+		header, rest, ok := strings.Cut(out, "\n")
+		fields := strings.Fields(header)
+		if !ok || len(fields) != 3 || fields[1] != "blob" {
+			return nil, fmt.Errorf("git cat-file: %s", header) // "<id> missing"
 		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size < 0 || size >= len(rest) {
+			return nil, fmt.Errorf("git cat-file: truncated output after %s", header)
+		}
+		blobs[fields[0]] = rest[:size]
+		out = rest[size+1:] // the newline after the contents
+	}
+	return blobs, nil
+}
+
+// MergeUnchanged checks whether applying ancestor..other to current leaves
+// it unchanged, given their contents. merge-file uses Git's built-in text
+// merge, bypasses attribute merge drivers, and with --stdout writes no
+// repository objects. It merges temporary files: --object-id needs Git 2.43.
+func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
+	blobs := [3]string{current, ancestor, other}
+	for _, blob := range blobs {
 		if strings.IndexByte(blob, 0) >= 0 {
 			return false, nil
 		}
-		blobs[i] = blob
 	}
 	tmp, err := os.MkdirTemp("", "lopper-merge-*")
 	if err != nil {
@@ -253,7 +276,7 @@ func MergeBlobsUnchanged(ctx context.Context, r Runner, dir, current, ancestor, 
 			return false, err
 		}
 	}
-	out, err := r.RunRaw(ctx, dir, "merge-file", "--stdout", "--quiet", "--diff3", paths[0], paths[1], paths[2])
+	out, err := r.RunRaw(ctx, dir, "", "merge-file", "--stdout", "--quiet", "--diff3", paths[0], paths[1], paths[2])
 	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() > 0 && e.ExitCode() <= 127 {
 		return false, nil // merge-file returns the number of conflicts
 	}

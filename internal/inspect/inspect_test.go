@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -282,6 +283,52 @@ func TestQuickContentMergeKeepsTrailingNewlineChange(t *testing.T) {
 	git(t, repo, "add", "content.txt")
 	git(t, repo, "commit", "-q", "-m", "feature without blank line")
 	wantFacts(t, quick(t, wt), 0, 1, lopper.NotMerged)
+}
+
+// countingGit counts the git processes an inspection starts.
+type countingGit struct {
+	gitx.Runner
+	calls *int
+}
+
+func (c countingGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	*c.calls++
+	return c.Runner.Run(ctx, dir, args...)
+}
+
+func (c countingGit) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
+	*c.calls++
+	return c.Runner.RunRaw(ctx, dir, stdin, args...)
+}
+
+// A squash of a branch that touched many files, each changed again on main
+// since, takes one text merge per file but not a lookup and reads per file.
+func TestQuickSquashOfManyFilesStartsFewProcesses(t *testing.T) {
+	const files = 100
+	repo := setup(t)
+	for i := range files {
+		writeFile(t, filepath.Join(repo, fmt.Sprintf("f%03d.txt", i)), "one\ntwo\nthree\nfour\nfive\nsix\n")
+	}
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-q", "-m", "files")
+	wt := addWorktree(t, repo, "-b", "feature")
+	for i := range files {
+		writeFile(t, filepath.Join(wt.Path, fmt.Sprintf("f%03d.txt", i)), "one\nfeature\nthree\nfour\nfive\nsix\n")
+	}
+	git(t, wt.Path, "commit", "-q", "-am", "feature")
+	git(t, repo, "merge", "-q", "--squash", "feature")
+	git(t, repo, "commit", "-q", "-m", "squash")
+	for i := range files {
+		writeFile(t, filepath.Join(repo, fmt.Sprintf("f%03d.txt", i)), "one\nfeature\nthree\nfour\nbase\nsix\n")
+	}
+	git(t, repo, "commit", "-q", "-am", "later")
+
+	var calls int
+	f := (Inspector{Git: countingGit{gitx.Exec{}, &calls}}).Quick(t.Context(), wt)
+	wantFacts(t, f, 0, 1, lopper.MergedSquash)
+	if calls > files+20 {
+		t.Errorf("inspection started %d git processes for %d files, want at most %d", calls, files, files+20)
+	}
 }
 
 type failingHistoryGit struct{ gitx.Runner }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shinokamix/lopper/internal/gitx"
@@ -81,24 +82,30 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	if len(entries)%2 != 0 {
 		return lopper.NotMerged, errors.New("invalid raw diff output")
 	}
+	changes := make([][]string, 0, len(entries)/2)
+	paths := make([]string, 0, len(entries)/2)
 	for i := 0; i < len(entries); i += 2 {
 		change := strings.Fields(strings.TrimPrefix(entries[i], ":"))
 		if len(change) != 5 {
 			return lopper.NotMerged, fmt.Errorf("invalid raw diff entry: %q", entries[i])
 		}
-		out, err = in.Git.Run(ctx, dir, "--literal-pathspecs", "ls-tree", "-z", base, "--", entries[i+1])
-		if err != nil {
-			return lopper.NotMerged, err
-		}
+		changes = append(changes, change)
+		paths = append(paths, entries[i+1])
+	}
+	tree, err := in.treeEntries(ctx, dir, base, paths)
+	if err != nil {
+		return lopper.NotMerged, err
+	}
+	var merges [][3]string // blobs of base, ancestor and head
+	for i, change := range changes {
+		current, ok := tree[paths[i]]
 		if change[4] == "D" {
-			if out != "" {
+			if ok {
 				return lopper.NotMerged, nil
 			}
 			continue
 		}
-		header, _, _ := strings.Cut(out, "\t")
-		current := strings.Fields(header)
-		if len(current) != 3 {
+		if !ok {
 			return lopper.NotMerged, nil
 		}
 		if change[0] != change[1] && current[0] != change[1] {
@@ -113,15 +120,61 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 		if !regularMode(change[0]) || !regularMode(change[1]) || !regularMode(current[0]) {
 			return lopper.NotMerged, nil
 		}
-		unchanged, err := gitx.MergeBlobsUnchanged(ctx, in.Git, dir, current[2], change[2], change[3])
+		merges = append(merges, [3]string{current[2], change[2], change[3]})
+	}
+	// Blobs are read in batches, which bounds the memory they take.
+	for batch := range slices.Chunk(merges, 64) {
+		var ids []string
+		for _, m := range batch {
+			ids = append(ids, m[:]...)
+		}
+		blobs, err := gitx.ReadBlobs(ctx, in.Git, dir, ids)
 		if err != nil {
 			return lopper.NotMerged, err
 		}
-		if !unchanged {
-			return lopper.NotMerged, nil
+		for _, m := range batch {
+			unchanged, err := gitx.MergeUnchanged(ctx, in.Git, dir, blobs[m[0]], blobs[m[1]], blobs[m[2]])
+			if err != nil {
+				return lopper.NotMerged, err
+			}
+			if !unchanged {
+				return lopper.NotMerged, nil
+			}
 		}
 	}
 	return lopper.MergedSquash, nil
+}
+
+// treeEntries returns the mode, type and object of each of paths that
+// tree has, a subtree included. Paths go to ls-tree in batches that fit
+// a command line; -t keeps a tree listed when another path leads into it.
+func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []string) (map[string][]string, error) {
+	entries := make(map[string][]string, len(paths))
+	for len(paths) > 0 {
+		n, size := 0, 0
+		for n < len(paths) && (n == 0 || size+len(paths[n]) < 16<<10) {
+			size += len(paths[n]) + 1
+			n++
+		}
+		args := append([]string{"--literal-pathspecs", "ls-tree", "-t", "-z", tree, "--"}, paths[:n]...)
+		out, err := in.Git.Run(ctx, dir, args...)
+		if err != nil {
+			return nil, err
+		}
+		for record := range strings.SplitSeq(out, "\x00") {
+			if record == "" {
+				continue
+			}
+			header, path, ok := strings.Cut(record, "\t")
+			fields := strings.Fields(header)
+			if !ok || len(fields) != 3 {
+				return nil, fmt.Errorf("invalid ls-tree entry: %q", record)
+			}
+			entries[path] = fields
+		}
+		paths = paths[n:]
+	}
+	return entries, nil
 }
 
 func regularMode(mode string) bool {

@@ -171,6 +171,111 @@ func TestQuickStatusFails(t *testing.T) {
 	}
 }
 
+// Integration must preserve file contents and keep new empty commits.
+func TestQuickPatchMergeKeepsLocalWork(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		local      string
+		integrated string
+		emptyTail  bool
+		merged     lopper.MergeKind
+	}{
+		{"different whitespace", "value = 1\n", "value=1\n", false, lopper.NotMerged},
+		{"different binary content", "\x00local\n", "\x00other\n", false, lopper.NotMerged},
+		{"binary squash", "\x00local\n", "\x00local\n", false, lopper.MergedSquash},
+		{"empty file", "", "", false, lopper.MergedSquash},
+		{"empty commit after squash", "change\n", "change\n", true, lopper.NotMerged},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := setup(t)
+			wt := addWorktree(t, repo, "-b", "feature")
+			writeFile(t, filepath.Join(wt.Path, "change.txt"), tc.local)
+			git(t, wt.Path, "add", "change.txt")
+			git(t, wt.Path, "commit", "-q", "-m", "local")
+			writeFile(t, filepath.Join(repo, "change.txt"), tc.integrated)
+			git(t, repo, "add", "change.txt")
+			git(t, repo, "commit", "-q", "-m", "integrated")
+			unpushed := 1
+			if tc.emptyTail {
+				git(t, wt.Path, "commit", "-q", "--allow-empty", "-m", "local empty")
+				unpushed = 2
+			}
+			wantFacts(t, quick(t, wt), 0, unpushed, tc.merged)
+		})
+	}
+}
+
+// Matching a merge's parent commits does not cover changes made in the merge.
+// A squash of the full branch does cover them.
+func TestQuickSquashCoversMergeResolution(t *testing.T) {
+	repo := setup(t)
+	initial := git(t, repo, "rev-parse", "HEAD")
+	wt := addWorktree(t, repo, "-b", "feature")
+	writeFile(t, filepath.Join(wt.Path, "feature.txt"), "feature\n")
+	git(t, wt.Path, "add", "feature.txt")
+	git(t, wt.Path, "commit", "-q", "-m", "feature")
+	git(t, repo, "checkout", "-q", "-b", "side")
+	writeFile(t, filepath.Join(repo, "side.txt"), "side\n")
+	git(t, repo, "add", "side.txt")
+	git(t, repo, "commit", "-q", "-m", "side")
+	git(t, wt.Path, "merge", "-q", "--no-ff", "side", "-m", "merge")
+	writeFile(t, filepath.Join(wt.Path, "resolution.txt"), "only in merge\n")
+	git(t, wt.Path, "add", "resolution.txt")
+	git(t, wt.Path, "commit", "-q", "--amend", "--no-edit")
+
+	git(t, repo, "checkout", "-q", "main")
+	git(t, repo, "cherry-pick", "feature~1", "side")
+	f := quick(t, wt)
+	if len(f.Errors) != 0 || f.Merged == nil || *f.Merged != lopper.NotMerged {
+		t.Fatalf("Merged = %v, Errors = %q, want none without errors", ptr(f.Merged), f.Errors)
+	}
+
+	git(t, repo, "reset", "-q", "--hard", initial)
+	git(t, repo, "merge", "-q", "--squash", "feature")
+	git(t, repo, "commit", "-q", "-m", "squash including resolution")
+	wantFacts(t, quick(t, wt), 0, 3, lopper.MergedSquash)
+}
+
+func TestQuickContentMergeKeepsTrailingNewlineChange(t *testing.T) {
+	repo := setup(t)
+	writeFile(t, filepath.Join(repo, "content.txt"), "one\ntwo\nthree\nfour\nfive\nsix\n")
+	git(t, repo, "add", "content.txt")
+	git(t, repo, "commit", "-q", "-m", "initial content")
+	wt := addWorktree(t, repo, "-b", "feature")
+	writeFile(t, filepath.Join(wt.Path, "content.txt"), "one\nfeature\nthree\nfour\nfive\nsix\n\n")
+	git(t, wt.Path, "add", "content.txt")
+	git(t, wt.Path, "commit", "-q", "-m", "feature and blank line")
+	writeFile(t, filepath.Join(repo, "content.txt"), "one\nfeature\nthree\nfour\nbase\nsix\n")
+	git(t, repo, "add", "content.txt")
+	git(t, repo, "commit", "-q", "-m", "feature without blank line")
+	wantFacts(t, quick(t, wt), 0, 1, lopper.NotMerged)
+}
+
+type failingHistoryGit struct{ gitx.Runner }
+
+func (f failingHistoryGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	if len(args) > 0 && args[0] == "log" {
+		return "", errors.New("commit history unavailable")
+	}
+	return f.Runner.Run(ctx, dir, args...)
+}
+
+func TestQuickHistoryFailureLeavesMergeUnknown(t *testing.T) {
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "feature")
+	writeFile(t, filepath.Join(wt.Path, "change.txt"), "change\n")
+	git(t, wt.Path, "add", "change.txt")
+	git(t, wt.Path, "commit", "-q", "-m", "local")
+
+	f := (Inspector{Git: failingHistoryGit{gitx.Exec{}}}).Quick(t.Context(), wt)
+	if f.Merged != nil || len(f.Errors) != 1 || !strings.Contains(f.Errors[0], "commit history unavailable") {
+		t.Fatalf("Merged = %v, Errors = %q, want unknown with history error", ptr(f.Merged), f.Errors)
+	}
+	if f.Dirty == nil || *f.Dirty != 0 || f.Unpushed == nil || *f.Unpushed != 1 {
+		t.Fatalf("Dirty = %v, Unpushed = %v, want 0 and 1", ptr(f.Dirty), ptr(f.Unpushed))
+	}
+}
+
 func TestSlowSize(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "nested"), 0o700); err != nil {

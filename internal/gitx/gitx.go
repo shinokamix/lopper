@@ -34,14 +34,15 @@ func Check(ctx context.Context) error {
 // Runner executes git in a directory. Tests can substitute a fake.
 type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
+	RunRaw(ctx context.Context, dir string, args ...string) (string, error)
 }
 
 // Exec runs the git binary found in PATH.
 //
 // lopper runs git inside arbitrary, possibly untrusted repositories, so
 // repository-local config must never make git spawn a program. For the
-// commands lopper uses (status, rev-list, worktree, symbolic-ref,
-// rev-parse, config) the vectors are below; `worktree remove` runs status
+// commands that touch working tree files (status and worktree), the
+// settings are below; `worktree remove` runs status
 // in the worktree through a child git, which inherits both settings.
 //   - core.fsmonitor: status runs the configured hook; disabled via -c,
 //     which takes precedence over every config file.
@@ -52,9 +53,9 @@ type Runner interface {
 //     GIT_CONFIG_KEY_n (which, unlike -c, accepts any name).
 //
 // Hooks do not run for these commands, and the pager, editor, ssh and
-// credential helpers are never reached. Future commands that print diffs
-// must pass --no-ext-diff --no-textconv. Global config is left intact so
-// safe.directory keeps working.
+// credential helpers are never reached. Commands that print diffs must
+// pass --no-ext-diff --no-textconv, and log must pass --no-show-signature.
+// Global config is left intact so safe.directory keeps working.
 //
 // git runs in dir and nowhere else: variables such as GIT_DIR that the
 // caller exported (a git hook, `git rebase --exec`) are dropped, see
@@ -62,6 +63,13 @@ type Runner interface {
 type Exec struct{}
 
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := Exec{}.RunRaw(ctx, dir, args...)
+	return strings.TrimRight(out, "\n"), err
+}
+
+// RunRaw runs git and preserves stdout bytes, including
+// trailing newlines. It applies the same restrictions as Run.
+func (Exec) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
 	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 	var drivers []string
 	for _, d := range filterConfigs(dir, args) {
@@ -79,7 +87,7 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 	if len(drivers) > 0 {
 		env = blankFilters(env, strings.Join(drivers, "\x00"))
 	}
-	return run(ctx, dir, env, args...)
+	return runRaw(ctx, dir, env, args...)
 }
 
 // repoVars are the variables `git rev-parse --local-env-vars` lists, which
@@ -131,6 +139,10 @@ func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (strin
 	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
+func (o OwnWorkTree) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
+	return o.Runner.RunRaw(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
+}
+
 // filterConfigs returns where to look up the filter drivers a git command
 // run in dir may use, or nothing if it hashes no working tree files:
 // status, and worktree commands other than list, read the config of dir.
@@ -173,6 +185,11 @@ func worktreeArg(dir string, args []string) string {
 }
 
 func run(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	out, err := runRaw(ctx, dir, env, args...)
+	return strings.TrimRight(out, "\n"), err
+}
+
+func runRaw(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	full := append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = env
@@ -181,7 +198,34 @@ func run(ctx context.Context, dir string, env []string, args ...string) (string,
 	if err := cmd.Run(); err != nil {
 		return "", &Error{Args: args, Err: err, Stderr: strings.TrimSpace(stderr.String())}
 	}
-	return strings.TrimRight(stdout.String(), "\n"), nil
+	return stdout.String(), nil
+}
+
+// MergeBlobsUnchanged checks whether applying ancestor..other to current leaves
+// its contents unchanged. merge-file uses Git's built-in text merge, bypasses
+// attribute merge drivers, and with --stdout writes no repository objects.
+func MergeBlobsUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
+	var content string
+	for _, id := range []string{current, ancestor, other} {
+		blob, err := r.RunRaw(ctx, dir, "cat-file", "blob", id)
+		if err != nil {
+			return false, err
+		}
+		if strings.IndexByte(blob, 0) >= 0 {
+			return false, nil
+		}
+		if id == current {
+			content = blob
+		}
+	}
+	out, err := r.RunRaw(ctx, dir, "merge-file", "--object-id", "--stdout", "--quiet", "--diff3", current, ancestor, other)
+	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() > 0 && e.ExitCode() <= 127 {
+		return false, nil // merge-file returns the number of conflicts
+	}
+	if err != nil {
+		return false, err
+	}
+	return out == content, nil
 }
 
 // blankFilters appends GIT_CONFIG_KEY_n/VALUE_n pairs that set every

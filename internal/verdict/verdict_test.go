@@ -28,6 +28,7 @@ func TestSafe(t *testing.T) {
 	}{
 		{"merged and clean", repo, clean, true},
 		{"squash merged, local commits only", repo, lopper.Facts{Dirty: n(0), Unpushed: n(3), Merged: m(lopper.MergedSquash)}, true},
+		{"patch merged but dirty", repo, lopper.Facts{Dirty: n(1), Unpushed: n(3), Merged: m(lopper.MergedSquash)}, false},
 		{"merged but dirty", repo, lopper.Facts{Dirty: n(2), Unpushed: n(0), Merged: m(lopper.MergedFF)}, false},
 		{"unmerged and unpushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(1), Merged: m(lopper.NotMerged)}, false},
 		{"unmerged but pushed", repo, lopper.Facts{Dirty: n(0), Unpushed: n(0), Merged: m(lopper.NotMerged)}, false},

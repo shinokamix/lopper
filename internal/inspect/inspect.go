@@ -17,7 +17,7 @@ type Inspector struct {
 	Git gitx.Runner
 }
 
-// Quick gathers cheap facts: working tree state and merge status.
+// Quick gathers git facts: working tree state and merge status.
 // A fact that git cannot provide stays nil and the git error is recorded
 // in Facts.Errors, so verdict can refuse to call the worktree safe.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
@@ -46,14 +46,9 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	}
 	// Without a base branch Merged stays nil; verdict explains why.
 	if base := wt.Repo.DefaultBranch; base != "" {
-		if n, err := in.count(ctx, wt.Path, "rev-list", "--count", base+"..HEAD"); err != nil {
+		if kind, err := in.mergeKind(ctx, wt.Path, base); err != nil {
 			fail("compare with "+base, err)
 		} else {
-			kind := lopper.NotMerged
-			if n == 0 {
-				kind = lopper.MergedFF
-			}
-			// TODO: detect squash/rebase merges via `git patch-id`.
 			f.Merged = &kind
 		}
 	}

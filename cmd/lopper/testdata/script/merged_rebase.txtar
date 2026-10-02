@@ -1,0 +1,54 @@
+# Rebase integration rewrites commits while the old worktree stays behind.
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../wt
+cp a.txt wt/a.txt
+exec git -C wt add a.txt
+exec git -C wt commit -q -m first
+cp b.txt wt/b.txt
+exec git -C wt add b.txt
+exec git -C wt commit -q -m second
+
+cp later.txt repo/later.txt
+exec git -C repo add later.txt
+exec git -C repo commit -q -m later
+exec git -C repo checkout -q -b integrated feature
+exec git -C repo rebase -q main
+
+# Only one of the rewritten commits in main is insufficient.
+exec git -C repo branch -f main integrated~1
+exec lopper scan --json $WORK
+stdout '"merged": "none"'
+stdout '"safe": false'
+! stdout '"safe": true'
+
+exec git -C repo branch -f main integrated
+exec git -C repo checkout -q main
+exec lopper scan --json $WORK
+stdout '"merged": "patch-id"'
+stdout '"unpushed": 2'
+stdout '"safe": true'
+! stdout '"safe": false'
+
+# The same equivalence rule recognizes cherry-picks and checks the tail.
+cp local.txt wt/local.txt
+exec git -C wt add local.txt
+exec git -C wt commit -q -m local
+exec lopper scan --json $WORK
+stdout '"merged": "none"'
+stdout '"safe": false'
+! stdout '"safe": true'
+exec git -C repo cherry-pick feature
+exec lopper scan --json $WORK
+stdout '"merged": "patch-id"'
+stdout '"safe": true'
+! stdout '"safe": false'
+
+-- a.txt --
+first change
+-- b.txt --
+second change
+-- later.txt --
+unrelated base change
+-- local.txt --
+work after rebase

@@ -23,6 +23,10 @@ type fakeGit struct {
 	started chan<- struct{}
 }
 
+func (f fakeGit) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
+	return f.Run(ctx, dir, args...)
+}
+
 func (f fakeGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	if len(args) > 1 && args[0] == "worktree" && args[1] == "list" {
 		// Records work for both plain and -z porcelain output.

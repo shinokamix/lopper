@@ -23,6 +23,10 @@ type fakeGit struct {
 	calls []string
 }
 
+func (f *fakeGit) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
+	return f.Run(ctx, dir, args...)
+}
+
 func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

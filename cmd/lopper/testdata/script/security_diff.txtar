@@ -23,7 +23,7 @@ exists textconv-marker
 rm textconv-marker
 
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 ! exists external-marker

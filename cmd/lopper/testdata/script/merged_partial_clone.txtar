@@ -33,7 +33,7 @@ stdout 'could not compare with origin/main'
 exec git -C checkouts/wt cat-file blob main~2:content.txt
 cmp stdout initial.txt
 exec lopper scan --json checkouts
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 

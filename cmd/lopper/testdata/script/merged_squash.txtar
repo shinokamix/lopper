@@ -25,7 +25,7 @@ cp later.txt repo/later.txt
 exec git -C repo add later.txt
 exec git -C repo commit -q -m later
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"unpushed": 2'
 stdout '"safe": true'
 ! stdout '"safe": false'
@@ -33,7 +33,7 @@ stdout '"safe": true'
 # A dirty checkout stays unsafe even though its commits were integrated.
 cp local.txt wt/local.txt
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": false'
 ! stdout '"safe": true'
 

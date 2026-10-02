@@ -25,7 +25,7 @@ stdout '"safe": false'
 exec git -C repo branch -f main integrated
 exec git -C repo checkout -q main
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"unpushed": 2'
 stdout '"safe": true'
 ! stdout '"safe": false'
@@ -40,7 +40,7 @@ stdout '"safe": false'
 ! stdout '"safe": true'
 exec git -C repo cherry-pick feature
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 

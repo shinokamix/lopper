@@ -20,7 +20,7 @@ cp attributes repo/.git/info/attributes
 exec git -C repo config merge.evil.driver 'touch ../merge-marker; true'
 exec git -C repo config merge.default evil
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 ! exists merge-marker
@@ -35,7 +35,7 @@ exec git -C wt commit -q -m extra
 exec git -C repo merge -q --squash feature
 exec git -C repo commit -q -m squash
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 

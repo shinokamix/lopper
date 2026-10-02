@@ -15,7 +15,7 @@ exec git -C repo checkout -q main
 exec git -C repo merge -q --squash feature
 exec git -C repo commit -q -m squash
 exec lopper scan --json $WORK
-stdout '"merged": "patch-id"'
+stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 

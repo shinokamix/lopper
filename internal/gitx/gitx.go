@@ -53,7 +53,9 @@ type Runner interface {
 //     GIT_CONFIG_KEY_n (which, unlike -c, accepts any name).
 //
 // Hooks do not run for these commands, and the pager, editor, ssh and
-// credential helpers are never reached. Commands that print diffs must
+// credential helpers are never reached. Lazy fetching is disabled, and
+// all transport protocols are blocked for Git versions that ignore
+// GIT_NO_LAZY_FETCH. Commands that print diffs must
 // pass --no-ext-diff --no-textconv, and log must pass --no-show-signature.
 // Global config is left intact so safe.directory keeps working.
 //
@@ -70,7 +72,7 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 // RunRaw runs git and preserves stdout bytes, including
 // trailing newlines. It applies the same restrictions as Run.
 func (Exec) RunRaw(ctx context.Context, dir string, args ...string) (string, error) {
-	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "LC_ALL=C")
 	var drivers []string
 	for _, d := range filterConfigs(dir, args) {
 		out, err := run(ctx, d, env, "config", "-z", "--name-only",

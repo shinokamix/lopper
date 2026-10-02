@@ -39,14 +39,16 @@ func setup(t *testing.T) string {
 	return repo
 }
 
-// git runs git in dir and fails the test on error.
+// git prepares test repositories, including pushes to local remotes.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	out, err := gitx.Exec{}.Run(context.Background(), dir, args...)
+	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = gitx.Environ()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
-	return out
+	return strings.TrimRight(string(out), "\n")
 }
 
 func writeFile(t *testing.T, path, content string) {

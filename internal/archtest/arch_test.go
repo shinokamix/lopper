@@ -1,4 +1,4 @@
-// Package archtest enforces the layering described in README.md.
+// Package archtest enforces the layering described in CONTRIBUTING.md.
 // Every package must be listed in [layers]: adding a package without
 // deciding where it belongs fails the build.
 package archtest
@@ -25,7 +25,6 @@ var layers = map[string][]string{
 
 	"internal/lopper":   {},
 	"internal/gitx":     {},
-	"internal/config":   {},
 	"internal/archtest": {},
 	"internal/update":   {},
 
@@ -34,8 +33,8 @@ var layers = map[string][]string{
 	"internal/discovery": {"internal/lopper", "internal/gitx"},
 	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/discovery", "internal/inspect", "internal/verdict"},
 
-	"internal/cli": {"internal/lopper", "internal/config", "internal/engine", "internal/tui", "internal/update"},
-	"internal/tui": {"internal/lopper", "internal/engine"},
+	"internal/cli": {"internal/lopper", "internal/engine", "internal/tui", "internal/update"},
+	"internal/tui": {"internal/lopper", "internal/engine", "internal/verdict"},
 }
 
 // restricted limits sensitive imports (by prefix) to specific packages.

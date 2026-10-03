@@ -20,6 +20,7 @@ import (
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/internal/verdict"
 )
 
 func testApp() *app {
@@ -153,9 +154,9 @@ func TestFactsShowMergedInItsColor(t *testing.T) {
 		{"merged", row{checked: true, safe: true, facts: lopper.Facts{Dirty: &clean, UncheckedFiles: new(0), Unpushed: &clean, Merged: merged}}, "merged", true},
 		{"merged but dirty", row{checked: true, facts: lopper.Facts{Dirty: &dirty, UncheckedFiles: new(0), Unpushed: &clean, Merged: merged}}, "1 uncommitted · merged", true},
 		{"merged but hidden files", row{checked: true, facts: lopper.Facts{Dirty: &clean, UncheckedFiles: new(2), Unpushed: &clean, Merged: merged}}, "2 unchecked · merged", true},
-		{"merged but moved", row{checked: true, worktree: lopper.Worktree{MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, UncheckedFiles: new(0), Unpushed: &clean, Merged: merged}}, "moved by hand · merged", true},
+		{"merged but moved", row{checked: true, worktree: lopper.Worktree{State: lopper.StateMoved, MovedFrom: "/old"}, facts: lopper.Facts{Dirty: &clean, UncheckedFiles: new(0), Unpushed: &clean, Merged: merged}}, "moved by hand · merged", true},
 		{"not merged and unchecked", row{checked: true, facts: lopper.Facts{Unpushed: &clean, Merged: notMerged}}, "couldn't check · not merged", false},
-		{"folder gone", row{checked: true, safe: true, worktree: lopper.Worktree{Prunable: true}}, "folder gone", false},
+		{"folder gone", row{checked: true, safe: true, worktree: lopper.Worktree{State: lopper.StateGone}}, "folder gone", false},
 		{"no facts yet", row{}, "checking…", false},
 	}
 	for _, tc := range cases {
@@ -164,7 +165,7 @@ func TestFactsShowMergedInItsColor(t *testing.T) {
 			marked := false
 			for _, n := range facts(&tc.row) {
 				texts = append(texts, n.Text)
-				marked = marked || n.Kind == lopper.NoteMerged
+				marked = marked || n.Kind == verdict.NoteMerged
 			}
 			if got := strings.Join(texts, " · "); got != tc.want || marked != tc.marked {
 				t.Errorf("facts = %q (merged in color: %v), want %q (%v)", got, marked, tc.want, tc.marked)
@@ -179,7 +180,7 @@ func TestFactsShowMergedInItsColor(t *testing.T) {
 func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a := testApp()
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
-		ID: "wt", Path: "/w/wt", Branch: "fix/login", Unconfirmed: "HEAD is missing",
+		ID: "wt", Path: "/w/wt", Branch: "fix/login", State: lopper.StateUnconfirmed, Reason: "HEAD is missing",
 	}}})
 	dirty, clean := 3, 0
 	a.Update(eventMsg{ev: engine.FactsUpdated{

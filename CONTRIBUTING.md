@@ -27,18 +27,20 @@ The hooks format and lint on commit and run `task check` on push.
 ```
 cmd/lopper        entry point
 internal/
-  lopper          core types: Worktree, Facts, and Notes that word them (no dependencies)
+  lopper          core types: Worktree and its State, Facts (no dependencies)
   gitx            thin wrapper over the git CLI
   discovery       where worktrees are
   inspect         facts about a worktree (dirty, unpushed, merged, size…)
-  verdict         the one rule deciding whether a worktree is safe to delete
+  verdict         what lopper concludes: whether a worktree is safe to delete, and its notes
   engine          scan pipeline, emits events
-  config          user settings
-  cli             cobra commands
+  update          self-update from GitHub releases
+  cli             cobra commands; wires everything together, owns the --json format
   tui             Bubble Tea UI: app, list screen, store, theme, keys
 ```
 
-Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx` → `lopper`.
+Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx`, and
+the stages and UIs share the types in `lopper`. The UIs reach stages only through
+`engine`, except `verdict`, whose notes they show.
 [`internal/archtest`](internal/archtest/arch_test.go) enforces this with the
 tests: every package needs a layer there, and `os/exec`, Charm and cobra are
 allowed only where needed. If it fails, move the code rather than loosening the rule.

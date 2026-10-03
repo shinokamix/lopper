@@ -13,11 +13,11 @@ func TestSafe(t *testing.T) {
 	noBase := lopper.Worktree{}
 	locked := repo
 	locked.Locked = true
-	lockedGone := lopper.Worktree{Prunable: true, Locked: true}
+	lockedGone := lopper.Worktree{State: lopper.StateGone, Locked: true}
 	moved := repo
-	moved.MovedFrom = "/old/wt"
+	moved.State, moved.MovedFrom = lopper.StateMoved, "/old/wt"
 	unconfirmed := repo
-	unconfirmed.Unconfirmed = "git worktree list failed"
+	unconfirmed.State, unconfirmed.Reason = lopper.StateUnconfirmed, "git worktree list failed"
 	clean := lopper.Facts{Dirty: n(0), UncheckedFiles: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF)}
 
 	cases := []struct {
@@ -34,11 +34,11 @@ func TestSafe(t *testing.T) {
 		{"unmerged and unpushed", repo, lopper.Facts{Dirty: n(0), UncheckedFiles: n(0), Unpushed: n(1), Merged: m(lopper.NotMerged)}, false},
 		{"unmerged but pushed", repo, lopper.Facts{Dirty: n(0), UncheckedFiles: n(0), Unpushed: n(0), Merged: m(lopper.NotMerged)}, false},
 		{"locked", locked, clean, false},
-		{"folder gone", lopper.Worktree{Prunable: true}, lopper.Facts{}, true},
+		{"folder gone", lopper.Worktree{State: lopper.StateGone}, lopper.Facts{}, true},
 		{"folder gone but locked", lockedGone, lopper.Facts{}, false},
 		{"moved, merged and clean", moved, clean, false},
 		{"unconfirmed, merged and clean", unconfirmed, clean, false},
-		{"orphaned", lopper.Worktree{Orphaned: true}, lopper.Facts{SizeBytes: new(int64(4096))}, false},
+		{"orphaned", lopper.Worktree{State: lopper.StateOrphaned}, lopper.Facts{SizeBytes: new(int64(4096))}, false},
 		{"status failed but merged", repo, lopper.Facts{UncheckedFiles: n(0), Unpushed: n(0), Merged: m(lopper.MergedFF), Errors: []string{"could not read status: boom"}}, false},
 		{"unpushed unknown but merged", repo, lopper.Facts{Dirty: n(0), UncheckedFiles: n(0), Merged: m(lopper.MergedFF)}, false},
 		{"no base branch", noBase, lopper.Facts{Dirty: n(0), UncheckedFiles: n(0), Unpushed: n(0)}, false},

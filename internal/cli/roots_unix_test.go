@@ -1,6 +1,6 @@
 //go:build unix
 
-package config
+package cli
 
 import (
 	"path/filepath"
@@ -20,13 +20,13 @@ func TestTempRootsFIFO(t *testing.T) {
 	}
 
 	roots := make(chan []string, 1)
-	go func() { roots <- defaults(home, []string{fifo}).Roots }()
+	go func() { roots <- withTemps([]string{home}, []string{fifo}) }()
 	select {
 	case got := <-roots:
 		if want := []string{home}; !slices.Equal(got, want) {
-			t.Errorf("Roots = %v, want %v", got, want)
+			t.Errorf("withTemps() = %v, want %v", got, want)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("defaults blocked on a FIFO")
+		t.Fatal("withTemps blocked on a FIFO")
 	}
 }

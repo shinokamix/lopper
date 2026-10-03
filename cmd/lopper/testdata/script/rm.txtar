@@ -57,6 +57,8 @@ exists repo/.git
 # same. Neither stops the others.
 exec git -C repo worktree add -q -b gone ../wt-gone
 rm wt-gone
+exec lopper scan --json $WORK
+stdout -count=1 '"prunable": true'
 exec git -C repo worktree add -q -b next ../wt-next
 ! exec lopper rm --force missing wt-gone wt-next
 stderr '^missing: not removed: no such directory; if a repository lists a worktree there, `git worktree prune` in it removes the record$'

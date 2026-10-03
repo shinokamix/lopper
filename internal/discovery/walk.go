@@ -1,0 +1,174 @@
+package discovery
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/charlievieth/fastwalk"
+)
+
+// findRepos reports the common git directory of every repository met
+// during the walk, once. A .git directory belongs to a main worktree; a
+// .git file leads to a git directory elsewhere, which may live outside
+// the roots: that of a linked worktree's main repository, a submodule,
+// or a --separate-git-dir or ".bare" layout. Bare repositories have no
+// .git at all and are recognized by their worktrees directory. The
+// repositories of submodules live inside another git directory, where the
+// walk does not go, and are looked up there: their checkout may be gone
+// while their worktrees are not. Every linked worktree met also goes to
+// linked, with what its .git file tells about the repository.
+//
+// Symbolic links to directories are followed. Every physical directory
+// is walked once, whichever path reaches it first, so neither a link
+// back to an ancestor nor overlapping roots make the walk repeat itself.
+func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) error {
+	var seen sync.Map
+	var report func(gitDir string)
+	report = func(gitDir string) {
+		// The same repo may be reached via a symlinked path.
+		if _, dup := seen.LoadOrStore(realPath(gitDir), struct{}{}); !dup {
+			found(gitDir)
+			submodules(gitDir, report)
+		}
+	}
+	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
+	conf := fastwalk.DefaultConfig
+	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
+
+	for _, root := range opts.Roots {
+		root = filepath.Clean(root)
+		if err := checkRoot(root); err != nil {
+			return err
+		}
+		err := fastwalk.Walk(&conf, root, func(path string, d fs.DirEntry, err error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err != nil {
+				if path == root {
+					return fmt.Errorf("scan %s: %w", root, err)
+				}
+				return nil // unreadable entries below a root are skipped, not fatal
+			}
+			typ, link := d.Type(), d.Type()&fs.ModeSymlink != 0
+			if link {
+				info, err := fastwalk.StatDirEntry(path, d)
+				if err != nil {
+					return nil //nolint:nilerr // dangling, or a loop of links: nothing to walk
+				}
+				typ = info.Mode().Type()
+			}
+			if typ.IsDir() && visited.Entry(path, d) {
+				return fs.SkipDir
+			}
+			name := d.Name()
+			if name == ".git" {
+				if typ.IsDir() {
+					report(path)
+					return fs.SkipDir
+				}
+				if typ.IsRegular() {
+					gf, ok := readGitFile(path)
+					if ok && gf.admin != gf.commonDir {
+						linked(physical(opts.Roots, filepath.Dir(path)), gf)
+					}
+					if ok && !gf.repoGone {
+						// Even without this worktree, the repository may have others.
+						report(gf.commonDir)
+					}
+				}
+				return nil
+			}
+			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
+				report(filepath.Dir(path)) // a bare repository
+				return fs.SkipDir
+			}
+			if link && typ.IsDir() {
+				return fastwalk.ErrTraverseLink
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// submodules calls found for every submodule repository kept in gitDir:
+// in modules/<submodule path>, in modules/ of those for nested ones (via
+// found), and in worktrees/<id>/modules for those of linked worktrees.
+func submodules(gitDir string, found func(gitDir string)) {
+	modules(filepath.Join(gitDir, "modules"), found)
+	ids, _ := os.ReadDir(filepath.Join(gitDir, "worktrees"))
+	for _, id := range ids {
+		if id.IsDir() {
+			modules(filepath.Join(gitDir, "worktrees", id.Name(), "modules"), found)
+		}
+	}
+}
+
+// modules finds the repositories below dir. A submodule path has several
+// components when the submodule is not at the top of its superproject.
+// Symbolic links are not followed: git creates none there.
+func modules(dir string, found func(gitDir string)) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if isGitDir(path) {
+			found(path)
+		} else {
+			modules(path, found)
+		}
+	}
+}
+
+// physical is where dir really is, so that a directory the walk may reach
+// by several paths is reported the same way every time: its resolved
+// path, but below the first root that contains it, as that root is given.
+func physical(roots []string, dir string) string {
+	resolved := realPath(dir)
+	for _, root := range roots {
+		rel, err := filepath.Rel(realPath(root), resolved)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.Join(filepath.Clean(root), rel)
+		}
+	}
+	return resolved
+}
+
+// realPath resolves symlinks so that one directory reached by two paths
+// is recognised. Of a path that is gone, what is left is resolved: git
+// may record a missing worktree through a symlink the walk does not use.
+func realPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(realPath(parent), filepath.Base(path))
+}
+
+func checkRoot(root string) error {
+	info, err := os.Stat(root)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("%s: no such directory", root)
+	case err != nil:
+		return fmt.Errorf("scan %s: %w", root, err)
+	case !info.IsDir():
+		return fmt.Errorf("%s: not a directory", root)
+	}
+	return nil
+}

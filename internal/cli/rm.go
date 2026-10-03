@@ -13,7 +13,7 @@ import (
 	"github.com/shinokamix/lopper/internal/engine"
 )
 
-func newRmCmd() *cobra.Command {
+func newRmCmd(eng *engine.Engine) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "rm path...",
@@ -26,7 +26,7 @@ func newRmCmd() *cobra.Command {
 			"is left, and `git worktree prune` in its repository clears that.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rm := remover{eng: engine.New(), force: force}
+			rm := remover{eng: eng, force: force}
 			failed, unsafe := 0, 0
 			for _, a := range args {
 				err := rm.remove(cmd.Context(), a)

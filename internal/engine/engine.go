@@ -68,12 +68,14 @@ func budget(n int) (listers, workers int) {
 	return listers, workers
 }
 
+// Engine runs scans of worktrees and removes them.
 type Engine struct {
-	Git gitx.Runner
+	git gitx.Runner
 }
 
+// New returns an Engine that runs the git binary in PATH.
 func New() *Engine {
-	return &Engine{Git: gitx.Exec{}}
+	return &Engine{git: gitx.Exec{}}
 }
 
 // Check reports whether the tools a scan depends on are available.
@@ -89,7 +91,7 @@ func (e *Engine) Check(ctx context.Context) error {
 func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 	events := make(chan Event, 256)
 	found := make(chan lopper.Worktree, 256)
-	insp := inspect.Inspector{Git: e.Git}
+	insp := inspect.Inspector{Git: e.git}
 	listers, n := budget(opts.Concurrency)
 
 	var workers sync.WaitGroup
@@ -109,7 +111,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 			Roots:   opts.Roots,
 			Listers: listers,
 		}
-		err := discovery.Scan(ctx, e.Git, dopts, func(wt lopper.Worktree) {
+		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			// Inspect only what the consumer was told about, or it would
 			// receive facts for an unknown worktree.
 			if send[Event](ctx, events, WorktreeFound{Worktree: wt}) {
@@ -139,7 +141,7 @@ type NotSafeError struct {
 
 func (e *NotSafeError) Error() string {
 	var why []string
-	for _, n := range lopper.Notes(e.Worktree, e.Facts) {
+	for _, n := range verdict.Notes(e.Worktree, e.Facts) {
 		why = append(why, n.Text)
 	}
 	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
@@ -164,7 +166,7 @@ func (e *RecordLeftError) Error() string {
 // when its directory is gone, its repository too.
 func (e *Engine) Find(ctx context.Context, roots []string, path string) (lopper.Worktree, error) {
 	listers, _ := budget(0)
-	return discovery.Find(ctx, e.Git, discovery.Options{Roots: roots, Listers: listers}, path)
+	return discovery.Find(ctx, e.git, discovery.Options{Roots: roots, Listers: listers}, path)
 }
 
 // Remove removes a worktree lopper found, whatever kind it is: its
@@ -183,38 +185,39 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 		return errors.New("the current directory is inside it")
 	}
 	if !force {
-		if f := (inspect.Inspector{Git: e.Git}).Quick(ctx, now); !verdict.Safe(now, f) {
+		if f := (inspect.Inspector{Git: e.git}).Quick(ctx, now); !verdict.Safe(now, f) {
 			return &NotSafeError{Worktree: now, Facts: f}
 		}
 	}
-	switch {
-	case now.Orphaned:
+	switch now.State {
+	case lopper.StateTracked, lopper.StateGone:
+	case lopper.StateOrphaned:
 		// No repository tracks it: its record is gone, or belongs to
 		// another worktree now.
 		return os.RemoveAll(now.Path)
-	case now.Unconfirmed != "":
+	case lopper.StateUnconfirmed:
 		// git cannot work in it, but once it is gone, can remove the
 		// record that still names it, if one does.
 		if err := os.RemoveAll(now.Path); err != nil {
 			return err
 		}
-		if gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, true) != nil {
+		if gitx.RemoveWorktree(ctx, e.git, now.Repo.Path, now.Path, true) != nil {
 			return &RecordLeftError{Repo: now.Repo.Path}
 		}
 		return nil
-	case now.MovedFrom != "":
-		if err := gitx.RepairWorktree(ctx, e.Git, now.Path); err != nil {
+	case lopper.StateMoved:
+		if err := gitx.RepairWorktree(ctx, e.git, now.Path); err != nil {
 			return err
 		}
 	}
-	return gitx.RemoveWorktree(ctx, e.Git, now.Repo.Path, now.Path, force)
+	return gitx.RemoveWorktree(ctx, e.git, now.Repo.Path, now.Path, force)
 }
 
 // Measure returns the size of a worktree's directory as a scan measures
 // it, or nil when it cannot be measured: for a removal to tell the space
 // it freed when the scan had not measured it yet.
 func (e *Engine) Measure(ctx context.Context, wt lopper.Worktree) *int64 {
-	return inspect.Inspector{Git: e.Git}.Slow(ctx, wt, lopper.Facts{}).SizeBytes
+	return inspect.Inspector{Git: e.git}.Slow(ctx, wt, lopper.Facts{}).SizeBytes
 }
 
 // current looks wt up again as it is now: by a walk of its directory, or,
@@ -224,7 +227,7 @@ func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktr
 		if wt.Repo.Path == "" {
 			return lopper.Worktree{}, discovery.ErrNotFound
 		}
-		return discovery.Lookup(ctx, e.Git, wt.Repo.Path, wt.Path)
+		return discovery.Lookup(ctx, e.git, wt.Repo.Path, wt.Path)
 	}
 	return e.Find(ctx, []string{wt.Path}, wt.Path)
 }

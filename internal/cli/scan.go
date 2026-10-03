@@ -21,10 +21,32 @@ type scanRecord struct {
 	Orphaned    bool          `json:"orphaned,omitempty"`
 	MovedFrom   string        `json:"moved_from,omitempty"`
 	Unconfirmed string        `json:"unconfirmed,omitempty"`
-	Facts       lopper.Facts  `json:"facts"`
+	Facts       scanFacts     `json:"facts"`
 }
 
-func newScanCmd() *cobra.Command {
+// scanFacts is how `scan --json` prints [lopper.Facts]: a format scripts
+// rely on, kept here so that renaming a field in the core cannot change it.
+type scanFacts struct {
+	Dirty          *int              `json:"dirty,omitempty"`
+	UncheckedFiles *int              `json:"unchecked_files,omitempty"`
+	Unpushed       *int              `json:"unpushed,omitempty"`
+	Merged         *lopper.MergeKind `json:"merged,omitempty"`
+	SizeBytes      *int64            `json:"size_bytes,omitempty"`
+	Errors         []string          `json:"errors,omitempty"`
+}
+
+func newScanFacts(f lopper.Facts) scanFacts {
+	return scanFacts{
+		Dirty:          f.Dirty,
+		UncheckedFiles: f.UncheckedFiles,
+		Unpushed:       f.Unpushed,
+		Merged:         f.Merged,
+		SizeBytes:      f.SizeBytes,
+		Errors:         f.Errors,
+	}
+}
+
+func newScanCmd(eng *engine.Engine) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "scan [path...]",
@@ -38,14 +60,14 @@ func newScanCmd() *cobra.Command {
 			records := map[lopper.ID]*scanRecord{}
 			var order []lopper.ID
 
-			for ev := range engine.New().Scan(cmd.Context(), opts) {
+			for ev := range eng.Scan(cmd.Context(), opts) {
 				switch ev := ev.(type) {
 				case engine.WorktreeFound:
 					wt := ev.Worktree
 					records[wt.ID] = &scanRecord{
 						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch, Origin: wt.Origin,
-						Locked: wt.Locked, Prunable: wt.Prunable, Orphaned: wt.Orphaned,
-						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Unconfirmed,
+						Locked: wt.Locked, Prunable: wt.State == lopper.StateGone, Orphaned: wt.State == lopper.StateOrphaned,
+						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Reason,
 					}
 					order = append(order, wt.ID)
 				case engine.FactsUpdated:
@@ -53,7 +75,7 @@ func newScanCmd() *cobra.Command {
 					if r == nil {
 						continue // not announced by WorktreeFound; nothing to attach to
 					}
-					r.Facts, r.Safe = ev.Facts, ev.Safe
+					r.Facts, r.Safe = newScanFacts(ev.Facts), ev.Safe
 				case engine.ScanDone:
 					if ev.Err != nil {
 						return ev.Err

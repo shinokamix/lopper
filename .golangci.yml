@@ -56,6 +56,7 @@ linters:
         - name: error-naming
         - name: error-return
         - name: error-strings
+        - name: exported
         - name: errorf
         - name: increment-decrement
         - name: indent-error-flow

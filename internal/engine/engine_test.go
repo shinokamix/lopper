@@ -170,6 +170,6 @@ func TestBudget(t *testing.T) {
 }
 
 func (e *Engine) withGit(g fakeGit) *Engine {
-	e.Git = g
+	e.git = g
 	return e
 }

@@ -65,9 +65,16 @@ type app struct {
 	height  int
 }
 
+// Engine is what the TUI needs of [engine.Engine].
+type Engine interface {
+	Scan(ctx context.Context, opts engine.Options) <-chan engine.Event
+	Remove(ctx context.Context, wt lopper.Worktree, force bool) error
+	Measure(ctx context.Context, wt lopper.Worktree) *int64
+}
+
 // Run starts the TUI and a scan feeding it, once any newer release has
 // been offered.
-func Run(ctx context.Context, eng *engine.Engine, opts engine.Options, updates Updates) error {
+func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

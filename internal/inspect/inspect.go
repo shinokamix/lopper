@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/shinokamix/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -70,22 +71,11 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 
 // Index flags can hide edits from status. Assume-unchanged always leaves
 // a file unchecked. Skip-worktree does too when a path exists, but missing
-// paths are normal in a sparse checkout.
+// paths are normal in a sparse checkout. Without --sparse, git lists each
+// file of a sparse index on its own, with its own flags.
 func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error) {
-	return in.uncheckedIndex(ctx, dir, true)
-}
-
-func (in Inspector) uncheckedIndex(ctx context.Context, dir string, sparse bool) (int, error) {
-	args := []string{"ls-files", "--cached", "-v", "-z"}
-	if sparse {
-		args = append(args, "--sparse")
-	}
-	out, err := in.Git.Run(ctx, dir, args...)
+	out, err := in.Git.Run(ctx, dir, "ls-files", "--cached", "-v", "-z")
 	if err != nil {
-		// Older Git can inspect the same files with an expanded listing.
-		if e, ok := errors.AsType[*gitx.Error](err); sparse && ok && strings.Contains(e.Stderr, "unknown option `sparse'") {
-			return in.uncheckedIndex(ctx, dir, false)
-		}
 		return 0, err
 	}
 	unchecked := make(map[string]bool)
@@ -99,20 +89,9 @@ func (in Inspector) uncheckedIndex(ctx context.Context, dir string, sparse bool)
 		if !terminated || len(record) < 3 || record[1] != ' ' || !strings.ContainsRune("HSMRCK?hsmrck", rune(record[0])) {
 			return 0, errors.New("invalid ls-files record")
 		}
-		tag := record[0]
-		path := record[2:]
-		directory := strings.HasSuffix(path, "/")
-		if directory {
-			if !sparse || tag != 'S' {
-				return 0, errors.New("invalid ls-files sparse directory")
-			}
-			// Strip the slash before Lstat so a broken symlink still exists.
-			path = strings.TrimSuffix(path, "/")
-		}
-		if !filepath.IsLocal(filepath.FromSlash(path)) || path == "." {
-			return 0, errors.New("invalid ls-files path")
-		}
-		for component := range strings.SplitSeq(path, "/") {
+		tag, path := record[0], filepath.FromSlash(record[2:])
+		// The path is looked up below, so it must stay inside the worktree.
+		for component := range strings.SplitSeq(path, string(filepath.Separator)) {
 			if component == "" || component == "." || component == ".." {
 				return 0, errors.New("invalid ls-files path")
 			}
@@ -120,17 +99,13 @@ func (in Inspector) uncheckedIndex(ctx context.Context, dir string, sparse bool)
 		if tag >= 'a' && tag <= 'z' {
 			unchecked[path] = true
 		} else if tag == 'S' {
-			_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(path)))
+			_, err := os.Lstat(filepath.Join(dir, path))
 			switch {
 			case err == nil:
-				if directory {
-					// Files may have appeared outside the sparse checkout.
-					// Read their individual flags before counting them.
-					return in.uncheckedIndex(ctx, dir, false)
-				}
 				unchecked[path] = true
-			case errors.Is(err, fs.ErrNotExist):
-				// Git deliberately omits these files in sparse checkouts.
+			case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+				// Git deliberately omits these files in sparse checkouts. A
+				// file in place of their directory holds no copy of them.
 			default:
 				return 0, fmt.Errorf("check %q: %w", path, err)
 			}

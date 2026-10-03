@@ -17,6 +17,7 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
+// Inspector gathers facts about worktrees by running Git.
 type Inspector struct {
 	Git gitx.Runner
 }

@@ -88,6 +88,7 @@ type Runner interface {
 // [Environ].
 type Exec struct{}
 
+// Run runs git in dir and returns its output without trailing newlines.
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	out, err := Exec{}.RunRaw(ctx, dir, "", args...)
 	return strings.TrimRight(out, "\n"), err
@@ -163,10 +164,12 @@ func withoutRepoVars(caseInsensitive bool, env []string) []string {
 // the work tree: worktree list, symbolic-ref, rev-parse.
 type OwnWorkTree struct{ Runner }
 
+// Run runs git in dir with dir as its work tree.
 func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
+// RunRaw runs git in dir with dir as its work tree, as [Exec.RunRaw] does.
 func (o OwnWorkTree) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	return o.Runner.RunRaw(ctx, dir, stdin, append([]string{"--work-tree=" + dir}, args...)...)
 }

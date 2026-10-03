@@ -16,6 +16,7 @@ type Note struct {
 // NoteKind tells what a note is about, for the list to color it.
 type NoteKind int
 
+// Kinds of notes; see [NoteKind].
 const (
 	NotePlain  NoteKind = iota
 	NoteWork            // work or unchecked files that deletion puts at risk

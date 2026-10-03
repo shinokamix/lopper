@@ -14,6 +14,8 @@ type Repo struct {
 // Origin describes which tool most likely created a worktree.
 type Origin string
 
+// Origins lopper tells apart by where a worktree lies; OriginManual is any
+// other.
 const (
 	OriginManual     Origin = "manual"
 	OriginClaudeCode Origin = "claude-code"
@@ -42,20 +44,20 @@ type Worktree struct {
 type State int
 
 const (
-	// StateTracked: git tracks it where it is.
+	// StateTracked means git tracks it where it is.
 	StateTracked State = iota
-	// StateGone: git reports its directory as missing; only git's record
+	// StateGone means git reports its directory as missing; only git's record
 	// of it is left.
 	StateGone
-	// StateOrphaned: the directory is still there, but its repository no
+	// StateOrphaned means the directory is still there, but its repository no
 	// longer tracks it (deleted, or the worktree was pruned), so git cannot
 	// inspect it. Repo.Path is where the repository used to be.
 	StateOrphaned
-	// StateMoved: the directory was moved here by hand from MovedFrom,
+	// StateMoved means the directory was moved here by hand from MovedFrom,
 	// where git still expects it; `git worktree repair` run inside it
 	// relinks them.
 	StateMoved
-	// StateUnconfirmed: the directory's .git file makes it a linked
+	// StateUnconfirmed means the directory's .git file makes it a linked
 	// worktree of Repo, but the repository could not confirm that it still
 	// tracks it here; Reason says why. git may or may not still work inside
 	// it.
@@ -77,6 +79,7 @@ type Facts struct {
 // MergeKind tells how a branch was integrated into the base branch.
 type MergeKind string
 
+// How a branch reached the base branch, if it did.
 const (
 	NotMerged    MergeKind = "none"
 	MergedFF     MergeKind = "ancestor" // HEAD is an ancestor of base

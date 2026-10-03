@@ -90,7 +90,7 @@ func view(a *app) string { return strings.Join(plainLines(a), "\n") }
 func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	a, rm := removalApp(t)
 	found(a, "clean", 2_000_000_000, true, lopper.Facts{Merged: new(lopper.MergedFF)})
-	found(a, "wip", 1_000_000_000, false, lopper.Facts{UncheckedFiles: new(0), Dirty: new(3)})
+	found(a, "wip", 1_000_000_000, false, lopper.Facts{Dirty: new(3)})
 	found(a, "other", 100, true, lopper.Facts{})
 	press(a, ' ') // clean, then the cursor moves to wip
 	press(a, ' ')
@@ -134,7 +134,7 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	found(a, "big", 2000, true, lopper.Facts{})
 	found(a, "busy", 1000, true, lopper.Facts{})
 	rm.fail = map[lopper.ID]error{"busy": &engine.NotSafeError{
-		Worktree: lopper.Worktree{ID: "busy"}, Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: new(1)},
+		Worktree: lopper.Worktree{ID: "busy"}, Facts: lopper.Facts{Dirty: new(1)},
 	}}
 	press(a, tea.KeyDown)
 
@@ -159,13 +159,13 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: new(0)}, Safe: true}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(0)}, Safe: true}})
 	press(a, 'd')
 	if v := view(a); strings.Contains(v, "removal may lose work") {
 		t.Fatalf("safe worktree is shown under the warning:\n%s", v)
 	}
 
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: new(2), SizeBytes: new(int64(5_000_000))}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(2), SizeBytes: new(int64(5_000_000))}}})
 	lines := plainLines(a)
 	if !strings.Contains(lines[lineWith(t, lines, "Remove")], "5.0 MB") ||
 		lineWith(t, lines, "removal may lose work") > lineWith(t, lines, "2 uncommitted") {
@@ -251,7 +251,7 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	a, _ := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
 	for i := range 12 {
-		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), i < 3, lopper.Facts{UncheckedFiles: new(0), Dirty: new(i)})
+		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), i < 3, lopper.Facts{Dirty: new(i)})
 	}
 	for range 12 {
 		press(a, ' ')
@@ -284,7 +284,7 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 	found(a, "feature/login-page", 90, true, lopper.Facts{})
 	rm.fail = map[lopper.ID]error{
 		"unpushed":           fmt.Errorf("failed to delete '%s': Permission denied", filepath.Join(t.TempDir(), "code", "app", ".claude", "worktrees", "unpushed")),
-		"feature/login-page": &engine.NotSafeError{Facts: lopper.Facts{UncheckedFiles: new(0), Dirty: new(1), Unpushed: new(0), Merged: new(lopper.MergedFF)}},
+		"feature/login-page": &engine.NotSafeError{Facts: lopper.Facts{Dirty: new(1), Unpushed: new(0), Merged: new(lopper.MergedFF)}},
 	}
 	press(a, ' ')
 	press(a, ' ')

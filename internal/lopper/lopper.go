@@ -66,12 +66,12 @@ const (
 // progressively; a nil pointer means "not known". A fact that could not
 // be observed stays nil and the cause is recorded in Errors.
 type Facts struct {
-	Dirty          *int       `json:"dirty,omitempty"`           // status entries; an untracked directory counts as one
-	UncheckedFiles *int       `json:"unchecked_files,omitempty"` // files whose index flags prevent checking for edits
-	Unpushed       *int       `json:"unpushed,omitempty"`        // commits neither on a remote nor in base
-	Merged         *MergeKind `json:"merged,omitempty"`          // how (if at all) the work reached the base branch
-	SizeBytes      *int64     `json:"size_bytes,omitempty"`
-	Errors         []string   `json:"errors,omitempty"` // why facts are missing, e.g. "could not read status: ..."
+	Dirty          *int       // status entries; an untracked directory counts as one
+	UncheckedFiles *int       // files whose index flags prevent checking for edits
+	Unpushed       *int       // commits neither on a remote nor in base
+	Merged         *MergeKind // how (if at all) the work reached the base branch
+	SizeBytes      *int64
+	Errors         []string // why facts are missing, e.g. "could not read status: ..."
 }
 
 // MergeKind tells how a branch was integrated into the base branch.

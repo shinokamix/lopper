@@ -21,7 +21,29 @@ type scanRecord struct {
 	Orphaned    bool          `json:"orphaned,omitempty"`
 	MovedFrom   string        `json:"moved_from,omitempty"`
 	Unconfirmed string        `json:"unconfirmed,omitempty"`
-	Facts       lopper.Facts  `json:"facts"`
+	Facts       scanFacts     `json:"facts"`
+}
+
+// scanFacts is how `scan --json` prints [lopper.Facts]: a format scripts
+// rely on, kept here so that renaming a field in the core cannot change it.
+type scanFacts struct {
+	Dirty          *int              `json:"dirty,omitempty"`
+	UncheckedFiles *int              `json:"unchecked_files,omitempty"`
+	Unpushed       *int              `json:"unpushed,omitempty"`
+	Merged         *lopper.MergeKind `json:"merged,omitempty"`
+	SizeBytes      *int64            `json:"size_bytes,omitempty"`
+	Errors         []string          `json:"errors,omitempty"`
+}
+
+func newScanFacts(f lopper.Facts) scanFacts {
+	return scanFacts{
+		Dirty:          f.Dirty,
+		UncheckedFiles: f.UncheckedFiles,
+		Unpushed:       f.Unpushed,
+		Merged:         f.Merged,
+		SizeBytes:      f.SizeBytes,
+		Errors:         f.Errors,
+	}
 }
 
 func newScanCmd() *cobra.Command {
@@ -53,7 +75,7 @@ func newScanCmd() *cobra.Command {
 					if r == nil {
 						continue // not announced by WorktreeFound; nothing to attach to
 					}
-					r.Facts, r.Safe = ev.Facts, ev.Safe
+					r.Facts, r.Safe = newScanFacts(ev.Facts), ev.Safe
 				case engine.ScanDone:
 					if ev.Err != nil {
 						return ev.Err

@@ -1,4 +1,4 @@
-// Package archtest enforces the layering described in README.md.
+// Package archtest enforces the layering described in CONTRIBUTING.md.
 // Every package must be listed in [layers]: adding a package without
 // deciding where it belongs fails the build.
 package archtest

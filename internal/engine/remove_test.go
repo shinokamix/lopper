@@ -136,3 +136,44 @@ func TestRemoveRechecksIndexFlagsAfterScan(t *testing.T) {
 		t.Fatalf("content = %q, error = %v, want preserved hidden edit", content, err)
 	}
 }
+
+// hiddenEdit is git in a worktree where another process, while history is
+// read, hides an edit behind assume-unchanged.
+type hiddenEdit struct {
+	gitx.Runner
+	wt, file string
+}
+
+func (h hiddenEdit) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	if args[0] == "rev-list" {
+		if _, err := h.Runner.Run(ctx, h.wt, "update-index", "--assume-unchanged", h.file); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(h.wt, h.file), []byte("hidden edit\n"), 0o600); err != nil {
+			return "", err
+		}
+	}
+	return h.Runner.Run(ctx, dir, args...)
+}
+
+// git's own check before removal misses an edit hidden by index flags, so
+// they are read after everything else the inspection asks git.
+func TestRemoveChecksIndexFlagsLast(t *testing.T) {
+	repo, wt := gitRepo(t)
+	file := filepath.Join(wt, "tracked.txt")
+	if err := os.WriteFile(file, []byte("committed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, wt, "add", "tracked.txt")
+	git(t, wt, "commit", "-q", "-m", "tracked file")
+	git(t, repo, "merge", "-q", "work")
+
+	eng := &Engine{Git: hiddenEdit{Runner: gitx.Exec{}, wt: wt, file: "tracked.txt"}}
+	err := eng.Remove(t.Context(), lopper.Worktree{Path: wt}, false)
+	if _, ok := errors.AsType[*NotSafeError](err); !ok {
+		t.Fatalf("Remove = %v, want refusal of the edit hidden during inspection", err)
+	}
+	if content, err := os.ReadFile(file); err != nil || string(content) != "hidden edit\n" {
+		t.Fatalf("content = %q, error = %v, want preserved hidden edit", content, err)
+	}
+}

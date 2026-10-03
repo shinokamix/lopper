@@ -38,11 +38,6 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	} else {
 		f.Dirty = new(countLines(out))
 	}
-	if n, err := in.uncheckedFiles(ctx, wt.Path); err != nil {
-		fail("check index flags", err)
-	} else {
-		f.UncheckedFiles = &n
-	}
 	// Commits reachable from HEAD but neither on a remote nor in the base branch.
 	args := []string{"rev-list", "--count", "HEAD", "--not", "--remotes"}
 	if base := wt.Repo.DefaultBranch; base != "" {
@@ -60,6 +55,13 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		} else {
 			f.Merged = &kind
 		}
+	}
+	// git worktree remove checks status itself, but not index flags: read
+	// them last, the closest to removal.
+	if n, err := in.uncheckedFiles(ctx, wt.Path); err != nil {
+		fail("check index flags", err)
+	} else {
+		f.UncheckedFiles = &n
 	}
 	return f
 }

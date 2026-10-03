@@ -143,9 +143,8 @@ func (e *NotSafeError) Error() string {
 		why = append(why, n.Text)
 	}
 	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
-		why = append(why, "index flags prevent checking files for edits, assume-unchanged or skip-worktree")
+		why = append(why, "index flags (assume-unchanged, skip-worktree) hide their edits from git")
 	}
-	why = append(why, e.Facts.Errors...)
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 

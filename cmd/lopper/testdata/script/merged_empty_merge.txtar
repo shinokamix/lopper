@@ -1,0 +1,49 @@
+# A squash covers a nonempty merge, but a new empty merge needs to be kept.
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m initial
+exec git -C repo branch initial
+exec git -C repo worktree add -q -b feature ../wt
+cp feature.txt wt/feature.txt
+exec git -C wt add feature.txt
+exec git -C wt commit -q -m feature
+exec git -C repo checkout -q -b side initial
+cp side.txt repo/side.txt
+exec git -C repo add side.txt
+exec git -C repo commit -q -m side
+exec git -C wt merge -q --no-ff side -m 'nonempty merge'
+exec git -C repo checkout -q main
+exec git -C repo merge -q --squash feature
+exec git -C repo commit -q -m squash
+exec lopper scan --json $WORK
+stdout '"merged": "content"'
+stdout '"safe": true'
+! stdout '"safe": false'
+
+# Merging an independent commit with the same content leaves the tree unchanged.
+exec git -C repo checkout -q -b side2 initial
+cp side.txt repo/side.txt
+exec git -C repo add side.txt
+exec git -C repo commit -q -m 'same content on another branch'
+exec git -C repo checkout -q main
+exec git -C wt checkout -q --detach
+exec git -C wt merge -q --no-ff side2 -m 'empty merge after squash'
+exec git -C wt diff --exit-code HEAD~1 HEAD
+exec lopper scan --json $WORK
+stdout '"merged": "none"'
+stdout '"unpushed": 5'
+stdout '"safe": false'
+! stdout '"safe": true'
+
+# Removing this detached worktree would drop the only reference to its new HEAD.
+! exec lopper rm wt
+stderr 'not safe to delete: .*not merged'
+exists wt/.git
+exec git -C repo worktree list --porcelain
+stdout 'worktree .*[/\\]wt'
+exec git -C wt log -1 --format=%s
+stdout '^empty merge after squash$'
+
+-- feature.txt --
+feature
+-- side.txt --
+side

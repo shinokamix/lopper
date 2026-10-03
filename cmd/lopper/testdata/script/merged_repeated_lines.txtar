@@ -1,0 +1,80 @@
+# Identical patches in different places must not make a worktree safe.
+exec git init -q repo
+cp initial.txt repo/content.txt
+exec git -C repo add content.txt
+exec git -C repo commit -q -m initial
+exec git -C repo worktree add -q -b feature ../wt
+cp feature.txt wt/content.txt
+exec git -C wt add content.txt
+exec git -C wt commit -q -m feature
+cp base.txt repo/content.txt
+exec git -C repo add content.txt
+exec git -C repo commit -q -m base
+exec lopper scan --json $WORK
+stdout '"merged": "none"'
+stdout '"safe": false'
+! stdout '"safe": true'
+
+-- initial.txt --
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+-- feature.txt --
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 1
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+-- base.txt --
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 1
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0
+value = 0

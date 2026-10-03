@@ -143,7 +143,8 @@ func (e *NotSafeError) Error() string {
 		why = append(why, n.Text)
 	}
 	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
-		why = append(why, "index flags (assume-unchanged, skip-worktree) hide their edits from git")
+		why = append(why, "index flags hide their edits from git: `git ls-files -v | grep '^[a-zS]'` lists them, "+
+			"`git update-index --no-assume-unchanged --no-skip-worktree <file>` clears them for `git status`")
 	}
 	return "not safe to delete: " + strings.Join(why, " · ")
 }

@@ -139,7 +139,7 @@ type NotSafeError struct {
 
 func (e *NotSafeError) Error() string {
 	var why []string
-	for _, n := range lopper.Notes(e.Worktree, e.Facts) {
+	for _, n := range verdict.Notes(e.Worktree, e.Facts) {
 		why = append(why, n.Text)
 	}
 	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {

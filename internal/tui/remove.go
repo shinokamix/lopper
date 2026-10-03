@@ -16,6 +16,7 @@ import (
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/internal/verdict"
 )
 
 // removal is the screen that removes worktrees: it shows what goes and
@@ -425,7 +426,7 @@ func repoLabel(repo lopper.Repo) string {
 func reason(err error) string {
 	if e, ok := errors.AsType[*engine.NotSafeError](err); ok {
 		var why []string
-		for _, n := range lopper.Notes(e.Worktree, e.Facts) {
+		for _, n := range verdict.Notes(e.Worktree, e.Facts) {
 			why = append(why, n.Text)
 		}
 		return "not safe anymore: " + strings.Join(why, noteSep)

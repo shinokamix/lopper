@@ -1,7 +1,8 @@
-// Package verdict decides whether a worktree is safe to delete. It is the
-// only place that does: the list and the CLI show facts and never decide
-// from them. Safe is a pure function of its inputs, so it is trivially
-// unit-testable.
+// Package verdict is what lopper concludes from the facts about a
+// worktree: whether it is safe to delete, and those facts in words. It is
+// the only place that decides: the list and the CLI show its notes and
+// never decide from them. Safe and Notes are pure functions of their
+// inputs, so they are trivially unit-testable.
 package verdict
 
 import "github.com/shinokamix/lopper/internal/lopper"

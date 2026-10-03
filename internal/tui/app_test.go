@@ -20,6 +20,7 @@ import (
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/internal/verdict"
 )
 
 func testApp() *app {
@@ -164,7 +165,7 @@ func TestFactsShowMergedInItsColor(t *testing.T) {
 			marked := false
 			for _, n := range facts(&tc.row) {
 				texts = append(texts, n.Text)
-				marked = marked || n.Kind == lopper.NoteMerged
+				marked = marked || n.Kind == verdict.NoteMerged
 			}
 			if got := strings.Join(texts, " · "); got != tc.want || marked != tc.marked {
 				t.Errorf("facts = %q (merged in color: %v), want %q (%v)", got, marked, tc.want, tc.marked)

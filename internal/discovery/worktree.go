@@ -15,11 +15,10 @@ import (
 func orphanWorktree(dir, commonDir string) lopper.Worktree {
 	path := filepath.Clean(dir)
 	return lopper.Worktree{
-		ID:     lopper.ID(path),
-		Path:   path,
-		Repo:   lopper.Repo{Path: repoPath(commonDir)},
-		State:  lopper.StateOrphaned,
-		Origin: classifyOrigin(path),
+		ID:    lopper.ID(path),
+		Path:  path,
+		Repo:  lopper.Repo{Path: repoPath(commonDir)},
+		State: lopper.StateOrphaned,
 	}
 }
 
@@ -36,7 +35,6 @@ func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper
 		Locked: !isGone(filepath.Join(admin, "locked")),
 		State:  lopper.StateUnconfirmed,
 		Reason: why,
-		Origin: classifyOrigin(path),
 	}
 	if head, err := os.ReadFile(filepath.Join(admin, "HEAD")); err == nil {
 		ref := strings.TrimSpace(string(head))
@@ -55,7 +53,6 @@ func movedWorktree(stale lopper.Worktree, dir string) lopper.Worktree {
 	wt := stale
 	wt.ID, wt.Path = lopper.ID(dir), dir
 	wt.State, wt.MovedFrom = lopper.StateMoved, stale.Path
-	wt.Origin = classifyOrigin(dir)
 	return wt
 }
 
@@ -123,7 +120,6 @@ func listRepo(ctx context.Context, git gitx.Runner, gitDir string, emit func(lop
 			Head:   e.Head,
 			Locked: e.Locked,
 			State:  state,
-			Origin: classifyOrigin(path),
 		})
 	}
 	return repo, nil

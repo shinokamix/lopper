@@ -169,8 +169,8 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	found := scan(t, git, Options{Roots: []string{dir, filepath.Join(dir, "agent")}})
 
 	want := map[string]lopper.Worktree{
-		orphan: {ID: lopper.ID(orphan), Path: orphan, Repo: lopper.Repo{Path: gone}, State: lopper.StateOrphaned, Origin: lopper.OriginManual},
-		wt:     {ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: moved}, Branch: "wt", Head: "1", Origin: lopper.OriginManual},
+		orphan: {ID: lopper.ID(orphan), Path: orphan, Repo: lopper.Repo{Path: gone}, State: lopper.StateOrphaned},
+		wt:     {ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: moved}, Branch: "wt", Head: "1"},
 	}
 	if len(found) != len(want) {
 		t.Fatalf("found %+v, want %d worktrees", found, len(want))
@@ -214,7 +214,6 @@ func TestScanKeepsWorktreesGitCannotList(t *testing.T) {
 	want := lopper.Worktree{
 		ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: repo}, Branch: "feature",
 		State: lopper.StateUnconfirmed, Reason: "could not list its worktrees: git worktree list: exit status 128: fatal: bad config line 1",
-		Origin: lopper.OriginManual,
 	}
 	if len(found) != 1 || found[0] != want {
 		t.Errorf("found %+v, want %+v", found, want)

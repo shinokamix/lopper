@@ -11,17 +11,16 @@ import (
 )
 
 type scanRecord struct {
-	Path        string        `json:"path"`
-	Repo        string        `json:"repo"`
-	Branch      string        `json:"branch,omitempty"`
-	Origin      lopper.Origin `json:"origin"`
-	Safe        bool          `json:"safe"`
-	Locked      bool          `json:"locked,omitempty"`
-	Prunable    bool          `json:"prunable,omitempty"`
-	Orphaned    bool          `json:"orphaned,omitempty"`
-	MovedFrom   string        `json:"moved_from,omitempty"`
-	Unconfirmed string        `json:"unconfirmed,omitempty"`
-	Facts       scanFacts     `json:"facts"`
+	Path        string    `json:"path"`
+	Repo        string    `json:"repo"`
+	Branch      string    `json:"branch,omitempty"`
+	Safe        bool      `json:"safe"`
+	Locked      bool      `json:"locked,omitempty"`
+	Prunable    bool      `json:"prunable,omitempty"`
+	Orphaned    bool      `json:"orphaned,omitempty"`
+	MovedFrom   string    `json:"moved_from,omitempty"`
+	Unconfirmed string    `json:"unconfirmed,omitempty"`
+	Facts       scanFacts `json:"facts"`
 }
 
 // scanFacts is how `scan --json` prints [lopper.Facts]: a format scripts
@@ -65,7 +64,7 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				case engine.WorktreeFound:
 					wt := ev.Worktree
 					records[wt.ID] = &scanRecord{
-						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch, Origin: wt.Origin,
+						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch,
 						Locked: wt.Locked, Prunable: wt.State == lopper.StateGone, Orphaned: wt.State == lopper.StateOrphaned,
 						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Reason,
 					}

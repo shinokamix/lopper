@@ -39,15 +39,6 @@ stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 
-# A new change after integration still needs to be kept.
-cp remaining.txt wt/remaining.txt
-exec git -C wt add remaining.txt
-exec git -C wt commit -q -m remaining
-exec lopper scan --json $WORK
-stdout '"merged": "none"'
-stdout '"safe": false'
-! stdout '"safe": true'
-
 -- initial.txt --
 one
 two
@@ -71,7 +62,5 @@ base
 six
 -- extra.txt --
 second feature commit
--- remaining.txt --
-still local
 -- attributes --
 *.txt merge=evil

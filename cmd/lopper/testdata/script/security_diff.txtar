@@ -1,4 +1,4 @@
-# Patch inspection must not execute diff programs from repository config.
+# Merge inspection must not execute diff programs from repository config.
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
 exec git -C repo worktree add -q -b feature ../wt

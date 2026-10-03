@@ -88,13 +88,17 @@ func gitDir(t *testing.T, dir string) {
 	mkdir(t, filepath.Join(dir, "refs"))
 }
 
+// scan runs Scan and returns what it found. A walk that does not end, such
+// as one going round a symlink loop, fails the test instead of hanging it.
 func scan(t *testing.T, git *fakeGit, opts Options) []lopper.Worktree {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
 	var (
 		mu    sync.Mutex
 		found []lopper.Worktree
 	)
-	err := Scan(t.Context(), git, opts, func(wt lopper.Worktree) {
+	err := Scan(ctx, git, opts, func(wt lopper.Worktree) {
 		mu.Lock()
 		defer mu.Unlock()
 		found = append(found, wt)
@@ -266,22 +270,11 @@ func TestScanFollowsSymlinkedDirectories(t *testing.T) {
 	symlink(t, root, filepath.Join(root, "deep", "up"))
 	symlink(t, root, filepath.Join(target, "up"))
 
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
 	// Reached through the link, the repository lists its worktree.
 	git := &fakeGit{lists: map[string][]string{
 		filepath.Join(root, "code", "repo"): {filepath.Join(outside, "repo-wt")},
 	}}
-	var found []lopper.Worktree
-	var mu sync.Mutex
-	err := Scan(ctx, git, Options{Roots: []string{root}}, func(wt lopper.Worktree) {
-		mu.Lock()
-		defer mu.Unlock()
-		found = append(found, wt)
-	})
-	if err != nil {
-		t.Fatalf("Scan: %v", err)
-	}
+	found := scan(t, git, Options{Roots: []string{root}})
 	if len(git.calls) != 1 || realPath(git.calls[0]) != realPath(repo) {
 		t.Errorf("git worktree list ran in %v, want once in %s", git.calls, repo)
 	}

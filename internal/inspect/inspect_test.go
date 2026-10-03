@@ -76,7 +76,7 @@ func addWorktree(t *testing.T, repo string, args ...string) lopper.Worktree {
 
 func quick(t *testing.T, wt lopper.Worktree) lopper.Facts {
 	t.Helper()
-	return Inspector{Git: gitx.Exec{}}.Quick(context.Background(), wt)
+	return Inspector{Git: gitx.Exec{}}.Quick(t.Context(), wt)
 }
 
 func wantFacts(t *testing.T, f lopper.Facts, dirty, unpushed int, merged lopper.MergeKind) {

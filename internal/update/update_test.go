@@ -134,7 +134,7 @@ func TestInstallReplacesBinaryWithTheOneForThisPlatform(t *testing.T) {
 				dl + "lopper_linux_amd64.tar.gz": file(other),
 				dl + "checksums.txt":             file(sums(map[string][]byte{tc.archive: archive, "lopper_linux_amd64.tar.gz": other})),
 			})
-			if err := u.Install(context.Background(), "v0.2.0"); err != nil {
+			if err := u.Install(t.Context(), "v0.2.0"); err != nil {
 				t.Fatal(err)
 			}
 			if got := readExe(t, u); got != "new binary" {
@@ -168,7 +168,7 @@ func TestWindowsUpdatesAgainWhileTheReplacedOneRuns(t *testing.T) {
 		dl + "checksums.txt":            file(sums(map[string][]byte{"lopper_windows_arm64.zip": archive})),
 	})
 	for i := range 3 {
-		if err := u.Install(context.Background(), "v0.2.0"); err != nil {
+		if err := u.Install(t.Context(), "v0.2.0"); err != nil {
 			t.Fatalf("update %d: %v", i+1, err)
 		}
 		renamed, _ := filepath.Glob(filepath.Join(filepath.Dir(u.Exe), ".lopper-*.old"))
@@ -203,7 +203,7 @@ func TestInstallKeepsBinaryWhenDownloadIsNotTheReleased(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			u := updater(t, "darwin", r)
-			if err := u.Install(context.Background(), "v0.2.0"); err == nil {
+			if err := u.Install(t.Context(), "v0.2.0"); err == nil {
 				t.Error("Install succeeded")
 			}
 			if got := readExe(t, u); got != "old binary" {
@@ -252,7 +252,7 @@ func TestLatestFollowsReleasesLatestRedirect(t *testing.T) {
 	u := updater(t, "darwin", release{
 		"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.2.0"),
 	})
-	if tag, err := u.Latest(context.Background()); err != nil || tag != "v0.2.0" {
+	if tag, err := u.Latest(t.Context()); err != nil || tag != "v0.2.0" {
 		t.Errorf("Latest = %q, %v; want v0.2.0", tag, err)
 	}
 
@@ -260,7 +260,7 @@ func TestLatestFollowsReleasesLatestRedirect(t *testing.T) {
 	u = updater(t, "darwin", release{
 		"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases"),
 	})
-	if tag, err := u.Latest(context.Background()); err == nil {
+	if tag, err := u.Latest(t.Context()); err == nil {
 		t.Errorf("Latest = %q with no release published, want an error", tag)
 	}
 }
@@ -331,13 +331,13 @@ func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := updater(t, "darwin", tc.r)
 			cache(t, u, tc.cached, tc.age)
-			u.Refresh(context.Background())
+			u.Refresh(t.Context())
 			if got := u.Available("0.1.0"); got != tc.want {
 				t.Errorf("Available after Refresh = %q, want %q", got, tc.want)
 			}
 			// What it found is what the next start trusts, without asking.
 			u.Client.Transport = later
-			u.Refresh(context.Background())
+			u.Refresh(t.Context())
 			if got := u.Available("0.1.0"); got != tc.want {
 				t.Errorf("Available after another Refresh = %q, want %q", got, tc.want)
 			}
@@ -349,11 +349,11 @@ func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 // find a release: the next start asks again, as if never asked before.
 func TestRefreshCutShortKeepsNothing(t *testing.T) {
 	u := updater(t, "darwin", release{})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	u.Refresh(ctx)
 	u.Client.Transport = release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
-	u.Refresh(context.Background())
+	u.Refresh(t.Context())
 	if got := u.Available("0.1.0"); got != "v0.4.0" {
 		t.Errorf("Available on the next start = %q, want v0.4.0", got)
 	}
@@ -419,7 +419,7 @@ func TestInstallWhereNotWritableSaysHow(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-	err := u.Install(context.Background(), "v0.2.0")
+	err := u.Install(t.Context(), "v0.2.0")
 	if !errors.Is(err, fs.ErrPermission) || !strings.HasSuffix(err.Error(), "; run sudo lopper update") {
 		t.Errorf("Install = %v, want a permission error suggesting sudo", err)
 	}

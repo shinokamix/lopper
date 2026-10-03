@@ -2,11 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -172,15 +175,14 @@ func TestLargestFirstReranksAroundTheCursor(t *testing.T) {
 func searchApp() *app {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	clean, dirty, ahead := 0, 3, 2
 	for _, wt := range []struct {
 		id, repo string
 		facts    lopper.Facts
 		safe     bool
 	}{
-		{"feature/login", "/r/app", lopper.Facts{Dirty: &clean, Unpushed: &clean, Merged: new(lopper.MergedFF)}, true},
-		{"fix/typo", "/r/app", lopper.Facts{Dirty: &dirty, Unpushed: &clean, Merged: new(lopper.NotMerged)}, false},
-		{"chore/deps", "/r/api", lopper.Facts{Dirty: &clean, Unpushed: &ahead, Merged: new(lopper.NotMerged)}, false},
+		{"feature/login", "/r/app", clean(), true},
+		{"fix/typo", "/r/app", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged)}, false},
+		{"chore/deps", "/r/api", lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)}, false},
 	} {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 			ID: lopper.ID(wt.id), Path: "/w/" + wt.id, Branch: wt.id, Repo: lopper.Repo{Path: wt.repo},
@@ -340,5 +342,265 @@ func TestRemovingAHiddenRowKeepsTheCursor(t *testing.T) {
 	press(a, tea.KeyEscape)
 	if got := statusLine(plainLines(a)); got != "/w/match-a" {
 		t.Errorf("removing the hidden row moved the cursor to %q", got)
+	}
+}
+
+func TestNavigationKeepsSelectionVisible(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	for _, branch := range []string{"first", "second", "third"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(branch), Branch: branch}}})
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	a.Update(tea.KeyPressMsg{Code: ' '})
+	view := a.View().Content
+	if !strings.Contains(view, "third") || !strings.Contains(view, "1 selected") || strings.Contains(view, "first") {
+		t.Errorf("selected third row is not visible: %s", view)
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	a.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	view = a.View().Content
+	if !strings.Contains(view, "first") || strings.Contains(view, "third") {
+		t.Errorf("returning to first row did not scroll up: %s", view)
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 7})
+	view = a.View().Content
+	if !strings.Contains(view, "second") || strings.Contains(view, "first") || strings.Contains(view, "third") {
+		t.Errorf("resize hid the current row: %s", view)
+	}
+}
+
+func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
+	a := testApp()
+	repo := lopper.Repo{Path: "/home/me/code/app", DefaultBranch: "main"}
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: "/home/me/code/app/.claude/worktrees/fix-login-redirect", Branch: "fix/login", Repo: repo,
+	}}})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "deps", Path: "/home/me/code/api-deps", Branch: "chore/deps", Repo: lopper.Repo{Path: "/home/me/code/api"},
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{
+		ID:    "wt",
+		Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)},
+	}})
+
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	lines := plainLines(a)
+	i := lineWith(t, lines, "fix/login")
+	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), filepath.FromSlash("app  ~/code ")) {
+		t.Errorf("row is not under its repository header: %q", lines[i-1])
+	}
+	j := lineWith(t, lines, "chore/deps")
+	if !strings.HasPrefix(strings.TrimSpace(lines[j-1]), filepath.FromSlash("api  ~/code ")) {
+		t.Errorf("row of another repository is not under its own header: %q", lines[j-1])
+	}
+	if !strings.Contains(lines[i], "3 uncommitted · 2 unpushed") {
+		t.Errorf("row under the cursor does not show its facts: %q", lines[i])
+	}
+	if got := statusLine(lines); got != filepath.FromSlash("~/code/app/.claude/worktrees/fix-login-redirect") {
+		t.Errorf("status line does not show the path of the row under the cursor: %q", got)
+	}
+
+	a.Update(tea.WindowSizeMsg{Width: 30, Height: 20})
+	lines = plainLines(a)
+	if path := statusLine(lines); path != filepath.FromSlash("~/…/fix-login-redirect") {
+		t.Errorf("narrow path does not keep whole trailing directories: %q", path)
+	}
+}
+
+// Agents put worktrees deep in temporary directories; such paths must
+// neither push a line past the screen nor hide where the worktree is.
+func TestLongPathsFitTheScreen(t *testing.T) {
+	a := testApp()
+	a.list = newList([]alias{{"/private/tmp", "tmp"}, {"/home/me", "~"}})
+	scratch := "/private/tmp/claude-501/-Users-me-Documents-projects-workspace-cleaner--claude-worktrees-discovery/scratchpad"
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "c3", Path: scratch + "/lab/outside/c3", Branch: "c3-dotbare",
+		Repo: lopper.Repo{Path: scratch + "/lab/proj/.bare"},
+	}}})
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+
+	lines := plainLines(a)
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > 80 {
+			t.Errorf("line is %d cells wide on an 80-cell screen: %q", w, l)
+		}
+	}
+	i := lineWith(t, lines, "c3-dotbare")
+	if !strings.HasPrefix(strings.TrimSpace(lines[i-1]), filepath.FromSlash("proj  tmp/…/")) {
+		t.Errorf("bare repository header is not named after its project with a short path: %q", lines[i-1])
+	}
+	if path := statusLine(lines); path != filepath.FromSlash("tmp/…/scratchpad/lab/outside/c3") {
+		t.Errorf("worktree path is not shortened by directories: %q", path)
+	}
+}
+
+// A row shows all its facts when the screen has room, and otherwise the
+// most pressing ones and how many more there are: a fact that makes a
+// worktree unsafe must never vanish without a trace.
+func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
+	a := testApp()
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: "/w/wt", Branch: "fix/login", State: lopper.StateUnconfirmed, Reason: "HEAD is missing",
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{
+		ID: "wt", Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)},
+	}})
+
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted · not confirmed by git · merged") {
+		t.Errorf("wide row does not show every fact: %q", row)
+	}
+	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted +2") {
+		t.Errorf("narrow row does not lead with the work at stake and count the rest: %q", row)
+	}
+}
+
+func TestNarrowRowShowsUncheckedFilesBeforeMerged(t *testing.T) {
+	a := testApp()
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: "/w/wt", Branch: "fix/login",
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{
+		ID: "wt", Facts: lopper.Facts{Dirty: new(0), UncheckedFiles: new(2), Unpushed: new(0), Merged: new(lopper.MergedFF)},
+	}})
+	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
+	lines := plainLines(a)
+	line := lines[lineWith(t, lines, "fix/login")]
+	if !strings.Contains(line, "2 unchecked +1") {
+		t.Errorf("narrow row hides the unchecked files: %q", line)
+	}
+}
+
+// The selection total sits at the right end of the status line, under
+// the size column, not among the key help.
+func TestSelectionIsShownBesideThePath(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	size := int64(2_000_000)
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Path: "/w/alpha", Branch: "alpha"}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "a", Facts: lopper.Facts{SizeBytes: &size}}})
+	a.Update(tea.KeyPressMsg{Code: ' '})
+
+	lines := plainLines(a)
+	status := statusLine(lines)
+	if !strings.HasPrefix(status, "/w/alpha") || !strings.HasSuffix(status, "1 selected · 2.0 MB") {
+		t.Errorf("status line does not show the path and then the selection: %q", status)
+	}
+	if keys := lines[len(lines)-1]; strings.Contains(keys, "selected") {
+		t.Errorf("selection is shown among the key help: %q", keys)
+	}
+}
+
+// A size still being measured shows a one-cell spinner; the status
+// column must stay where it is on rows with a known size.
+func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+	measured := clean()
+	measured.SizeBytes = new(int64(1000))
+	for _, id := range []string{"measured", "measuring"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: "a-branch-long-enough-to-be-cut-" + id}}})
+	}
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measured", Facts: measured, Safe: true}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measuring", Facts: clean(), Safe: true}})
+
+	lines := plainLines(a)
+	at := lineWith(t, lines, "a-branch") // measured first: it is larger
+	known, unknown := lines[at], strings.TrimRight(lines[at+1], " ")
+	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, spinning(a)) {
+		t.Fatalf("want the measured row, then the one still being measured:\n%s\n%s", known, unknown)
+	}
+	if strings.Index(known, "merged") != strings.Index(unknown, "merged") {
+		t.Errorf("status column moves on a row with unknown size:\n%s\n%s", known, unknown)
+	}
+}
+
+// spinning is the spinner's frame now: what a size being measured shows.
+func spinning(a *app) string { return strings.TrimSpace(a.spin.View()) }
+
+// A size that could not be measured must not look as if it still were:
+// the spinner would turn forever.
+func TestSizeSpinsOnlyWhileBeingMeasured(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+	for _, id := range []string{"measuring", "unmeasurable"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: id}}})
+	}
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measuring"}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "unmeasurable", Final: true}})
+
+	lines := plainLines(a)
+	if row := strings.TrimRight(lines[lineWith(t, lines, "measuring")], " "); !strings.HasSuffix(row, spinning(a)) {
+		t.Errorf("size being measured does not show the spinner: %q", row)
+	}
+	if row := strings.TrimRight(lines[lineWith(t, lines, "unmeasurable")], " "); !strings.HasSuffix(row, "?") {
+		t.Errorf("size that could not be measured does not show as unknown: %q", row)
+	}
+}
+
+func TestSelectionAndCursorBandsDiffer(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Branch: "alpha"}}})
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "b", Branch: "bravo"}}})
+	a.Update(tea.KeyPressMsg{Code: ' '}) // selects alpha and moves on to bravo
+
+	if !onBand(a, "alpha", a.theme.picked) || onBand(a, "alpha", a.theme.cursor) {
+		t.Errorf("row selected with space does not show the selection band: %q", rawLine(a, "alpha"))
+	}
+	if !onBand(a, "bravo", a.theme.cursor) || onBand(a, "bravo", a.theme.picked) {
+		t.Errorf("cursor did not move on to the next row: %q", rawLine(a, "bravo"))
+	}
+
+	a.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if !onBand(a, "alpha", a.theme.pickedCursor) {
+		t.Errorf("selected row under the cursor looks like an unselected one: %q", rawLine(a, "alpha"))
+	}
+}
+
+// onBand reports whether the row showing text is drawn on style's background.
+func onBand(a *app, text string, style lipgloss.Style) bool {
+	bg := style.Render(" ")
+	bg = bg[strings.Index(bg, "48;"):strings.Index(bg, "m")] // the background's parameters
+	return strings.Contains(rawLine(a, text), bg+"m")
+}
+
+// rawLine returns the styled line of the view containing text, or "".
+func rawLine(a *app, text string) string {
+	for l := range strings.SplitSeq(a.View().Content, "\n") {
+		if strings.Contains(ansi.Strip(l), text) {
+			return l
+		}
+	}
+	return ""
+}
+
+// Scrolling assumes one screen line per line of the view, so on a narrow
+// terminal every line must still fit, and a row must keep its size.
+func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	repo := lopper.Repo{Path: "/home/me/code/a-repository-with-a-long-name"}
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: "wt", Path: repo.Path + "/.claude/worktrees/x", Branch: "feature/a-branch-name-longer-than-the-screen", Repo: repo,
+	}}})
+	a.Update(eventMsg{ev: engine.FactsUpdated{
+		ID:    "wt",
+		Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged), SizeBytes: new(int64(1_200_000_000))},
+	}})
+	a.Update(tea.KeyPressMsg{Code: ' '})
+
+	lines := plainLines(a)
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > 40 {
+			t.Errorf("line is %d cells wide on a 40-cell screen: %q", w, l)
+		}
+	}
+	if row := lines[lineWith(t, lines, "feature/")]; !strings.Contains(row, "1.2 GB") || !strings.Contains(row, "3 un… +2") {
+		t.Errorf("narrow row lost its facts or size: %q", row)
 	}
 }

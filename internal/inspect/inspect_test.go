@@ -363,6 +363,7 @@ func (f failingHistoryGit) Run(ctx context.Context, dir string, args ...string) 
 	return f.Runner.Run(ctx, dir, args...)
 }
 
+// The history of local commits matters only once base has their changes.
 func TestQuickHistoryFailureLeavesMergeUnknown(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "feature")
@@ -371,6 +372,13 @@ func TestQuickHistoryFailureLeavesMergeUnknown(t *testing.T) {
 	git(t, wt.Path, "commit", "-q", "-m", "local")
 
 	f := (Inspector{Git: failingHistoryGit{gitx.Exec{}}}).Quick(t.Context(), wt)
+	if len(f.Errors) != 0 || f.Merged == nil || *f.Merged != lopper.NotMerged {
+		t.Fatalf("Merged = %v, Errors = %q, want none without errors", ptr(f.Merged), f.Errors)
+	}
+
+	git(t, repo, "merge", "-q", "--squash", "feature")
+	git(t, repo, "commit", "-q", "-m", "squash")
+	f = (Inspector{Git: failingHistoryGit{gitx.Exec{}}}).Quick(t.Context(), wt)
 	if f.Merged != nil || len(f.Errors) != 1 || !strings.Contains(f.Errors[0], "commit history unavailable") {
 		t.Fatalf("Merged = %v, Errors = %q, want unknown with history error", ptr(f.Merged), f.Errors)
 	}

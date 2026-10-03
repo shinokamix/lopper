@@ -37,6 +37,20 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 			return lopper.NotMerged, nil
 		}
 	}
+	out, err = in.Git.Run(ctx, dir, "merge-base", "--all", base, head)
+	if err != nil {
+		return lopper.NotMerged, err
+	}
+	bases := strings.Fields(out)
+	if len(bases) != 1 {
+		return lopper.NotMerged, nil
+	}
+	// Most branches are not merged, and the content check usually tells so
+	// before reading any blob; diffing every local commit comes after it.
+	kind, err := in.contentMerge(ctx, dir, bases[0], head, base)
+	if err != nil || kind == lopper.NotMerged {
+		return kind, err
+	}
 	local, err := in.nonemptyCommits(ctx, dir, base+".."+head)
 	if err != nil {
 		return lopper.NotMerged, err
@@ -46,15 +60,7 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 	if local != len(commits) {
 		return lopper.NotMerged, nil
 	}
-	out, err = in.Git.Run(ctx, dir, "merge-base", "--all", base, head)
-	if err != nil {
-		return lopper.NotMerged, err
-	}
-	bases := strings.Fields(out)
-	if len(bases) != 1 {
-		return lopper.NotMerged, nil
-	}
-	return in.contentMerge(ctx, dir, bases[0], head, base)
+	return kind, nil
 }
 
 func (in Inspector) nonemptyCommits(ctx context.Context, dir, commits string) (int, error) {

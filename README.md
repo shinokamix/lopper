@@ -1,7 +1,5 @@
 <div align="center">
 
-# lopper
-
 Clean up the Git worktrees you and your agents left behind.
 
 <img src="docs/demo.gif" alt="lopper removes four merged worktrees and, after a warning, two with uncommitted work" width="800">

@@ -1,7 +1,6 @@
 package gitx
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -96,20 +95,22 @@ func TestBlankFiltersKeepsUserOverrides(t *testing.T) {
 	}
 }
 
-// TestExecIgnoresRepoCommands checks that repository-local config cannot
-// make Exec spawn programs, while plain git does run them.
-func TestExecIgnoresRepoCommands(t *testing.T) {
+// commandRepo creates, with git isolated from the developer's config, the
+// repository work/repo with a.txt committed, and returns work and plain git
+// run there. Commands from config run through sh in the worktree root, so
+// ../marker lands in work.
+func commandRepo(t *testing.T) (work string, git func(args ...string)) {
+	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	work := t.TempDir()
+	work = t.TempDir()
 	global := filepath.Join(work, ".gitconfig")
 	writeFile(t, global, "[user]\n\tname = lopper\n\temail = test@lopper.invalid\n")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 
-	repo := filepath.Join(work, "repo")
-	git := func(args ...string) {
+	git = func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", work}, args...)...)
 		cmd.Env = Environ()
@@ -117,24 +118,33 @@ func TestExecIgnoresRepoCommands(t *testing.T) {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
+	repo := filepath.Join(work, "repo")
 	git("init", "-q", repo)
 	writeFile(t, filepath.Join(repo, "a.txt"), "hi\n")
 	git("-C", repo, "add", "a.txt")
 	git("-C", repo, "commit", "-q", "-m", "init")
-	// Commands run through sh in the worktree root, so ../marker is in work.
+	return work, git
+}
+
+// staleStat dates file at ts, so that git status reads it again and runs
+// the commands configured for it.
+func staleStat(t *testing.T, file string, ts time.Time) {
+	t.Helper()
+	if err := os.Chtimes(file, ts, ts); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecIgnoresRepoCommands checks that repository-local config cannot
+// make Exec spawn programs, while plain git does run them.
+func TestExecIgnoresRepoCommands(t *testing.T) {
+	work, git := commandRepo(t)
+	repo, marker := filepath.Join(work, "repo"), filepath.Join(work, "marker")
 	writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "* filter=evil=x.y\n")
 	git("-C", repo, "config", "filter.evil=x.y.clean", "touch ../marker; cat")
 	git("-C", repo, "config", "core.fsmonitor", "touch ../marker")
 
-	marker := filepath.Join(work, "marker")
-	staleStat := func(ts time.Time) {
-		t.Helper()
-		if err := os.Chtimes(filepath.Join(repo, "a.txt"), ts, ts); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	staleStat(time.Unix(1e9, 0))
+	staleStat(t, filepath.Join(repo, "a.txt"), time.Unix(1e9, 0))
 	git("-C", repo, "status", "--porcelain")
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("plain git did not run the repo commands, test is ineffective: %v", err)
@@ -143,8 +153,8 @@ func TestExecIgnoresRepoCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	staleStat(time.Unix(2e9, 0))
-	if _, err := (Exec{}).Run(context.Background(), repo, "status", "--porcelain"); err != nil {
+	staleStat(t, filepath.Join(repo, "a.txt"), time.Unix(2e9, 0))
+	if _, err := (Exec{}).Run(t.Context(), repo, "status", "--porcelain"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(marker); err == nil {
@@ -169,44 +179,15 @@ func TestRemoveWorktreeIgnoresRepoCommands(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := exec.LookPath("git"); err != nil {
-				t.Skip("git not installed")
-			}
-			work := t.TempDir()
-			global := filepath.Join(work, ".gitconfig")
-			writeFile(t, global, "[user]\n\tname = lopper\n\temail = test@lopper.invalid\n")
-			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-			t.Setenv("GIT_CONFIG_GLOBAL", global)
-
-			repo, wt := filepath.Join(work, "repo"), filepath.Join(work, "wt")
-			git := func(args ...string) {
-				t.Helper()
-				cmd := exec.Command("git", append([]string{"-C", work}, args...)...)
-				cmd.Env = Environ()
-				if out, err := cmd.CombinedOutput(); err != nil {
-					t.Fatalf("git %v: %v\n%s", args, err, out)
-				}
-			}
-			git("init", "-q", repo)
-			writeFile(t, filepath.Join(repo, "a.txt"), "hi\n")
-			git("-C", repo, "add", "a.txt")
-			git("-C", repo, "commit", "-q", "-m", "init")
+			work, git := commandRepo(t)
+			repo, wt, marker := filepath.Join(work, "repo"), filepath.Join(work, "wt"), filepath.Join(work, "marker")
 			git("-C", repo, "worktree", "add", "-q", wt)
-			// Commands run through sh in the worktree root, so ../marker is in work.
 			writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "* filter=evil\n")
 			tc.config(git, repo, wt)
 			// git appends its arguments, which touch would make untracked files.
 			git("-C", repo, "config", "core.fsmonitor", "touch ../marker; true")
 
-			marker := filepath.Join(work, "marker")
-			staleStat := func(ts time.Time) {
-				t.Helper()
-				if err := os.Chtimes(filepath.Join(wt, "a.txt"), ts, ts); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			staleStat(time.Unix(1e9, 0))
+			staleStat(t, filepath.Join(wt, "a.txt"), time.Unix(1e9, 0))
 			git("-C", wt, "status", "--porcelain")
 			if _, err := os.Stat(marker); err != nil {
 				t.Fatalf("plain git did not run the repo commands, test is ineffective: %v", err)
@@ -215,8 +196,8 @@ func TestRemoveWorktreeIgnoresRepoCommands(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			staleStat(time.Unix(2e9, 0))
-			if err := RemoveWorktree(context.Background(), Exec{}, repo, wt, false); err != nil {
+			staleStat(t, filepath.Join(wt, "a.txt"), time.Unix(2e9, 0))
+			if err := RemoveWorktree(t.Context(), Exec{}, repo, wt, false); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := os.Stat(marker); err == nil {

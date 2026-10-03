@@ -11,18 +11,6 @@ type Repo struct {
 	DefaultBranch string // e.g. "main"; empty if unknown
 }
 
-// Origin describes which tool most likely created a worktree.
-type Origin string
-
-// Origins lopper tells apart by where a worktree lies; OriginManual is any
-// other.
-const (
-	OriginManual     Origin = "manual"
-	OriginClaudeCode Origin = "claude-code"
-	OriginCodex      Origin = "codex"
-	OriginConductor  Origin = "conductor"
-)
-
 // Worktree is a linked worktree found on disk.
 type Worktree struct {
 	ID     ID
@@ -36,7 +24,6 @@ type Worktree struct {
 	MovedFrom string
 	// Reason tells why a StateUnconfirmed worktree could not be confirmed.
 	Reason string
-	Origin Origin
 }
 
 // State tells whether git tracks a worktree where it is, and if not, what

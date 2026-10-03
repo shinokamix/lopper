@@ -20,9 +20,8 @@ stdout '^unsafe\s+unpushed\s'
 stdout '^unsafe\s+wip\s'
 ! stderr .
 
-# --json exposes origin and the facts behind each verdict.
+# --json exposes the facts behind each verdict.
 exec lopper scan --json $WORK
-stdout '"origin": "claude-code"'
 stdout '"dirty": 1'
 
 -- dirty.txt --

@@ -85,7 +85,7 @@ func TestRemoveLetsGitGuardLateWork(t *testing.T) {
 	_, wt := gitRepo(t)
 	late := filepath.Join(wt, "late.txt")
 
-	eng := &Engine{Git: lateWrite{Runner: gitx.Exec{}, file: late}}
+	eng := &Engine{git: lateWrite{Runner: gitx.Exec{}, file: late}}
 	if err := eng.Remove(t.Context(), lopper.Worktree{Path: wt}, false); err == nil {
 		t.Error("Remove succeeded, want git to refuse the file written late")
 	}
@@ -168,7 +168,7 @@ func TestRemoveChecksIndexFlagsLast(t *testing.T) {
 	git(t, wt, "commit", "-q", "-m", "tracked file")
 	git(t, repo, "merge", "-q", "work")
 
-	eng := &Engine{Git: hiddenEdit{Runner: gitx.Exec{}, wt: wt, file: "tracked.txt"}}
+	eng := &Engine{git: hiddenEdit{Runner: gitx.Exec{}, wt: wt, file: "tracked.txt"}}
 	err := eng.Remove(t.Context(), lopper.Worktree{Path: wt}, false)
 	if _, ok := errors.AsType[*NotSafeError](err); !ok {
 		t.Fatalf("Remove = %v, want refusal of the edit hidden during inspection", err)

@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shinokamix/lopper/internal/config"
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/tui"
 	"github.com/shinokamix/lopper/internal/update"
@@ -22,13 +21,14 @@ import (
 // NewRoot returns the root command. releaseVersion is the installed
 // release version, or "dev" to disable updates for a local build.
 func NewRoot(releaseVersion string) *cobra.Command {
+	eng := engine.New()
 	root := &cobra.Command{
 		Use:   "lopper [path...]",
 		Short: "Find and safely remove stale git worktrees",
 		Args:  directories,
 		Long:  "lopper scans your disk for git worktrees and tells you which ones are safe to delete — and why.",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			return engine.New().Check(cmd.Context())
+			return eng.Check(cmd.Context())
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts, err := scanOptions(args)
@@ -37,10 +37,10 @@ func NewRoot(releaseVersion string) *cobra.Command {
 			}
 			updates, stop := offerUpdates(cmd.Context(), releaseVersion)
 			defer stop()
-			return tui.Run(cmd.Context(), engine.New(), opts, updates)
+			return tui.Run(cmd.Context(), eng, opts, updates)
 		},
 	}
-	root.AddCommand(newScanCmd(), newRmCmd(), newUpdateCmd(releaseVersion))
+	root.AddCommand(newScanCmd(eng), newRmCmd(eng), newUpdateCmd(releaseVersion))
 	return root
 }
 
@@ -62,20 +62,17 @@ func directories(_ *cobra.Command, args []string) error {
 }
 
 func scanOptions(args []string) (engine.Options, error) {
-	cfg, err := config.Default()
-	if err != nil {
-		return engine.Options{}, err
+	if len(args) == 0 {
+		roots, err := defaultRoots()
+		return engine.Options{Roots: roots}, err
 	}
-	roots := cfg.Roots
-	if len(args) > 0 {
-		roots = make([]string, 0, len(args))
-		for _, a := range args {
-			abs, err := filepath.Abs(a)
-			if err != nil {
-				return engine.Options{}, err
-			}
-			roots = append(roots, abs)
+	roots := make([]string, 0, len(args))
+	for _, a := range args {
+		abs, err := filepath.Abs(a)
+		if err != nil {
+			return engine.Options{}, err
 		}
+		roots = append(roots, abs)
 	}
 	return engine.Options{Roots: roots}, nil
 }

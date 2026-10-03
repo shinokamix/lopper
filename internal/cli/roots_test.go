@@ -1,4 +1,4 @@
-package config
+package cli
 
 import (
 	"os"
@@ -8,25 +8,25 @@ import (
 	"testing"
 )
 
-func TestDefault(t *testing.T) {
+func TestDefaultRoots(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)        // Unix
 	t.Setenv("USERPROFILE", home) // Windows
 
-	cfg, err := Default()
+	roots, err := defaultRoots()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Roots) == 0 || cfg.Roots[0] != home {
-		t.Errorf("Roots = %v, want %s first", cfg.Roots, home)
+	if len(roots) == 0 || roots[0] != home {
+		t.Errorf("roots = %v, want %s first", roots, home)
 	}
 }
 
-func TestDefaultWithoutHome(t *testing.T) {
+func TestDefaultRootsWithoutHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("USERPROFILE", "")
-	if _, err := Default(); err == nil {
-		t.Error("Default() succeeded without a home directory")
+	if _, err := defaultRoots(); err == nil {
+		t.Error("defaultRoots() succeeded without a home directory")
 	}
 }
 
@@ -91,8 +91,8 @@ func TestTempRoots(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := defaults(home, tc.temps).Roots; !slices.Equal(got, tc.want) {
-				t.Errorf("Roots = %v, want %v", got, tc.want)
+			if got := withTemps([]string{home}, tc.temps); !slices.Equal(got, tc.want) {
+				t.Errorf("withTemps() = %v, want %v", got, tc.want)
 			}
 		})
 	}

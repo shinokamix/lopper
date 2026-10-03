@@ -1,5 +1,4 @@
-// Package config holds user settings. TODO: load TOML from os.UserConfigDir().
-package config
+package cli
 
 import (
 	"fmt"
@@ -10,23 +9,16 @@ import (
 	"strings"
 )
 
-type Config struct {
-	// Roots are the home directory and the temporary directories that a
-	// walk of it would not reach. Nothing below them is skipped: caches,
-	// Library, AppData and node_modules can hold worktrees too.
-	Roots []string
-}
-
-func Default() (Config, error) {
+// defaultRoots are what lopper scans when no path is given: the home
+// directory and the temporary directories that a walk of it would not
+// reach. Nothing below them is skipped: caches, Library, AppData and
+// node_modules can hold worktrees too.
+func defaultRoots() ([]string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return Config{}, fmt.Errorf("locate home directory: %w", err)
+		return nil, fmt.Errorf("locate home directory: %w", err)
 	}
-	return defaults(home, tempDirs()), nil
-}
-
-func defaults(home string, temps []string) Config {
-	return Config{Roots: withTemps([]string{home}, temps)}
+	return withTemps([]string{home}, tempDirs()), nil
 }
 
 // tempDirs are where programs put throwaway directories, among them the

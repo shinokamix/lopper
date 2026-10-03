@@ -46,7 +46,7 @@ func newScanFacts(f lopper.Facts) scanFacts {
 	}
 }
 
-func newScanCmd() *cobra.Command {
+func newScanCmd(eng *engine.Engine) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "scan [path...]",
@@ -60,7 +60,7 @@ func newScanCmd() *cobra.Command {
 			records := map[lopper.ID]*scanRecord{}
 			var order []lopper.ID
 
-			for ev := range engine.New().Scan(cmd.Context(), opts) {
+			for ev := range eng.Scan(cmd.Context(), opts) {
 				switch ev := ev.(type) {
 				case engine.WorktreeFound:
 					wt := ev.Worktree

@@ -187,12 +187,13 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 			return &NotSafeError{Worktree: now, Facts: f}
 		}
 	}
-	switch {
-	case now.Orphaned:
+	switch now.State {
+	case lopper.StateTracked, lopper.StateGone:
+	case lopper.StateOrphaned:
 		// No repository tracks it: its record is gone, or belongs to
 		// another worktree now.
 		return os.RemoveAll(now.Path)
-	case now.Unconfirmed != "":
+	case lopper.StateUnconfirmed:
 		// git cannot work in it, but once it is gone, can remove the
 		// record that still names it, if one does.
 		if err := os.RemoveAll(now.Path); err != nil {
@@ -202,7 +203,7 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 			return &RecordLeftError{Repo: now.Repo.Path}
 		}
 		return nil
-	case now.MovedFrom != "":
+	case lopper.StateMoved:
 		if err := gitx.RepairWorktree(ctx, e.Git, now.Path); err != nil {
 			return err
 		}

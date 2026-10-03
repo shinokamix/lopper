@@ -25,26 +25,44 @@ const (
 
 // Worktree is a linked worktree found on disk.
 type Worktree struct {
-	ID       ID
-	Path     string
-	Repo     Repo
-	Branch   string // empty when HEAD is detached
-	Head     string // commit SHA
-	Locked   bool
-	Prunable bool // git reports the directory as missing
-	// Orphaned: the directory is still there, but its repository no longer
-	// tracks it (deleted, or the worktree was pruned), so git cannot inspect
-	// it. Repo.Path is where the repository used to be.
-	Orphaned bool
-	// MovedFrom: the directory was moved here from this path, where git
-	// still expects it; `git worktree repair` run inside it relinks them.
+	ID     ID
+	Path   string
+	Repo   Repo
+	Branch string // empty when HEAD is detached
+	Head   string // commit SHA
+	Locked bool
+	State  State
+	// MovedFrom is where git still expects a StateMoved worktree.
 	MovedFrom string
-	// Unconfirmed: the directory's .git file makes it a linked worktree of
-	// Repo, but the repository could not confirm that it still tracks it
-	// here; this says why. git may or may not still work inside it.
-	Unconfirmed string
-	Origin      Origin
+	// Reason tells why a StateUnconfirmed worktree could not be confirmed.
+	Reason string
+	Origin Origin
 }
+
+// State tells whether git tracks a worktree where it is, and if not, what
+// became of it. A worktree is in exactly one state.
+type State int
+
+const (
+	// StateTracked: git tracks it where it is.
+	StateTracked State = iota
+	// StateGone: git reports its directory as missing; only git's record
+	// of it is left.
+	StateGone
+	// StateOrphaned: the directory is still there, but its repository no
+	// longer tracks it (deleted, or the worktree was pruned), so git cannot
+	// inspect it. Repo.Path is where the repository used to be.
+	StateOrphaned
+	// StateMoved: the directory was moved here by hand from MovedFrom,
+	// where git still expects it; `git worktree repair` run inside it
+	// relinks them.
+	StateMoved
+	// StateUnconfirmed: the directory's .git file makes it a linked
+	// worktree of Repo, but the repository could not confirm that it still
+	// tracks it here; Reason says why. git may or may not still work inside
+	// it.
+	StateUnconfirmed
+)
 
 // Facts are observations about a worktree. Inspect fills them in
 // progressively; a nil pointer means "not known". A fact that could not
@@ -105,17 +123,18 @@ func Notes(wt Worktree, f Facts) []Note {
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
 		add(NoteWork, "%d unpushed", *f.Unpushed)
 	}
-	switch {
-	case wt.Prunable:
+	switch wt.State {
+	case StateTracked:
+	case StateGone:
 		add(NotePlain, "folder gone")
-	case wt.Orphaned:
+	case StateOrphaned:
 		add(NotePlain, "not tracked by git")
-	case wt.MovedFrom != "":
+	case StateMoved:
 		add(NotePlain, "moved by hand")
-	case wt.Unconfirmed != "":
+	case StateUnconfirmed:
 		add(NotePlain, "not confirmed by git")
 	}
-	if !wt.Prunable && !wt.Orphaned && (f.Dirty == nil || f.UncheckedFiles == nil || f.Unpushed == nil || f.Merged == nil) {
+	if wt.State != StateGone && wt.State != StateOrphaned && (f.Dirty == nil || f.UncheckedFiles == nil || f.Unpushed == nil || f.Merged == nil) {
 		add(NotePlain, "couldn't check")
 	}
 	switch {

@@ -26,8 +26,10 @@ type Inspector struct {
 // in Facts.Errors, so verdict can refuse to call the worktree safe.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
 	var f lopper.Facts
-	if wt.Prunable || wt.Orphaned {
+	switch wt.State {
+	case lopper.StateGone, lopper.StateOrphaned: // git cannot look inside
 		return f
+	case lopper.StateTracked, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
 	fail := func(what string, err error) {
 		f.Errors = append(f.Errors, "could not "+what+": "+firstLine(err.Error()))
@@ -117,9 +119,11 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 // as gone takes no space.
 // TODO: LastTouched from non-ignored files, busy processes.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
-	if wt.Prunable {
+	switch wt.State {
+	case lopper.StateGone:
 		f.SizeBytes = new(int64(0))
 		return f
+	case lopper.StateTracked, lopper.StateOrphaned, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
 	var size int64
 	f.SizeBytes = nil

@@ -44,8 +44,8 @@ func newScanCmd() *cobra.Command {
 					wt := ev.Worktree
 					records[wt.ID] = &scanRecord{
 						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch, Origin: wt.Origin,
-						Locked: wt.Locked, Prunable: wt.Prunable, Orphaned: wt.Orphaned,
-						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Unconfirmed,
+						Locked: wt.Locked, Prunable: wt.State == lopper.StateGone, Orphaned: wt.State == lopper.StateOrphaned,
+						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Reason,
 					}
 					order = append(order, wt.ID)
 				case engine.FactsUpdated:

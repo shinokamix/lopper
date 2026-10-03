@@ -54,7 +54,7 @@ func TestRemoveForgetsGoneWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gone := lopper.Worktree{ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: repo}, Prunable: true}
+	gone := lopper.Worktree{ID: lopper.ID(wt), Path: wt, Repo: lopper.Repo{Path: repo}, State: lopper.StateGone}
 	if err := New().Remove(t.Context(), gone, false); err != nil {
 		t.Fatalf("Remove of a gone worktree: %v", err)
 	}

@@ -205,11 +205,11 @@ func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Wor
 // recreated.
 func present(wt *lopper.Worktree) bool {
 	dotGit := filepath.Join(wt.Path, ".git")
-	if wt.Prunable || isGone(dotGit) {
+	if wt.State == lopper.StateGone || isGone(dotGit) {
 		return false
 	}
-	if gf, ok := readGitFile(dotGit); ok {
-		wt.Unconfirmed = gf.damage
+	if gf, ok := readGitFile(dotGit); ok && gf.damage != "" {
+		wt.State, wt.Reason = lopper.StateUnconfirmed, gf.damage
 	}
 	return true
 }
@@ -577,11 +577,11 @@ func isGitDir(dir string) bool {
 func orphanWorktree(dir, commonDir string) lopper.Worktree {
 	path := filepath.Clean(dir)
 	return lopper.Worktree{
-		ID:       lopper.ID(path),
-		Path:     path,
-		Repo:     lopper.Repo{Path: repoPath(commonDir)},
-		Orphaned: true,
-		Origin:   classifyOrigin(path),
+		ID:     lopper.ID(path),
+		Path:   path,
+		Repo:   lopper.Repo{Path: repoPath(commonDir)},
+		State:  lopper.StateOrphaned,
+		Origin: classifyOrigin(path),
 	}
 }
 
@@ -592,12 +592,13 @@ func orphanWorktree(dir, commonDir string) lopper.Worktree {
 func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper.Worktree {
 	path := filepath.Clean(dir)
 	wt := lopper.Worktree{
-		ID:          lopper.ID(path),
-		Path:        path,
-		Repo:        repo,
-		Locked:      !isGone(filepath.Join(admin, "locked")),
-		Unconfirmed: why,
-		Origin:      classifyOrigin(path),
+		ID:     lopper.ID(path),
+		Path:   path,
+		Repo:   repo,
+		Locked: !isGone(filepath.Join(admin, "locked")),
+		State:  lopper.StateUnconfirmed,
+		Reason: why,
+		Origin: classifyOrigin(path),
 	}
 	if head, err := os.ReadFile(filepath.Join(admin, "HEAD")); err == nil {
 		ref := strings.TrimSpace(string(head))
@@ -615,8 +616,7 @@ func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper
 func movedWorktree(stale lopper.Worktree, dir string) lopper.Worktree {
 	wt := stale
 	wt.ID, wt.Path = lopper.ID(dir), dir
-	wt.Prunable = false
-	wt.MovedFrom = stale.Path
+	wt.State, wt.MovedFrom = lopper.StateMoved, stale.Path
 	wt.Origin = classifyOrigin(dir)
 	return wt
 }
@@ -673,15 +673,19 @@ func listRepo(ctx context.Context, git gitx.Runner, gitDir string, emit func(lop
 			continue
 		}
 		path := filepath.Clean(e.Path)
+		state := lopper.StateTracked
+		if e.Prunable {
+			state = lopper.StateGone
+		}
 		emit(lopper.Worktree{
-			ID:       lopper.ID(path),
-			Path:     path,
-			Repo:     repo,
-			Branch:   e.Branch,
-			Head:     e.Head,
-			Locked:   e.Locked,
-			Prunable: e.Prunable,
-			Origin:   classifyOrigin(path),
+			ID:     lopper.ID(path),
+			Path:   path,
+			Repo:   repo,
+			Branch: e.Branch,
+			Head:   e.Head,
+			Locked: e.Locked,
+			State:  state,
+			Origin: classifyOrigin(path),
 		})
 	}
 	return repo, nil

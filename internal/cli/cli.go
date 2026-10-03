@@ -24,7 +24,7 @@ func NewRoot(releaseVersion string) *cobra.Command {
 	eng := engine.New()
 	root := &cobra.Command{
 		Use:   "lopper [path...]",
-		Short: "Find and safely remove stale git worktrees",
+		Short: "Clean up the Git worktrees you and your agents left behind",
 		Args:  directories,
 		Long:  "lopper scans your disk for git worktrees and tells you which ones are safe to delete — and why.",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {

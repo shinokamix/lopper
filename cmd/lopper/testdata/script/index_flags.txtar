@@ -52,6 +52,14 @@ stdout '"unchecked_files": 1'
 stderr '1 unchecked.*index flags'
 cmp wt-both/tracked.txt edited.txt
 
+# The refusal's commands clear both flags, so status shows the edit again.
+stderr 'git update-index --no-assume-unchanged -- <file>'
+stderr 'git update-index --no-skip-worktree -- <file>'
+exec git -C wt-both update-index --no-assume-unchanged -- tracked.txt
+exec git -C wt-both update-index --no-skip-worktree -- tracked.txt
+exec git -C wt-both status --porcelain
+stdout '^ M tracked.txt$'
+
 # Explicit force keeps its existing meaning.
 exec lopper rm --force wt-assumed wt-skipped wt-both
 ! exists wt-assumed

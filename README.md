@@ -20,6 +20,8 @@ stay in the repository.
 
 ## Install
 
+lopper needs git 2.36 or newer.
+
 macOS and Linux:
 
 ```sh

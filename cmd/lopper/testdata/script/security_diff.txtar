@@ -1,0 +1,37 @@
+# Merge inspection must not execute diff programs from repository config.
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b feature ../wt
+cp a.txt wt/a.txt
+exec git -C wt add a.txt
+exec git -C wt commit -q -m first
+cp b.txt wt/b.txt
+exec git -C wt add b.txt
+exec git -C wt commit -q -m second
+exec git -C repo merge -q --squash feature
+exec git -C repo commit -q -m squash
+
+cp attributes repo/.git/info/attributes
+exec git -C repo config diff.external 'touch ../external-marker; true'
+exec git -C repo config diff.evil.textconv 'touch ../textconv-marker; true'
+# Plain Git runs both programs, so absence of markers below has meaning.
+exec git -C wt diff HEAD~1 HEAD
+exists external-marker
+rm external-marker
+exec git -C wt diff --no-ext-diff HEAD~1 HEAD
+exists textconv-marker
+rm textconv-marker
+
+exec lopper scan --json $WORK
+stdout '"merged": "content"'
+stdout '"safe": true'
+! stdout '"safe": false'
+! exists external-marker
+! exists textconv-marker
+
+-- a.txt --
+first change
+-- b.txt --
+second change
+-- attributes --
+*.txt diff=evil

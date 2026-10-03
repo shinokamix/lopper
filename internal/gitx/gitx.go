@@ -19,14 +19,36 @@ import (
 // ErrGitNotFound is returned by Check when no git binary is in PATH.
 var ErrGitNotFound = errors.New("git not found in PATH: lopper needs git to inspect worktrees")
 
-// Check verifies that a working git binary is available.
+// minVersion is the oldest git lopper runs with: worktree list -z needs
+// 2.36, and older git ignores GIT_CONFIG_COUNT, which [Exec] relies on.
+var minVersion = [2]int{2, 36}
+
+// Check verifies that a git binary of at least minVersion is available.
 func Check(ctx context.Context) error {
-	err := exec.CommandContext(ctx, "git", "version").Run()
+	out, err := exec.CommandContext(ctx, "git", "version").Output()
 	if errors.Is(err, exec.ErrNotFound) {
 		return ErrGitNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("git version: %w", err)
+	}
+	return checkVersion(strings.TrimSpace(string(out)))
+}
+
+// checkVersion checks `git version` output, such as "git version 2.39.5
+// (Apple Git-154)" or "git version 2.47.1.windows.1", against minVersion.
+func checkVersion(out string) error {
+	need := fmt.Sprintf("lopper needs git %d.%d or newer", minVersion[0], minVersion[1])
+	var version string
+	var major, minor int
+	if _, err := fmt.Sscanf(out, "git version %s", &version); err != nil {
+		return fmt.Errorf("unrecognized git version %q: %s", out, need)
+	}
+	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
+		return fmt.Errorf("unrecognized git version %q: %s", out, need)
+	}
+	if major < minVersion[0] || major == minVersion[0] && minor < minVersion[1] {
+		return fmt.Errorf("git %s is too old: %s", version, need)
 	}
 	return nil
 }
@@ -34,15 +56,16 @@ func Check(ctx context.Context) error {
 // Runner executes git in a directory. Tests can substitute a fake.
 type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
+	RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error)
 }
 
 // Exec runs the git binary found in PATH.
 //
 // lopper runs git inside arbitrary, possibly untrusted repositories, so
 // repository-local config must never make git spawn a program. For the
-// commands lopper uses (status, rev-list, worktree, symbolic-ref,
-// rev-parse, config) the vectors are below; `worktree remove` runs status
-// in the worktree through a child git, which inherits both settings.
+// commands that touch working tree files (status and worktree), the
+// settings are below; `worktree remove` runs status in the worktree
+// through a child git, which inherits both settings.
 //   - core.fsmonitor: status runs the configured hook; disabled via -c,
 //     which takes precedence over every config file.
 //   - filter.<driver>.clean/process: status hashes files whose stat data
@@ -52,9 +75,13 @@ type Runner interface {
 //     GIT_CONFIG_KEY_n (which, unlike -c, accepts any name).
 //
 // Hooks do not run for these commands, and the pager, editor, ssh and
-// credential helpers are never reached. Future commands that print diffs
-// must pass --no-ext-diff --no-textconv. Global config is left intact so
-// safe.directory keeps working.
+// credential helpers are never reached. Lazy fetching is disabled, and
+// all transport protocols are blocked for Git versions that ignore
+// GIT_NO_LAZY_FETCH. Commands that print diffs must pass --no-ext-diff
+// --no-textconv, and log must pass --no-show-signature. cat-file without
+// --filters and merge-file, which merges files outside the repository,
+// run no programs. Global config is left intact so safe.directory keeps
+// working.
 //
 // git runs in dir and nowhere else: variables such as GIT_DIR that the
 // caller exported (a git hook, `git rebase --exec`) are dropped, see
@@ -62,10 +89,18 @@ type Runner interface {
 type Exec struct{}
 
 func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error) {
-	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	out, err := Exec{}.RunRaw(ctx, dir, "", args...)
+	return strings.TrimRight(out, "\n"), err
+}
+
+// RunRaw runs git with stdin, if not empty, as its input and preserves
+// stdout bytes, including trailing newlines. It applies the same
+// restrictions as Run.
+func (Exec) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
+	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "LC_ALL=C")
 	var drivers []string
 	for _, d := range filterConfigs(dir, args) {
-		out, err := run(ctx, d, env, "config", "-z", "--name-only",
+		out, err := run(ctx, d, env, "", "config", "-z", "--name-only",
 			"--get-regexp", `^filter\..+\.(clean|smudge|process)$`)
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -79,7 +114,7 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 	if len(drivers) > 0 {
 		env = blankFilters(env, strings.Join(drivers, "\x00"))
 	}
-	return run(ctx, dir, env, args...)
+	return run(ctx, dir, env, stdin, args...)
 }
 
 // repoVars are the variables `git rev-parse --local-env-vars` lists, which
@@ -99,6 +134,7 @@ var repoVars = map[string]bool{
 	"GIT_NO_REPLACE_OBJECTS":           true,
 	"GIT_REPLACE_REF_BASE":             true,
 	"GIT_PREFIX":                       true,
+	"GIT_INTERNAL_SUPER_PREFIX":        true, // older git, such as 2.36
 	"GIT_SHALLOW_FILE":                 true,
 	"GIT_COMMON_DIR":                   true,
 }
@@ -129,6 +165,10 @@ type OwnWorkTree struct{ Runner }
 
 func (o OwnWorkTree) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	return o.Runner.Run(ctx, dir, append([]string{"--work-tree=" + dir}, args...)...)
+}
+
+func (o OwnWorkTree) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
+	return o.Runner.RunRaw(ctx, dir, stdin, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
 // filterConfigs returns where to look up the filter drivers a git command
@@ -172,16 +212,107 @@ func worktreeArg(dir string, args []string) string {
 	return ""
 }
 
-func run(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+func run(ctx context.Context, dir string, env []string, stdin string, args ...string) (string, error) {
 	full := append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = env
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return "", &Error{Args: args, Err: err, Stderr: strings.TrimSpace(stderr.String())}
 	}
-	return strings.TrimRight(stdout.String(), "\n"), nil
+	return stdout.String(), nil
+}
+
+// BlobSizes returns the sizes of the blobs ids, read by one git process.
+// A blob that is missing, as in a partial clone, is an error.
+func BlobSizes(ctx context.Context, r Runner, dir string, ids []string) (map[string]int, error) {
+	out, err := r.RunRaw(ctx, dir, strings.Join(ids, "\n")+"\n", "cat-file", "--batch-check")
+	if err != nil {
+		return nil, err
+	}
+	sizes := make(map[string]int, len(ids))
+	for range ids {
+		header, rest, _ := strings.Cut(out, "\n")
+		id, size, err := blobHeader(header)
+		if err != nil {
+			return nil, err
+		}
+		sizes[id] = size
+		out = rest
+	}
+	return sizes, nil
+}
+
+// ReadBlobs returns the contents of the blobs ids, read by one git process.
+// A blob that is missing, as in a partial clone, is an error.
+func ReadBlobs(ctx context.Context, r Runner, dir string, ids []string) (map[string]string, error) {
+	out, err := r.RunRaw(ctx, dir, strings.Join(ids, "\n")+"\n", "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	blobs := make(map[string]string, len(ids))
+	for range ids {
+		header, rest, _ := strings.Cut(out, "\n")
+		id, size, err := blobHeader(header)
+		if err != nil {
+			return nil, err
+		}
+		if size >= len(rest) {
+			return nil, fmt.Errorf("git cat-file: truncated output after %s", header)
+		}
+		blobs[id] = rest[:size]
+		out = rest[size+1:] // the newline after the contents
+	}
+	return blobs, nil
+}
+
+// blobHeader parses a cat-file header line, "<id> blob <size>".
+func blobHeader(header string) (id string, size int, err error) {
+	fields := strings.Fields(header)
+	if len(fields) != 3 || fields[1] != "blob" {
+		return "", 0, fmt.Errorf("git cat-file: %s", header) // "<id> missing"
+	}
+	size, err = strconv.Atoi(fields[2])
+	if err != nil || size < 0 {
+		return "", 0, fmt.Errorf("git cat-file: invalid header %q", header)
+	}
+	return fields[0], size, nil
+}
+
+// MergeUnchanged checks whether applying ancestor..other to current leaves
+// it unchanged, given their contents. merge-file uses Git's built-in text
+// merge, bypasses attribute merge drivers, and with --stdout writes no
+// repository objects. It merges temporary files: --object-id needs Git 2.43.
+func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
+	blobs := [3]string{current, ancestor, other}
+	for _, blob := range blobs {
+		if strings.IndexByte(blob, 0) >= 0 {
+			return false, nil
+		}
+	}
+	tmp, err := os.MkdirTemp("", "lopper-merge-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(tmp)
+	paths := []string{filepath.Join(tmp, "current"), filepath.Join(tmp, "ancestor"), filepath.Join(tmp, "other")}
+	for i, path := range paths {
+		if err := os.WriteFile(path, []byte(blobs[i]), 0o600); err != nil {
+			return false, err
+		}
+	}
+	out, err := r.RunRaw(ctx, dir, "", "merge-file", "--stdout", "--quiet", "--diff3", paths[0], paths[1], paths[2])
+	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() > 0 && e.ExitCode() <= 127 {
+		return false, nil // merge-file returns the number of conflicts
+	}
+	if err != nil {
+		return false, err
+	}
+	return out == blobs[0], nil
 }
 
 // blankFilters appends GIT_CONFIG_KEY_n/VALUE_n pairs that set every

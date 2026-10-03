@@ -1,0 +1,66 @@
+# Nearby base changes must not hide a complete rebase or squash integration.
+exec git init -q repo
+cp initial.txt repo/content.txt
+exec git -C repo add content.txt
+exec git -C repo commit -q -m initial
+exec git -C repo worktree add -q -b feature ../wt
+cp feature.txt wt/content.txt
+exec git -C wt add content.txt
+exec git -C wt commit -q -m feature
+
+cp base.txt repo/content.txt
+exec git -C repo add content.txt
+exec git -C repo commit -q -m base
+exec git -C repo checkout -q -b integrated feature
+exec git -C repo rebase -q main
+exec git -C repo branch -f main integrated
+exec git -C repo checkout -q main
+# Repository merge drivers must not affect the content verification.
+cp attributes repo/.git/info/attributes
+exec git -C repo config merge.evil.driver 'touch ../merge-marker; true'
+exec git -C repo config merge.default evil
+exec lopper scan --json $WORK
+stdout '"merged": "content"'
+stdout '"safe": true'
+! stdout '"safe": false'
+! exists merge-marker
+
+# Squash changes two commits into one against the changed context.
+rm repo/.git/info/attributes
+exec git -C repo config --unset merge.default
+exec git -C repo reset -q --hard HEAD~1
+cp extra.txt wt/extra.txt
+exec git -C wt add extra.txt
+exec git -C wt commit -q -m extra
+exec git -C repo merge -q --squash feature
+exec git -C repo commit -q -m squash
+exec lopper scan --json $WORK
+stdout '"merged": "content"'
+stdout '"safe": true'
+! stdout '"safe": false'
+
+-- initial.txt --
+one
+two
+three
+four
+five
+six
+-- feature.txt --
+one
+feature
+three
+four
+five
+six
+-- base.txt --
+one
+two
+three
+four
+base
+six
+-- extra.txt --
+second feature commit
+-- attributes --
+*.txt merge=evil

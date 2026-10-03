@@ -64,7 +64,7 @@ type MergeKind string
 const (
 	NotMerged    MergeKind = "none"
 	MergedFF     MergeKind = "ancestor" // HEAD is an ancestor of base
-	MergedSquash MergeKind = "patch-id" // all patches found in base
+	MergedSquash MergeKind = "content"  // changes found after squash, rebase, or cherry-pick
 )
 
 // Note is one fact about a worktree in words, as the list and the CLI

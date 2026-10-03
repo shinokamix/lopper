@@ -142,6 +142,11 @@ func (e *NotSafeError) Error() string {
 	for _, n := range lopper.Notes(e.Worktree, e.Facts) {
 		why = append(why, n.Text)
 	}
+	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
+		why = append(why, "index flags hide their edits from git: `git ls-files -v | grep '^[a-zS]'` lists them, "+
+			"`git update-index --no-assume-unchanged -- <file>` and `git update-index --no-skip-worktree -- <file>` "+
+			"clear them for `git status`")
+	}
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 

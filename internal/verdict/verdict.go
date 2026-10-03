@@ -7,8 +7,8 @@ package verdict
 import "github.com/shinokamix/lopper/internal/lopper"
 
 // Safe reports whether deleting the worktree loses no work: git tracks it
-// where it is, it is not locked, nothing in it is uncommitted, and its
-// commits are in the base branch. A worktree whose directory is already
+// where it is, it is not locked, nothing in it is uncommitted or unchecked,
+// and its commits are in the base branch. A worktree whose directory is already
 // gone is safe: only git's record of it is left. A fact that is not known
 // never counts as clean, so a failed `git status` cannot make a worktree
 // safe.
@@ -24,6 +24,7 @@ func Safe(wt lopper.Worktree, f lopper.Facts) bool {
 	// Once merged, unpushed commits are not lost: after a squash merge the
 	// original commits legitimately exist nowhere else.
 	return f.Dirty != nil && *f.Dirty == 0 &&
+		f.UncheckedFiles != nil && *f.UncheckedFiles == 0 &&
 		f.Unpushed != nil &&
 		f.Merged != nil && *f.Merged != lopper.NotMerged
 }

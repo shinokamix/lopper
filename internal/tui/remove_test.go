@@ -102,7 +102,7 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	if !strings.Contains(v, "Remove 2 worktrees · 3.0 GB") || strings.Contains(v, "other") {
 		t.Errorf("confirmation does not show the two selected worktrees:\n%s", v)
 	}
-	if lines := plainLines(a); lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "wip") ||
+	if lines := plainLines(a); lineWith(t, lines, "removal may lose work") > lineWith(t, lines, "wip") ||
 		!strings.Contains(lines[lineWith(t, lines, "wip")], "3 uncommitted") {
 		t.Errorf("worktree that is not safe is not shown under the warning with what it holds:\n%s", v)
 	}
@@ -161,14 +161,14 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
 	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(0)}, Safe: true}})
 	press(a, 'd')
-	if v := view(a); strings.Contains(v, "work in these will be lost") {
+	if v := view(a); strings.Contains(v, "removal may lose work") {
 		t.Fatalf("safe worktree is shown under the warning:\n%s", v)
 	}
 
 	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(2), SizeBytes: new(int64(5_000_000))}}})
 	lines := plainLines(a)
 	if !strings.Contains(lines[lineWith(t, lines, "Remove")], "5.0 MB") ||
-		lineWith(t, lines, "work in these will be lost") > lineWith(t, lines, "2 uncommitted") {
+		lineWith(t, lines, "removal may lose work") > lineWith(t, lines, "2 uncommitted") {
 		t.Errorf("confirmation does not show the size and work that arrived:\n%s", strings.Join(lines, "\n"))
 	}
 	settle(a, press(a, tea.KeyEnter))
@@ -186,7 +186,7 @@ func TestConfirmationWaitsForChecks(t *testing.T) {
 	press(a, 'd')
 	press(a, tea.KeyEnter)
 	lines := plainLines(a)
-	if len(rm.calls) > 0 || strings.Contains(strings.Join(lines, "\n"), "work in these will be lost") ||
+	if len(rm.calls) > 0 || strings.Contains(strings.Join(lines, "\n"), "removal may lose work") ||
 		lineWith(t, lines, "still checking") > lineWith(t, lines, "wt  checking…") ||
 		!strings.HasSuffix(strings.TrimSpace(lines[lineWith(t, lines, "Remove")]), "checking…") {
 		t.Fatalf("worktree still being checked is not shown waiting apart (removed %v):\n%s",
@@ -269,7 +269,7 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	if !strings.Contains(v, "wt11") || strings.Contains(v, "wt00") || !strings.Contains(v, "↑ 7 more") {
 		t.Errorf("scrolling down does not reach the last worktree, counting the ones above:\n%s", v)
 	}
-	if !strings.Contains(v, "work in these will be lost") {
+	if !strings.Contains(v, "removal may lose work") {
 		t.Errorf("warning scrolled out of sight over the worktrees it is about:\n%s", v)
 	}
 }

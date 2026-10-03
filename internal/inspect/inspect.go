@@ -4,10 +4,14 @@ package inspect
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/shinokamix/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -17,7 +21,7 @@ type Inspector struct {
 	Git gitx.Runner
 }
 
-// Quick gathers git facts: working tree state and merge status.
+// Quick gathers git facts: working tree state, index flags, and merge status.
 // A fact that git cannot provide stays nil and the git error is recorded
 // in Facts.Errors, so verdict can refuse to call the worktree safe.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
@@ -52,7 +56,59 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 			f.Merged = &kind
 		}
 	}
+	// git worktree remove checks status itself, but not index flags: read
+	// them last, the closest to removal.
+	if n, err := in.uncheckedFiles(ctx, wt.Path); err != nil {
+		fail("check index flags", err)
+	} else {
+		f.UncheckedFiles = &n
+	}
 	return f
+}
+
+// Index flags can hide edits from status. Assume-unchanged always leaves
+// a file unchecked. Skip-worktree does too when a path exists, but missing
+// paths are normal in a sparse checkout. Without --sparse, git lists each
+// file of a sparse index on its own, with its own flags.
+func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error) {
+	out, err := in.Git.Run(ctx, dir, "ls-files", "--cached", "-v", "-z")
+	if err != nil {
+		return 0, err
+	}
+	unchecked := make(map[string]bool)
+	for out != "" {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		var record string
+		var terminated bool
+		record, out, terminated = strings.Cut(out, "\x00")
+		if !terminated || len(record) < 3 || record[1] != ' ' || !strings.ContainsRune("HSMRCK?hsmrck", rune(record[0])) {
+			return 0, errors.New("invalid ls-files record")
+		}
+		tag, path := record[0], filepath.FromSlash(record[2:])
+		// The path is looked up below, so it must stay inside the worktree.
+		for component := range strings.SplitSeq(path, string(filepath.Separator)) {
+			if component == "" || component == "." || component == ".." {
+				return 0, errors.New("invalid ls-files path")
+			}
+		}
+		if tag >= 'a' && tag <= 'z' {
+			unchecked[path] = true
+		} else if tag == 'S' {
+			_, err := os.Lstat(filepath.Join(dir, path))
+			switch {
+			case err == nil:
+				unchecked[path] = true
+			case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+				// Git deliberately omits these files in sparse checkouts. A
+				// file in place of their directory holds no copy of them.
+			default:
+				return 0, fmt.Errorf("check %q: %w", path, err)
+			}
+		}
+	}
+	return len(unchecked), nil
 }
 
 // Slow gathers expensive facts that require walking the directory.

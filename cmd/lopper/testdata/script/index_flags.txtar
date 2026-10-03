@@ -1,0 +1,105 @@
+# Index flags can hide tracked edits from status. An unforced removal must
+# preserve those edits even though the branch is merged and status is empty.
+
+exec git init -q repo
+cp original.txt repo/tracked.txt
+mkdir repo/included repo/excluded
+cp original.txt repo/included/file.txt
+cp original.txt repo/excluded/file.txt
+exec git -C repo add .
+exec git -C repo commit -q -m init
+
+exec git -C repo worktree add -q -b assumed ../wt-assumed
+exec git -C wt-assumed update-index --assume-unchanged tracked.txt
+cp edited.txt wt-assumed/tracked.txt
+exec git -C wt-assumed status --porcelain
+! stdout .
+exec lopper scan --json wt-assumed
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-assumed
+stderr '1 unchecked.*index flags.*assume-unchanged.*skip-worktree'
+cmp wt-assumed/tracked.txt edited.txt
+
+exec git -C repo worktree add -q -b skipped ../wt-skipped
+exec git -C wt-skipped update-index --skip-worktree tracked.txt
+cp edited.txt wt-skipped/tracked.txt
+exec git -C wt-skipped status --porcelain
+! stdout .
+exec lopper scan --json wt-skipped
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-skipped
+stderr '1 unchecked.*index flags'
+cmp wt-skipped/tracked.txt edited.txt
+
+exec git -C repo worktree add -q -b both ../wt-both
+exec git -C wt-both update-index --assume-unchanged tracked.txt
+exec git -C wt-both update-index --skip-worktree tracked.txt
+cp edited.txt wt-both/tracked.txt
+exec git -C wt-both status --porcelain
+! stdout .
+exec lopper scan --json wt-both
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-both
+stderr '1 unchecked.*index flags'
+cmp wt-both/tracked.txt edited.txt
+
+# The refusal's commands clear both flags, so status shows the edit again.
+stderr 'git update-index --no-assume-unchanged -- <file>'
+stderr 'git update-index --no-skip-worktree -- <file>'
+exec git -C wt-both update-index --no-assume-unchanged -- tracked.txt
+exec git -C wt-both update-index --no-skip-worktree -- tracked.txt
+exec git -C wt-both status --porcelain
+stdout '^ M tracked.txt$'
+
+# Explicit force keeps its existing meaning.
+exec lopper rm --force wt-assumed wt-skipped wt-both
+! exists wt-assumed
+! exists wt-skipped
+! exists wt-both
+
+# Missing skip-worktree paths are expected with full and sparse indexes.
+exec git -C repo worktree add -q -b sparse ../wt-sparse
+exec git -C wt-sparse sparse-checkout set --cone included
+! exists wt-sparse/excluded/file.txt
+exec lopper scan --json wt-sparse
+stdout '"safe": true'
+stdout '"unchecked_files": 0'
+exec git -C wt-sparse sparse-checkout reapply --sparse-index
+exec lopper scan --json wt-sparse
+stdout '"safe": true'
+stdout '"unchecked_files": 0'
+exec lopper rm wt-sparse
+! exists wt-sparse
+
+# A file brought back outside the sparse checkout can still hide edits.
+exec git -C repo worktree add -q -b sparse-hidden ../wt-sparse-hidden
+exec git -C wt-sparse-hidden sparse-checkout set --cone --sparse-index included
+mkdir wt-sparse-hidden/excluded
+cp edited.txt wt-sparse-hidden/excluded/file.txt
+exec git -C wt-sparse-hidden update-index --assume-unchanged excluded/file.txt
+exec git -C wt-sparse-hidden status --porcelain
+! stdout .
+exec lopper scan --json wt-sparse-hidden
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-sparse-hidden
+stderr '1 unchecked.*index flags'
+cmp wt-sparse-hidden/excluded/file.txt edited.txt
+exec lopper rm --force wt-sparse-hidden
+! exists wt-sparse-hidden
+
+-- original.txt --
+committed content
+-- edited.txt --
+work that must survive

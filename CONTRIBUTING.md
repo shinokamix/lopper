@@ -7,20 +7,28 @@ Security issues go through [SECURITY.md](SECURITY.md), not issues or PRs.
 
 ## Setup
 
-The only requirement is Go. Every other tool is pinned in
-[`tools/go.mod`](tools/go.mod) and runs via `go tool`.
+You need [proto](https://moonrepo.dev/proto): `proto install` fetches the
+[Moon](https://moonrepo.dev/moon) version pinned in [`.prototools`](.prototools),
+and Moon runs every task with the Go pinned in
+[`.moon/toolchains.yml`](.moon/toolchains.yml), installing it on first use. Go
+dev tools are pinned in [`tools/go.mod`](tools/go.mod) and run via `go tool`.
 
 ```sh
-alias task='go tool -modfile=tools/go.mod task'   # or: brew install go-task
-
-task setup    # build tools into .bin/, install git hooks (repo-local)
-task          # list all tasks
-task check    # what CI runs: tidy, lint (all OSes), tests, govulncheck
-task fixture  # sandbox with sample worktrees in .tmp/fixture
-task run -- .tmp/fixture
+moon tasks          # list tasks
+moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
+moon run fix        # tidy, format and autofix what the hooks reject
+moon run fixture    # sandbox with sample worktrees in .tmp/fixture
+go run ./cmd/lopper .tmp/fixture
 ```
 
-The hooks format and lint on commit and run `task check` on push.
+The first `moon` command installs a pre-commit hook into this checkout: it
+checks the formatting of staged Go files and tidiness of both go.mod files, in
+seconds.
+CI runs what `moon check --all` does, skipping tasks no changed file affects;
+run it before pushing to catch the rest early.
+
+The Go module is the root project (`lopper`). Other projects, such as a website,
+go under `apps/` as their own Moon projects.
 
 ## Architecture
 
@@ -51,7 +59,7 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - [`cmd/lopper/testdata/script`](cmd/lopper/testdata/script) holds end-to-end
   [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
   scenarios that build real repositories and run `lopper` against them.
-- `task fuzz` fuzzes the `git worktree list` parser.
+- `moon run fuzz` fuzzes the `git worktree list` parser.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

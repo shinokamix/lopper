@@ -16,7 +16,8 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: github-actions
-    directory: /
+    # Composite actions are not found from / on their own.
+    directories: [/, /.github/actions/setup-ci]
     schedule:
       interval: weekly
     cooldown:

@@ -1,0 +1,32 @@
+name: Set up Moon
+description: Install proto, Moon and Go, and cache the toolchain and Go downloads and builds
+inputs:
+  cache:
+    description: Restore and save the toolchain and Go caches
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    # Installs proto (.moon/toolchains.yml) and Moon (.prototools), then
+    # `moon setup` installs Go (.moon/toolchains.yml), so the toolchain cache
+    # always holds it.
+    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      with:
+        auto-install: true
+        auto-setup: true
+        cache: ${{ inputs.cache }}
+        # Only main saves the toolchain cache; PRs restore it.
+        cache-base: main
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.cache == 'true'
+      with:
+        # Go's default module cache, its build cache on Linux, macOS and Windows,
+        # then golangci-lint's analysis cache (lint runs on Linux only).
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+          ~/Library/Caches/go-build
+          ~/AppData/Local/go-build
+          ~/.cache/golangci-lint
+        # Per job: lint, test and vuln build different things.
+        key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'tools/go.sum', '.moon/toolchains.yml') }}

@@ -9,11 +9,6 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
 
-# pwsh on Windows splits `-modfile=tools/go.mod` at the dot; use bash everywhere.
-defaults:
-  run:
-    shell: bash
-
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
@@ -26,13 +21,17 @@ jobs:
         with:
           fetch-depth: 0 # goreleaser derives the version and notes from tags
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: $/.github/actions/setup-ci
         with:
-          go-version-file: tools/go.mod
           # Release artifacts must not come from a cache PRs could have written.
           cache: false
       # A tag on a commit CI never passed would still be released: check again.
-      - run: go tool -modfile=tools/go.mod task check
+      - run: moon check --all
+      # goreleaser runs go itself, outside Moon.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"

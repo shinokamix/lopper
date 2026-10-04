@@ -33,7 +33,7 @@ screenshot/GIF of the TUI is best; show before and after if output changed.
 If this changes which worktrees lopper treats as safe to delete, name the
 `verdict` test or testscript that covers it.
 
-Don't paste `go test` or `task check` output — CI shows that. If you didn't
+Don't paste `go test` or `moon check --all` output — CI shows that. If you didn't
 exercise the change manually, write "Not tested" and say why.
 -->
 

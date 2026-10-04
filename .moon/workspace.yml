@@ -1,0 +1,17 @@
+$schema: ./cache/schemas/workspace.json
+
+projects:
+  lopper: .
+
+defaultProject: lopper
+
+vcs:
+  defaultBranch: main
+  # Moon installs the hooks on its first run in a checkout.
+  sync: true
+  hookFormat: bash
+  # Commits get the checks that take seconds, on what is staged. The full lint,
+  # tests and govulncheck run in CI, or with `moon check --all`.
+  hooks:
+    pre-commit:
+      - moon run :format :tidy-check --affected --status staged

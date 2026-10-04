@@ -1,6 +1,5 @@
-// Package discovery finds git repositories on disk and lists their
-// linked worktrees. It decides *where* worktrees are, never whether
-// they are safe to delete.
+// Package discovery finds git repositories on disk and lists their linked
+// worktrees. It never decides whether a worktree is safe to delete.
 package discovery
 
 import (
@@ -20,28 +19,27 @@ import (
 
 // Options control a discovery run.
 type Options struct {
-	Roots   []string // walked in full: no directory below them is skipped
+	Roots   []string // walked in full, skipping no directory below them
 	Listers int      // concurrent `git worktree list` processes; at least 1
-	// Known are places where an earlier scan met repositories, as Met
-	// receives them. Those below Roots are looked at before the walk, so
-	// that their repositories are listed first. Which worktrees a scan
-	// finds does not depend on them, only when.
+	// Known are places, as Met received them, where an earlier scan met
+	// repositories. Scan checks those below Roots before the walk, so their
+	// repositories are listed first. They change when a scan finds
+	// worktrees, never which.
 	Known []string
-	// Met, if set, receives the places where a scan met repositories, for
-	// a later scan to take as Known. It is called only when the walk was
-	// over, neither failed nor cancelled.
+	// Met, if set, receives the places where a scan met repositories, for a
+	// later scan's Known. Scan calls it only after a walk that neither failed
+	// nor was cancelled.
 	Met func(places []string)
 }
 
-// Scan walks opts.Roots and calls emit for every linked worktree found,
-// including orphaned ones that no repository tracks anymore, moved ones
-// at the path they were moved to, and unconfirmed ones, whose .git file
-// names a repository that did not list them, or could not be listed.
-// emit may be called concurrently. A missing or unreadable root is an
-// error; unreadable directories below a root are skipped.
+// Scan walks opts.Roots and calls emit, possibly concurrently, for every
+// linked worktree found. That includes orphaned ones no repository tracks,
+// moved ones at their new path, and unconfirmed ones whose .git file names a
+// repository that did not or could not list them. A missing or unreadable
+// root is an error. Scan skips unreadable directories below a root.
 func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.Worktree)) error {
 	gitDirs := make(chan string, 64)
-	var listed sync.Map // real paths of worktrees reported by their repository
+	var listed sync.Map // real paths of worktrees their repository listed
 
 	var (
 		mu         sync.Mutex
@@ -95,14 +93,14 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		opts.Met(met)
 	}
 
-	// A worktree whose .git file points to a moved repository still shows up
-	// in that repository's list when the walk reached it; only the rest are
-	// orphans. A worktree moved to another directory shows up in the list as
-	// a missing one, and is reported once, where it is now. Hence both wait
-	// for every repository to be listed.
+	// Orphans and missing worktrees wait until every repository is listed. A
+	// worktree whose .git file points to a moved repository still appears in
+	// that repository's list if the walk reached it, so only the rest are
+	// orphans. A worktree moved to another directory appears in the list as
+	// missing, and Scan reports it once, at its new path.
 	if ctx.Err() == nil {
-		// Sorted, so that when copies of one worktree claim the same
-		// missing entry, the same one wins every time.
+		// Sorted, so the same copy wins every time when copies of one
+		// worktree claim the same missing entry.
 		for _, key := range slices.Sorted(maps.Keys(orphans)) {
 			o := orphans[key]
 			if _, ok := listed.Load(key); ok {
@@ -122,8 +120,8 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		for _, key := range slices.Sorted(maps.Keys(missing)) {
 			emit(missing[key])
 		}
-		// Found through its .git file, which the repository did not
-		// confirm: reported rather than lost when git fails.
+		// Report worktrees whose .git file the repository did not confirm,
+		// rather than lose them when git fails.
 		for _, key := range slices.Sorted(maps.Keys(candidates)) {
 			if _, ok := listed.Load(key); ok {
 				continue
@@ -146,15 +144,13 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 	return err
 }
 
-// ErrNotFound is returned by Find and Lookup for a path where they find
-// no linked worktree: the main worktree, a submodule or a plain directory
-// is never one.
+// ErrNotFound is returned by Find and Lookup when path holds no linked
+// worktree. A main worktree, a submodule or a plain directory never is one.
 var ErrNotFound = errors.New("not a linked worktree")
 
-// Find returns the linked worktree at path as a Scan of opts.Roots
-// reports it: moved, orphaned or unconfirmed alike. The roots must reach
-// path; when its directory is gone, only a walk that meets its repository
-// finds it.
+// Find returns the linked worktree at path as a Scan of opts.Roots reports
+// it, whatever its state. The roots must reach path. If its directory is
+// gone, only a walk that meets its repository finds it.
 func Find(ctx context.Context, git gitx.Runner, opts Options, path string) (lopper.Worktree, error) {
 	want := realPath(path)
 	var (
@@ -178,10 +174,10 @@ func Find(ctx context.Context, git gitx.Runner, opts Options, path string) (lopp
 	return wt, nil
 }
 
-// Lookup finds the linked worktree at path as the repository at repo, a
-// lopper.Repo path, lists it now, marked as Scan marks it. Unlike Find, it
-// needs no walk: this is how a worktree whose directory is gone is looked
-// up again.
+// Lookup returns the linked worktree at path as the repository at repo, a
+// lopper.Repo path, lists it now, with the state Scan would give it. Unlike
+// Find, it needs no walk, so it can look up a worktree whose directory is
+// gone.
 func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Worktree, error) {
 	gitDir := repo
 	if !isGitDir(repo) {
@@ -207,11 +203,10 @@ func Lookup(ctx context.Context, git gitx.Runner, repo, path string) (lopper.Wor
 	return wt, nil
 }
 
-// present reports whether a worktree its repository lists is still on
-// disk, and marks it unconfirmed when git lists it but can no longer use
-// its admin directory. git does not call a locked worktree prunable, so
-// its .git file is checked, as backLink does: the directory may have been
-// recreated.
+// present reports whether a listed worktree is still on disk, and marks it
+// unconfirmed when git can no longer use its admin directory. git never
+// calls a locked worktree prunable, so present checks the .git file as
+// backLink does, since someone may have recreated the directory.
 func present(wt *lopper.Worktree) bool {
 	dotGit := filepath.Join(wt.Path, ".git")
 	if wt.State == lopper.StateGone || isGone(dotGit) {
@@ -228,8 +223,8 @@ func firstLine(s string) string {
 	return line
 }
 
-// orphan is a linked worktree found through its .git file, and what that
-// file tells about its repository.
+// orphan is a linked worktree found through its .git file, with what that
+// file says about its repository.
 type orphan struct {
 	wt lopper.Worktree
 	gf gitFile

@@ -1,6 +1,6 @@
-// Package tui is the interactive front end. It follows The Elm
-// Architecture: engine events and key presses become messages, Update
-// mutates state, View renders it.
+// Package tui is the interactive front end, built on The Elm Architecture.
+// Engine events and key presses become messages, Update changes the state
+// and View renders it.
 package tui
 
 import (
@@ -22,20 +22,18 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// eventMsg carries an event of scan number gen: events of a scan
-// replaced by a new one are dropped.
+// eventMsg carries an event of scan number gen. Update drops the events of
+// a scan that a new one replaced.
 type eventMsg struct {
 	gen int
 	ev  engine.Event
 }
 
-// rankMsg re-ranks the list shown largest first while a scan goes on: once
-// a second rather than on every size. seq tells which ticking it is from:
-// a newer one replaces it.
+// rankMsg re-ranks a list shown largest first while a scan goes on, once a
+// second rather than on every size. seq names the ticking it comes from,
+// and a newer ticking replaces it.
 type rankMsg struct{ seq int }
 
-// rankEvery is how often the list shown largest first is re-ranked while
-// a scan goes on.
 const rankEvery = time.Second
 
 type app struct {
@@ -44,8 +42,8 @@ type app struct {
 	remove  func(ctx context.Context, wt lopper.Worktree, force bool) error
 	measure func(context.Context, lopper.Worktree) *int64
 	updates Updates
-	// offer is the update screen, shown before the scan while not nil;
-	// restart is set to run the installed release once the TUI quits.
+	// offer is the update screen, shown before the scan while not nil.
+	// restart makes Run start the installed release once the TUI quits.
 	offer    *offer
 	installs installs
 	restart  bool
@@ -72,8 +70,8 @@ type Engine interface {
 	Measure(ctx context.Context, wt lopper.Worktree) *int64
 }
 
-// Run starts the TUI and a scan feeding it, once any newer release has
-// been offered.
+// Run starts the TUI and a scan feeding it, after offering any newer
+// release.
 func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -102,9 +100,9 @@ func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) 
 	return updates.Restart()
 }
 
-// run runs the TUI until it ends, however it does, then cancels a.ctx
-// and waits for an install that started: once cancelled, only for the
-// binary being put in place, not for the download.
+// run runs the TUI until it ends in any way, then cancels a.ctx and waits
+// for an install that started. A cancelled install waits only for the
+// binary to be put in place, not for the download.
 func (a *app) run(cancel context.CancelFunc, opts ...tea.ProgramOption) error {
 	_, err := tea.NewProgram(a, append(opts, tea.WithContext(a.ctx))...).Run()
 	cancel()
@@ -136,12 +134,12 @@ func (a *app) startScan(ctx context.Context) {
 	a.gen++
 	a.events = a.scan(ctx)
 	a.store = newStore()
-	bySize := a.list.bySize // the order chosen outlasts the scan
+	bySize := a.list.bySize // the chosen order outlasts the scan
 	a.list = newList(a.list.aliases)
 	a.list.bySize = bySize
 }
 
-// waitEvent bridges the engine channel into Bubble Tea messages.
+// waitEvent turns the next engine event into a Bubble Tea message.
 // TODO: coalesce bursts of events into one message per frame.
 func (a *app) waitEvent() tea.Cmd {
 	events, gen := a.events, a.gen
@@ -169,8 +167,8 @@ func (a *app) nextRank() tea.Cmd {
 	return tea.Tick(rankEvery, func(time.Time) tea.Msg { return rankMsg{seq} })
 }
 
-// removeNext removes the next item of the removal screen. One the scan
-// has not measured yet is measured first, to tell the space freed.
+// removeNext removes the next item of the removal screen. It first
+// measures an item the scan has not measured yet, to report the space freed.
 func (a *app) removeNext() tea.Cmd {
 	ctx, remove, measure, i := a.ctx, a.remove, a.measure, a.removal.next
 	it := a.removal.items[i]
@@ -191,13 +189,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.store.apply(msg.ev)
 		if _, done := msg.ev.(engine.ScanDone); done {
-			a.list.rank(a.store) // the final order, at once
+			a.list.rank(a.store) // rank the final order at once
 		}
 		next := a.waitEvent()
 		return a, next
 	case rankMsg:
 		if msg.seq != a.ranking || !a.list.bySize || !a.store.scanning {
-			return a, nil // replaced, or no longer needed: ScanDone ranked it last
+			return a, nil // replaced, or ScanDone already ranked it last
 		}
 		a.list.rank(a.store)
 		next := a.nextRank()
@@ -277,8 +275,8 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// keysKey handles a key while every key is shown: they scroll, and ? or
-// esc goes back to the list.
+// keysKey handles a key while every key is shown. The arrows scroll, and ?
+// or esc goes back to the list.
 func (a *app) keysKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, a.keys.quit):
@@ -311,8 +309,8 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			rm.offset++
 		}
 	case removing:
-		// Stopping git halfway through a removal could leave the worktree
-		// half deleted: quitting waits for the one being removed.
+		// Stopping git midway could leave a worktree half deleted, so quitting
+		// waits for the one being removed.
 		if key.Matches(msg, a.keys.stop) {
 			rm.quitting = true
 		}
@@ -353,9 +351,9 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 	return a.removeNext()
 }
 
-// Screen layout, inside a margin: a blank line, the header and a blank
-// line, the list or every key, then a blank line, the status line and the
-// key help.
+// The screen sits inside a margin. chromeLines counts the lines around the
+// list: a blank line, the header, a blank line, and below the list a blank
+// line, the status line and the key help.
 const (
 	chromeLines = 6
 	margin      = 2
@@ -383,8 +381,8 @@ func (a *app) View() tea.View {
 		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" +
 			a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
 	}
-	// Scrolling counts one screen line per line: a line wider than the
-	// screen would wrap and push the list down, so none may be.
+	// Scrolling assumes one screen line per line. A wider line would wrap and
+	// push the list down, so cut every line to the screen width.
 	lines := strings.Split(screen, "\n")
 	for i, l := range lines {
 		lines[i] = strings.Repeat(" ", margin) + ansi.Truncate(l, w, "…")
@@ -404,7 +402,7 @@ func pathAliases() []alias {
 		}
 		out = append(out, alias{dir, name})
 		if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != dir {
-			out = append(out, alias{resolved, name}) // e.g. /tmp is /private/tmp on macOS
+			out = append(out, alias{resolved, name}) // on macOS /tmp is /private/tmp
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {

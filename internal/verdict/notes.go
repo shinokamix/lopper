@@ -6,17 +6,16 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// Note is one fact about a worktree in words, as the list and the CLI
-// show it.
+// Note is one fact about a worktree, worded for the list and the CLI.
 type Note struct {
 	Text string
 	Kind NoteKind
 }
 
-// NoteKind tells what a note is about, for the list to color it.
+// NoteKind says what a note is about, so the list can color it.
 type NoteKind int
 
-// Kinds of notes; see [NoteKind].
+// The kinds of note.
 const (
 	NotePlain  NoteKind = iota
 	NoteWork            // work or unchecked files that deletion puts at risk
@@ -25,8 +24,7 @@ const (
 
 // Notes describes a worktree by its facts, most pressing first: work
 // that deleting it would lose, what git cannot tell about it, then how far
-// the work got. It explains the facts and never decides from them: whether
-// the worktree is safe to delete is [Safe]'s call.
+// the work got.
 func Notes(wt lopper.Worktree, f lopper.Facts) []Note {
 	var out []Note
 	add := func(kind NoteKind, format string, a ...any) {

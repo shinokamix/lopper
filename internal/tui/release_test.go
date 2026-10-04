@@ -42,8 +42,8 @@ func updatingApp(t *testing.T, install func(context.Context, string) error) (a *
 }
 
 // A newer release is offered on its own screen before anything is
-// scanned. Esc puts it off and s skips it: either scans with the running
-// version, and is remembered.
+// scanned. Esc puts it off and s skips it. Either one scans with the
+// running version and is remembered.
 func TestNewerReleaseIsOfferedBeforeTheScan(t *testing.T) {
 	for _, tc := range []struct {
 		key  rune
@@ -75,8 +75,8 @@ func TestNewerReleaseIsOfferedBeforeTheScan(t *testing.T) {
 	}
 }
 
-// Enter installs the offered release; a failure says why and enter tries
-// again; once installed, enter restarts into it rather than scanning.
+// Enter installs the offered release. A failure says why, and enter tries
+// again. Once installed, enter restarts into it rather than scanning.
 func TestOfferedReleaseIsInstalledWithEnter(t *testing.T) {
 	var installed []string
 	a, scans, _ := updatingApp(t, func(_ context.Context, tag string) error {
@@ -106,8 +106,8 @@ func TestOfferedReleaseIsInstalledWithEnter(t *testing.T) {
 	}
 }
 
-// Where lopper may not write, installing again would fail again: only
-// putting it off is offered, with the error saying how to update instead.
+// Where lopper may not write, installing again would fail again. Only
+// putting it off is offered, and the error says how to update instead.
 func TestInstallWithoutPermissionIsNotRetried(t *testing.T) {
 	var tries int
 	a, _, _ := updatingApp(t, func(context.Context, string) error {
@@ -135,7 +135,7 @@ func (brokenTerminal) Read([]byte) (int, error) { return 0, errors.New("input/ou
 // could otherwise hold lopper open for minutes.
 func TestEndingWhileInstallingStopsIt(t *testing.T) {
 	typed := func(keys string) io.Reader {
-		r, w := io.Pipe() // left open: only the keys end the TUI
+		r, w := io.Pipe() // left open, so only the keys end the TUI
 		go func() { _, _ = w.Write([]byte(keys)) }()
 		return r
 	}
@@ -208,7 +208,7 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	if n := len(plainLines(a)); n > 8 {
 		t.Errorf("%d lines on an 8-line screen:\n%s", n, view(a))
 	}
-	// One line is left for the error: it keeps how to update, as
+	// One line is left for the error. It keeps how to update, since
 	// installing again is not offered.
 	a.Update(tea.WindowSizeMsg{Width: 34, Height: 6})
 	for _, want := range []string{"run sudo lopper update", "esc not now", "s skip this version", "q quit"} {
@@ -226,8 +226,8 @@ func TestUpdateScreenFitsSmallScreen(t *testing.T) {
 	}
 }
 
-// Quitting may drop the command that would install before it runs: then
-// no install starts, and lopper exits rather than wait for it.
+// Quitting may drop the install command before it runs. Then no install
+// starts, and lopper exits rather than wait for it.
 func TestInstallDroppedByQuitNeitherRunsNorHoldsExit(t *testing.T) {
 	var calls int
 	a, _, _ := updatingApp(t, func(context.Context, string) error { calls++; return nil })
@@ -244,8 +244,8 @@ func TestInstallDroppedByQuitNeitherRunsNorHoldsExit(t *testing.T) {
 	}
 }
 
-// An install that started is waited for on exit: on Windows, exiting
-// midway could leave no lopper binary.
+// lopper waits on exit for an install that started, since on Windows
+// exiting midway could leave no lopper binary.
 func TestExitWaitsForRunningInstall(t *testing.T) {
 	started, finish := make(chan struct{}), make(chan struct{})
 	a, _, _ := updatingApp(t, func(context.Context, string) error {

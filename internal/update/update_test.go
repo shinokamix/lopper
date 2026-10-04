@@ -156,10 +156,10 @@ func TestInstallReplacesBinaryWithTheOneForThisPlatform(t *testing.T) {
 }
 
 // On Windows, an update renames the running lopper.exe away. The next
-// update must succeed while that one still runs: then its file can be
+// update must succeed while that one still runs, when its file can be
 // neither deleted nor replaced. Holding it open stands in for running it
-// on Windows; elsewhere nothing stops either, and the test only shows
-// that repeated updates work.
+// on Windows. Elsewhere nothing stops either, and the test only shows that
+// repeated updates work.
 func TestWindowsUpdatesAgainWhileTheReplacedOneRuns(t *testing.T) {
 	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
 	archive := zipfile(t, "lopper.exe", "new binary")
@@ -229,8 +229,8 @@ func (c cancelAfter) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// An install cancelled while it downloads does not go on to replace the
-// binary: quitting lopper then leaves the running version.
+// An install cancelled while it downloads does not replace the binary, so
+// quitting lopper then leaves the running version.
 func TestInstallCancelledWhileDownloadingKeepsBinary(t *testing.T) {
 	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
 	archive := tarball(t, "new binary")
@@ -281,8 +281,8 @@ func TestNewer(t *testing.T) {
 	}
 }
 
-// A binary built from source must never be offered a release in its
-// place: that would silently throw away the build.
+// A binary built from source must never be offered a release in its place,
+// since that would silently throw away the build.
 func TestReleased(t *testing.T) {
 	for v, want := range map[string]bool{
 		"0.1.0":                                true, // set by goreleaser
@@ -345,8 +345,8 @@ func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 	}
 }
 
-// Quitting lopper while Refresh waits for GitHub is not a failure to
-// find a release: the next start asks again, as if never asked before.
+// Quitting lopper while Refresh waits for GitHub is not a failure to find a
+// release. The next start asks again, as if it never asked.
 func TestRefreshCutShortKeepsNothing(t *testing.T) {
 	u := updater(t, "darwin", release{})
 	ctx, cancel := context.WithCancel(t.Context())
@@ -402,7 +402,7 @@ func TestAvailableOffersPostponedReleaseADayLater(t *testing.T) {
 	}
 }
 
-// Where lopper cannot write, retrying is no use: the error says how to
+// Where lopper cannot write, retrying is no use, and the error says how to
 // update instead.
 func TestInstallWhereNotWritableSaysHow(t *testing.T) {
 	if runtime.GOOS == "windows" {

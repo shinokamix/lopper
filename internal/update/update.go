@@ -32,8 +32,8 @@ import (
 // Repo is where releases are published.
 const Repo = "https://github.com/shinokamix/lopper"
 
-// maxDownload bounds what is read from the network or unpacked from an
-// archive; a release archive is a few megabytes.
+// maxDownload caps what lopper downloads or unpacks. A release archive is a
+// few megabytes.
 const maxDownload = 100 << 20
 
 // Updater installs releases of Repo over the binary at Exe.
@@ -42,8 +42,8 @@ type Updater struct {
 	Client   *http.Client
 	Exe      string
 	OS, Arch string
-	// Cache is the directory Refresh and Skip keep what they learn in;
-	// "" keeps nothing.
+	// Cache is the directory where Refresh, Skip and Postpone keep what they
+	// learn. "" keeps nothing.
 	Cache string
 }
 
@@ -80,8 +80,7 @@ func New() (*Updater, error) {
 
 // Available returns the latest release the last Refresh found if it is
 // newer than current, not skipped and not postponed, and "" otherwise.
-// It reads only the cache, so that starting lopper never waits for the
-// network.
+// It reads only the cache, so starting lopper never waits for the network.
 func (u *Updater) Available(current string) string {
 	latest, _ := u.read(latestFile)
 	if latest == "" || !Newer(current, latest) {
@@ -96,10 +95,10 @@ func (u *Updater) Available(current string) string {
 	return latest
 }
 
-// Refresh asks GitHub for the latest release, for Available to find on
-// the next start, unless it asked recently: a day after it answered, an
-// hour after it did not, so an offline start does not ask each time.
-// Nothing is kept if ctx ends first.
+// Refresh asks GitHub for the latest release, which Available offers on the
+// next start. It asks at most once a day after an answer and once an hour
+// after a failure, so an offline start does not ask every time. It keeps
+// nothing if ctx ends first.
 func (u *Updater) Refresh(ctx context.Context) {
 	if u.Cache == "" {
 		return
@@ -116,7 +115,7 @@ func (u *Updater) Refresh(ctx context.Context) {
 	defer cancel()
 	latest, err := u.Latest(ask)
 	if err != nil && ctx.Err() != nil {
-		return // lopper quit: ask on the next start
+		return // lopper quit, so ask on the next start
 	}
 	u.write(latestFile, latest) // "" if offline
 }
@@ -156,7 +155,7 @@ func (u *Updater) read(name string) (tag string, written time.Time) {
 	return "", info.ModTime()
 }
 
-// write keeps tag in a file in Cache; failing to only means asking again.
+// write keeps tag in a file in Cache. A failed write only means asking again.
 func (u *Updater) write(name, tag string) {
 	if u.Cache == "" {
 		return
@@ -167,15 +166,15 @@ func (u *Updater) write(name, tag string) {
 }
 
 // Released reports whether version names a release rather than "dev",
-// a pseudo-version or a dirty build. The caller checks build provenance;
-// a clean local build on a Git tag can have the same version as a release.
+// a pseudo-version or a dirty build. The caller checks build provenance,
+// since a clean local build on a git tag has the same version as a release.
 func Released(version string) bool {
 	v := canonical(version)
 	return semver.IsValid(v) && !module.IsPseudoVersion(v) && semver.Build(v) == ""
 }
 
-// Newer reports whether release is a later version than current, both
-// Released. They may lack the leading v: goreleaser sets it without.
+// Newer reports whether release is later than current. Both must be
+// Released, and may lack the leading v, which goreleaser omits.
 func Newer(current, release string) bool {
 	return semver.Compare(canonical(release), canonical(current)) > 0
 }
@@ -187,9 +186,9 @@ func canonical(v string) string {
 	return v
 }
 
-// Latest returns the tag of the latest release, which GitHub tells by
-// redirecting releases/latest to releases/tag/<tag>. Unlike its API, the
-// redirect has no rate limit.
+// Latest returns the tag of the latest release from GitHub's redirect of
+// releases/latest to releases/tag/<tag>. Unlike the API, the redirect has no
+// rate limit.
 func (u *Updater) Latest(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u.Repo+"/releases/latest", http.NoBody)
 	if err != nil {
@@ -214,8 +213,8 @@ func (u *Updater) Latest(ctx context.Context) (string, error) {
 }
 
 // Install downloads release tag, checks it against the release's
-// checksums and puts its binary in place of Exe. Exe is left as it was
-// if anything fails before that.
+// checksums and puts its binary in place of Exe. If anything fails before
+// that, Exe stays as it was.
 func (u *Updater) Install(ctx context.Context, tag string) error {
 	name := "lopper_" + u.OS + "_" + u.Arch + ".tar.gz"
 	if u.OS == "windows" {
@@ -241,8 +240,8 @@ func (u *Updater) Install(ctx context.Context, tag string) error {
 	if err != nil {
 		return fmt.Errorf("%s of %s: %w", name, tag, err)
 	}
-	// Once replace starts, it is not stopped: on Windows that could leave
-	// no binary.
+	// Nothing stops replace once it starts, since on Windows that could
+	// leave no binary.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -330,11 +329,11 @@ func readAll(r io.Reader) ([]byte, error) {
 	return data, err
 }
 
-// replace puts bin in place of exe by renaming a file written next to it:
-// a running lopper keeps its file, and no half-written binary is left.
-// Windows cannot replace or delete a running binary, but can rename it
-// away first: to a name of its own each time, as the one renamed by the
-// update before may still run. Those that no longer do are deleted here.
+// replace writes bin next to exe and renames it over exe, so a running
+// lopper keeps its file and no half-written binary is left. Windows cannot
+// replace or delete a running binary but can rename it away. Each update
+// renames it to a new name, since the one the previous update renamed may
+// still run, and deletes the old ones that no longer run.
 func replace(exe string, bin []byte, windows bool) error {
 	dir := filepath.Dir(exe)
 	tmp, err := os.CreateTemp(dir, ".lopper-update-*")

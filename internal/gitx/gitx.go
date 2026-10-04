@@ -1,5 +1,5 @@
-// Package gitx is a thin wrapper around the git CLI. Shelling out keeps
-// worktree semantics, config and safe.directory handling identical to git.
+// Package gitx wraps the git CLI. Running git itself keeps worktree
+// semantics, config and safe.directory handling exactly as git has them.
 package gitx
 
 import (
@@ -16,14 +16,14 @@ import (
 	"strings"
 )
 
-// ErrGitNotFound is returned by Check when no git binary is in PATH.
+// ErrGitNotFound is returned by Check when PATH has no git binary.
 var ErrGitNotFound = errors.New("git not found in PATH: lopper needs git to inspect worktrees")
 
-// minVersion is the oldest git lopper runs with: worktree list -z needs
+// minVersion is the oldest git lopper supports. worktree list -z needs
 // 2.36, and older git ignores GIT_CONFIG_COUNT, which [Exec] relies on.
 var minVersion = [2]int{2, 36}
 
-// Check verifies that a git binary of at least minVersion is available.
+// Check verifies that PATH has a git of at least minVersion.
 func Check(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "git", "version").Output()
 	if errors.Is(err, exec.ErrNotFound) {
@@ -53,7 +53,7 @@ func checkVersion(out string) error {
 	return nil
 }
 
-// Runner executes git in a directory. Tests can substitute a fake.
+// Runner runs git in a directory. Tests substitute a fake.
 type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
 	RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error)
@@ -61,31 +61,29 @@ type Runner interface {
 
 // Exec runs the git binary found in PATH.
 //
-// lopper runs git inside arbitrary, possibly untrusted repositories, so
-// repository-local config must never make git spawn a program. For the
-// commands that touch working tree files (status and worktree), the
-// settings are below; `worktree remove` runs status in the worktree
-// through a child git, which inherits both settings.
-//   - core.fsmonitor: status runs the configured hook; disabled via -c,
-//     which takes precedence over every config file.
-//   - filter.<driver>.clean/process: status hashes files whose stat data
-//     is stale through the clean filter chosen by .gitattributes or
-//     .git/info/attributes. Driver names are arbitrary, so they are looked
-//     up first, in the worktree a command checks too, and blanked via
-//     GIT_CONFIG_KEY_n (which, unlike -c, accepts any name).
+// lopper runs git inside untrusted repositories, so repository config must
+// never make git start a program. Status and worktree commands read working
+// tree files, and Exec disables what they could run:
+//   - core.fsmonitor: status runs the configured hook. -c disables it, and
+//     -c takes precedence over every config file.
+//   - filter.<driver>.clean and process: status passes files with stale stat
+//     data through the clean filter that .gitattributes or
+//     .git/info/attributes picks. Driver names are arbitrary, so Exec first
+//     looks them up, also in the worktree a command checks, then blanks them
+//     with GIT_CONFIG_KEY_n, which unlike -c accepts any name.
 //
-// Hooks do not run for these commands, and the pager, editor, ssh and
-// credential helpers are never reached. Lazy fetching is disabled, and
-// all transport protocols are blocked for Git versions that ignore
-// GIT_NO_LAZY_FETCH. Commands that print diffs must pass --no-ext-diff
+// `worktree remove` runs status in the worktree through a child git, which
+// inherits both settings. These commands run no hooks and never reach the
+// pager, editor, ssh or credential helpers. GIT_NO_LAZY_FETCH stops lazy
+// fetching, and an empty GIT_ALLOW_PROTOCOL blocks every transport for git
+// versions that ignore it. Callers that print diffs must pass --no-ext-diff
 // --no-textconv, and log must pass --no-show-signature. cat-file without
-// --filters and merge-file, which merges files outside the repository,
-// run no programs. Global config is left intact so safe.directory keeps
-// working.
+// --filters runs no programs, and neither does merge-file, which merges
+// files outside the repository. Global config stays intact so
+// safe.directory keeps working.
 //
-// git runs in dir and nowhere else: variables such as GIT_DIR that the
-// caller exported (a git hook, `git rebase --exec`) are dropped, see
-// [Environ].
+// git runs only in dir. Exec drops variables such as GIT_DIR that a caller
+// like a git hook or `git rebase --exec` exported, see [Environ].
 type Exec struct{}
 
 // Run runs git in dir and returns its output without trailing newlines.
@@ -94,9 +92,8 @@ func (Exec) Run(ctx context.Context, dir string, args ...string) (string, error)
 	return strings.TrimRight(out, "\n"), err
 }
 
-// RunRaw runs git with stdin, if not empty, as its input and preserves
-// stdout bytes, including trailing newlines. It applies the same
-// restrictions as Run.
+// RunRaw runs git with stdin as input, unless it is empty, and returns
+// stdout byte for byte. It applies the same restrictions as Run.
 func (Exec) RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	env := append(Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "LC_ALL=C")
 	var drivers []string
@@ -118,11 +115,11 @@ func (Exec) RunRaw(ctx context.Context, dir, stdin string, args ...string) (stri
 	return run(ctx, dir, env, stdin, args...)
 }
 
-// repoVars are the variables `git rev-parse --local-env-vars` lists, which
-// tie git to one repository: they would override -C. GIT_CONFIG_PARAMETERS
-// and GIT_CONFIG_COUNT are on that list too but carry the user's
-// `git -c` config rather than a location, so they are kept, as git itself
-// does when it runs a command in a submodule.
+// repoVars are the variables from `git rev-parse --local-env-vars` that tie
+// git to one repository and would override -C. That list also has
+// GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT, but they carry the user's
+// `git -c` config, not a location. Environ keeps them, as git does when it
+// runs a command in a submodule.
 var repoVars = map[string]bool{
 	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
 	"GIT_CONFIG":                       true,
@@ -143,7 +140,7 @@ var repoVars = map[string]bool{
 // Environ is os.Environ without the variables that tie git to the
 // caller's repository.
 func Environ() []string {
-	// Windows matches variable names regardless of case: git_dir is GIT_DIR.
+	// Windows ignores the case of variable names, so git_dir is GIT_DIR.
 	return withoutRepoVars(runtime.GOOS == "windows", os.Environ())
 }
 
@@ -158,10 +155,10 @@ func withoutRepoVars(caseInsensitive bool, env []string) []string {
 }
 
 // OwnWorkTree runs git in a git directory, such as a submodule's or a
-// --separate-git-dir repository, as if it were its own work tree. Such a
-// repository names its checkout in core.worktree, and git refuses to run
-// at all once that checkout is gone. Only for commands that do not touch
-// the work tree: worktree list, symbolic-ref, rev-parse.
+// --separate-git-dir repository, as its own work tree. Such a repository
+// names its checkout in core.worktree, and git refuses to run once that
+// checkout is gone. Use it only for commands that leave the work tree
+// alone, such as worktree list, symbolic-ref and rev-parse.
 type OwnWorkTree struct{ Runner }
 
 // Run runs git in dir with dir as its work tree.
@@ -174,11 +171,11 @@ func (o OwnWorkTree) RunRaw(ctx context.Context, dir, stdin string, args ...stri
 	return o.Runner.RunRaw(ctx, dir, stdin, append([]string{"--work-tree=" + dir}, args...)...)
 }
 
-// filterConfigs returns where to look up the filter drivers a git command
-// run in dir may use, or nothing if it hashes no working tree files:
-// status, and worktree commands other than list, read the config of dir.
-// worktree remove and move also run status in the worktree they are
-// given, whose own config counts there too (extensions.worktreeConfig).
+// filterConfigs returns the directories whose config may name filter
+// drivers for a git command in dir. Only status and worktree commands other
+// than list hash working tree files, and they read the config of dir.
+// worktree remove and move also run status in the worktree they are given,
+// whose own config applies there with extensions.worktreeConfig.
 func filterConfigs(dir string, args []string) []string {
 	for len(args) > 0 && strings.HasPrefix(args[0], "--work-tree=") {
 		args = args[1:] // from OwnWorkTree
@@ -197,8 +194,9 @@ func filterConfigs(dir string, args []string) []string {
 	return nil
 }
 
-// worktreeArg is the worktree that `git worktree remove` or `move` is
-// given, if it exists: their first argument that is not an option.
+// worktreeArg returns the worktree given to `git worktree remove` or
+// `move`, which is their first argument that is not an option, if it
+// exists.
 func worktreeArg(dir string, args []string) string {
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") {
@@ -230,8 +228,8 @@ func run(ctx context.Context, dir string, env []string, stdin string, args ...st
 	return stdout.String(), nil
 }
 
-// BlobSizes returns the sizes of the blobs ids, read by one git process.
-// A blob that is missing, as in a partial clone, is an error.
+// BlobSizes returns the sizes of the blobs ids, using one git process. A
+// missing blob, as in a partial clone, is an error.
 func BlobSizes(ctx context.Context, r Runner, dir string, ids []string) (map[string]int, error) {
 	out, err := r.RunRaw(ctx, dir, strings.Join(ids, "\n")+"\n", "cat-file", "--batch-check")
 	if err != nil {
@@ -250,8 +248,8 @@ func BlobSizes(ctx context.Context, r Runner, dir string, ids []string) (map[str
 	return sizes, nil
 }
 
-// ReadBlobs returns the contents of the blobs ids, read by one git process.
-// A blob that is missing, as in a partial clone, is an error.
+// ReadBlobs returns the contents of the blobs ids, using one git process. A
+// missing blob, as in a partial clone, is an error.
 func ReadBlobs(ctx context.Context, r Runner, dir string, ids []string) (map[string]string, error) {
 	out, err := r.RunRaw(ctx, dir, strings.Join(ids, "\n")+"\n", "cat-file", "--batch")
 	if err != nil {
@@ -268,7 +266,7 @@ func ReadBlobs(ctx context.Context, r Runner, dir string, ids []string) (map[str
 			return nil, fmt.Errorf("git cat-file: truncated output after %s", header)
 		}
 		blobs[id] = rest[:size]
-		out = rest[size+1:] // the newline after the contents
+		out = rest[size+1:] // skip the newline after the contents
 	}
 	return blobs, nil
 }
@@ -286,10 +284,10 @@ func blobHeader(header string) (id string, size int, err error) {
 	return fields[0], size, nil
 }
 
-// MergeUnchanged checks whether applying ancestor..other to current leaves
-// it unchanged, given their contents. merge-file uses Git's built-in text
-// merge, bypasses attribute merge drivers, and with --stdout writes no
-// repository objects. It merges temporary files: --object-id needs Git 2.43.
+// MergeUnchanged reports whether applying ancestor..other to current, given
+// their contents, leaves current unchanged. merge-file uses git's built-in
+// text merge, skips attribute merge drivers and, with --stdout, writes no
+// objects. It merges temporary files because --object-id needs git 2.43.
 func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other string) (bool, error) {
 	blobs := [3]string{current, ancestor, other}
 	for _, blob := range blobs {
@@ -310,7 +308,7 @@ func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other
 	}
 	out, err := r.RunRaw(ctx, dir, "", "merge-file", "--stdout", "--quiet", "--diff3", paths[0], paths[1], paths[2])
 	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() > 0 && e.ExitCode() <= 127 {
-		return false, nil // merge-file returns the number of conflicts
+		return false, nil // merge-file exits with the number of conflicts
 	}
 	if err != nil {
 		return false, err
@@ -318,10 +316,10 @@ func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other
 	return out == blobs[0], nil
 }
 
-// blankFilters appends GIT_CONFIG_KEY_n/VALUE_n pairs that set every
-// command of the filter drivers named in keys (NUL-separated config keys
-// like "filter.x.clean") to the empty string, which disables them. Pairs
-// already set by the user's environment are kept.
+// blankFilters appends GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n pairs that set
+// every command of the drivers in keys to the empty string, which disables
+// them. keys are NUL-separated config keys such as filter.x.clean. Pairs the
+// user's environment already set stay.
 func blankFilters(env []string, keys string) []string {
 	seen := map[string]bool{}
 	n, _ := strconv.Atoi(os.Getenv("GIT_CONFIG_COUNT"))
@@ -354,8 +352,8 @@ type WorktreeEntry struct {
 	Prunable bool
 }
 
-// ListWorktrees returns all worktrees of the repository at dir,
-// the main worktree first.
+// ListWorktrees returns all worktrees of the repository at dir, the main
+// worktree first.
 func ListWorktrees(ctx context.Context, r Runner, dir string) ([]WorktreeEntry, error) {
 	out, err := r.Run(ctx, dir, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
@@ -364,9 +362,9 @@ func ListWorktrees(ctx context.Context, r Runner, dir string) ([]WorktreeEntry, 
 	return parseWorktreeList(out), nil
 }
 
-// parseWorktreeList parses `git worktree list --porcelain -z` output:
-// NUL-terminated fields, with an empty field ending each record. Fields are
-// never split on newlines, so paths and lock reasons may contain them.
+// parseWorktreeList parses `git worktree list --porcelain -z` output. Each
+// field ends with NUL and an empty field ends each record, so paths and lock
+// reasons may contain newlines.
 func parseWorktreeList(out string) []WorktreeEntry {
 	var (
 		entries []WorktreeEntry
@@ -411,7 +409,7 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.Err }
 
-// Message is what git said went wrong, without the command: its last
+// Message returns git's reason without the command. That is its last
 // "fatal:" or "error:" line, or else its last line.
 func (e *Error) Message() string {
 	lines := strings.Split(e.Stderr, "\n")
@@ -428,14 +426,13 @@ func (e *Error) Message() string {
 	return e.Err.Error()
 }
 
-// brief is a git error told by its message alone: for users, whom the
-// command git ran does not help.
+// brief shows a git error by its message alone, because the command line
+// does not help users.
 type brief struct{ git *Error }
 
 func (b brief) Error() string { return b.git.Message() }
 func (b brief) Unwrap() error { return b.git }
 
-// briefly returns err told by git's message alone, if git failed.
 func briefly(err error) error {
 	if e, ok := errors.AsType[*Error](err); ok {
 		return brief{e}
@@ -443,10 +440,10 @@ func briefly(err error) error {
 	return err
 }
 
-// RemoveWorktree removes the linked worktree at path of the repository
-// at repo, or only git's record of it when the directory is gone. Unless
+// RemoveWorktree removes the linked worktree at path of the repository at
+// repo, or only git's record of it when the directory is gone. Unless
 // forced, git refuses when the worktree is locked or has modified or
-// untracked files. Ignored files go with it; the branch stays.
+// untracked files. git deletes ignored files with it and keeps the branch.
 func RemoveWorktree(ctx context.Context, r Runner, repo, path string, force bool) error {
 	args := []string{"worktree", "remove"}
 	if force {
@@ -456,8 +453,8 @@ func RemoveWorktree(ctx context.Context, r Runner, repo, path string, force bool
 	return briefly(err)
 }
 
-// RepairWorktree relinks the worktree at path with its repository after
-// it was moved there by hand, so that git can remove it.
+// RepairWorktree relinks a worktree moved to path by hand with its
+// repository, so git can remove it.
 func RepairWorktree(ctx context.Context, r Runner, path string) error {
 	_, err := r.Run(ctx, path, "worktree", "repair")
 	return briefly(err)

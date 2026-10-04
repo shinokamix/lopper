@@ -38,7 +38,7 @@ var layers = map[string][]string{
 	"internal/tui": {"internal/lopper", "internal/engine", "internal/verdict"},
 }
 
-// restricted limits sensitive imports (by prefix) to specific packages.
+// restricted limits sensitive imports, matched by prefix, to specific packages.
 // A trailing "/..." matches a package and everything below it.
 var restricted = map[string][]string{
 	"os/exec":                   {"internal/gitx"},
@@ -126,9 +126,9 @@ func listPackages(t *testing.T) []pkg {
 }
 
 // trackSources opens every directory and .go file of the module. The go
-// test cache only notices files the test process itself touches, not
-// those read by the `go list` child process; without this, a cached PASS
-// could hide a freshly introduced violation.
+// test cache only notices files the test process itself touches, not those
+// the `go list` child process reads. Without this, a cached PASS could hide
+// a new violation.
 func trackSources(t *testing.T) {
 	t.Helper()
 	root := filepath.Join("..", "..")

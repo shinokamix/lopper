@@ -39,7 +39,7 @@ func order(t *testing.T, a *app, texts ...string) []string {
 	return texts
 }
 
-// Rows stay where they were found while the scan fills them in: a size
+// Rows stay where they were found while the scan fills them in. A size
 // arriving does not move a row, and a longer branch found later does not
 // push the facts of the others aside.
 func TestRowsHoldStillWhileTheScanGoesOn(t *testing.T) {
@@ -92,9 +92,9 @@ func TestSShowsLargestFirst(t *testing.T) {
 	}
 }
 
-// Sorting moves rows, never the cursor to another worktree: the row
-// under it, even the first one the user has not moved from, is what d
-// acts on after as before.
+// Sorting moves rows but never moves the cursor to another worktree. d acts
+// on the same row before and after, even the first row the user has not
+// moved from.
 func TestSortKeepsTheCursorOnItsWorktree(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -107,8 +107,8 @@ func TestSortKeepsTheCursorOnItsWorktree(t *testing.T) {
 	}
 }
 
-// Removing worktrees changes the totals: the list shown largest first is
-// ranked again, not left in the order from before.
+// Removing worktrees changes the totals, so a list shown largest first is
+// ranked again.
 func TestLargestFirstAfterRemoving(t *testing.T) {
 	a, _ := removalApp(t)
 	sized(a, "a-big", "/r/alpha", 1000)
@@ -192,9 +192,9 @@ func searchApp() *app {
 	return a
 }
 
-// / shows only the rows matching every word typed: by branch or path,
-// or by a fact, without its count and not inside another one, so
-// "merged" leaves out "not merged". esc shows every row again.
+// / shows only the rows matching every word typed, by branch, path or fact.
+// A fact matches without its count and not inside another fact, so "merged"
+// leaves out "not merged". esc shows every row again.
 func TestSearchShowsMatchingRows(t *testing.T) {
 	all := []string{"feature/login", "fix/typo", "chore/deps"}
 	for _, tc := range []struct {
@@ -246,7 +246,7 @@ func TestKeysTypedIntoTheSearch(t *testing.T) {
 	}
 }
 
-// Rows hidden by the search stay selected: the footer counts them and
+// Rows hidden by the search stay selected. The footer counts them, and
 // removing acts on them, as the confirmation shows.
 func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
 	a := searchApp()
@@ -281,9 +281,9 @@ func TestKeyHelpEndsWithQuestionMark(t *testing.T) {
 	}
 }
 
-// ? shows every key in place of the list, within the screen however
-// small: where they do not fit, ↓ scrolls to the rest. ? or esc goes
-// back to the list.
+// ? shows every key in place of the list, within the screen however small.
+// Where they do not fit, ↓ scrolls to the rest. ? or esc goes back to the
+// list.
 func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	every := []string{"↑/k up", "↓/j down", "space select", "d remove", "/ search", "s sort", "q quit"}
 	for _, size := range []tea.WindowSizeMsg{{Width: 100, Height: 12}, {Width: 28, Height: 12}} {
@@ -330,7 +330,7 @@ func TestRemovingAHiddenRowKeepsTheCursor(t *testing.T) {
 	sized(a, "hidden", "/r", 10)
 	press(a, tea.KeyDown)
 	press(a, tea.KeyDown)
-	press(a, ' ') // hidden, the last row: the cursor stays on it
+	press(a, ' ') // hidden and last, so the cursor stays on it
 	typeText(a, "/match")
 	press(a, tea.KeyEnter)
 	if got := statusLine(plainLines(a)); !strings.HasPrefix(got, "/w/match-a ") {
@@ -438,7 +438,7 @@ func TestLongPathsFitTheScreen(t *testing.T) {
 }
 
 // A row shows all its facts when the screen has room, and otherwise the
-// most pressing ones and how many more there are: a fact that makes a
+// most pressing ones and how many more there are. A fact that makes a
 // worktree unsafe must never vanish without a trace.
 func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a := testApp()
@@ -509,7 +509,7 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measuring", Facts: clean(), Safe: true}})
 
 	lines := plainLines(a)
-	at := lineWith(t, lines, "a-branch") // measured first: it is larger
+	at := lineWith(t, lines, "a-branch") // measured first, since it is larger
 	known, unknown := lines[at], strings.TrimRight(lines[at+1], " ")
 	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, spinning(a)) {
 		t.Fatalf("want the measured row, then the one still being measured:\n%s\n%s", known, unknown)
@@ -519,10 +519,10 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	}
 }
 
-// spinning is the spinner's frame now: what a size being measured shows.
+// spinning is the spinner's current frame, which a size being measured shows.
 func spinning(a *app) string { return strings.TrimSpace(a.spin.View()) }
 
-// A size that could not be measured must not look as if it still were:
+// A size that could not be measured must not look as if it still were, or
 // the spinner would turn forever.
 func TestSizeSpinsOnlyWhileBeingMeasured(t *testing.T) {
 	a := testApp()

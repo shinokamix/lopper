@@ -15,30 +15,24 @@ import (
 	"github.com/charlievieth/fastwalk"
 )
 
-// findRepos reports the common git directory of every repository met
-// during the walk, once. A .git directory belongs to a main worktree; a
-// .git file leads to a git directory elsewhere, which may live outside
-// the roots: that of a linked worktree's main repository, a submodule,
-// or a --separate-git-dir or ".bare" layout. Bare repositories have no
-// .git at all and are recognized by their worktrees directory. The
-// repositories of submodules live inside another git directory, where the
-// walk does not go, and are looked up there: their checkout may be gone
-// while their worktrees are not. Every linked worktree met also goes to
-// linked, with what its .git file tells about the repository.
+// findRepos reports each repository met during the walk once, by its
+// common git directory, and passes every linked worktree it meets to
+// linked. A .git directory is a main worktree. A .git file leads to a git
+// directory that may lie outside the roots: a linked worktree's
+// repository, a submodule, or a --separate-git-dir or ".bare" layout. A
+// bare repository has no .git and is found by its worktrees directory.
+// Submodule repositories live inside a git directory, which the walk
+// skips. findRepos looks them up there, because their checkout may be gone
+// while their worktrees are not.
 //
-// Before the walk, the places of opts.Known below the roots are looked at
-// as the walk would look at them, so that what they lead to is reported
-// first. The walk then finds the same repositories: they change when a
-// repository is reported, not which.
-// Once the walk is over, findRepos returns where it met each repository,
-// for a later walk to take as known: its own directory, rather than the
-// .git file of a worktree that may be removed, when it met both.
+// findRepos checks the places in opts.Known below the roots first, so it
+// reports their repositories early. The walk finds the same set either way.
+// The returned places prefer a repository's own directory over a
+// worktree's .git file, which may be removed.
 //
-// Symbolic links to directories are followed. Every physical directory
-// is walked once, whichever path reaches it first, so neither a link
-// back to an ancestor nor overlapping roots make the walk repeat itself.
-// On Windows a directory that a link and the walk both reach, or a root
-// inside another, may be walked twice, but never in a loop.
+// Symlinks to directories are followed. Each physical directory is walked
+// once, so links to an ancestor and overlapping roots cause no repeats. On
+// Windows a directory may be walked twice, but never in a loop.
 func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) (met []string, err error) {
 	var (
 		seen   sync.Map
@@ -61,7 +55,6 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 			submodules(gitDir, func(sub string) { report(sub, place{}) })
 		}
 	}
-	// dotGit looks at a .git entry of type typ at path.
 	dotGit := func(path string, typ fs.FileMode) {
 		if typ.IsDir() {
 			report(path, place{path, true})
@@ -98,13 +91,13 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 	}
 
 	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
-	// Only a link or a root leads to a directory twice: below them the walk
-	// follows a tree. Telling a directory apart is a stat on Unix, so every
-	// one is checked, sparing a second walk of a linked directory. Windows
-	// opens each one for it, so there only links and roots are checked.
+	// Only links and roots lead to a directory twice. On Unix the check is a
+	// stat, so every directory gets one and a linked directory the walk
+	// reached first is not walked again. On Windows it opens the directory,
+	// so only links and roots are checked.
 	everyDir := runtime.GOOS != "windows"
 	conf := fastwalk.DefaultConfig
-	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
+	conf.ToSlash = false // report paths as found, even under MSYS or Git Bash
 
 	for _, root := range opts.Roots {
 		root = filepath.Clean(root)
@@ -119,7 +112,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				if path == root {
 					return fmt.Errorf("scan %s: %w", root, err)
 				}
-				return nil // unreadable entries below a root are skipped, not fatal
+				return nil // skip unreadable entries below a root
 			}
 			typ, link := d.Type(), d.Type()&fs.ModeSymlink != 0
 			if link {
@@ -160,23 +153,24 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 	return met, nil
 }
 
-// place is where the walk met a repository: own when it is the
-// repository's own directory, its .git directory or a bare repository.
+// place is where the walk met a repository. own marks the repository's own
+// directory, which is its .git directory or a bare repository.
 type place struct {
 	path string
 	own  bool
 }
 
-// isBare reports whether dir is a bare repository the walk would meet,
+// isBare reports whether dir is a bare repository that the walk would find
 // by its worktrees directory.
 func isBare(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, "worktrees"))
 	return err == nil && info.IsDir() && isGitDir(dir)
 }
 
-// submodules calls found for every submodule repository kept in gitDir:
-// in modules/<submodule path>, in modules/ of those for nested ones (via
-// found), and in worktrees/<id>/modules for those of linked worktrees.
+// submodules calls found for every submodule repository in gitDir, under
+// modules/<submodule path> and, for linked worktrees, under
+// worktrees/<id>/modules. Nested submodules live in modules/ of their
+// parent's repository, which found reaches in turn.
 func submodules(gitDir string, found func(gitDir string)) {
 	modules(filepath.Join(gitDir, "modules"), found)
 	ids, _ := os.ReadDir(filepath.Join(gitDir, "worktrees"))
@@ -188,8 +182,8 @@ func submodules(gitDir string, found func(gitDir string)) {
 }
 
 // modules finds the repositories below dir. A submodule path has several
-// components when the submodule is not at the top of its superproject.
-// Symbolic links are not followed: git creates none there.
+// components when the submodule sits in a subdirectory of its superproject.
+// modules does not follow symlinks, since git creates none there.
 func modules(dir string, found func(gitDir string)) {
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
@@ -205,9 +199,9 @@ func modules(dir string, found func(gitDir string)) {
 	}
 }
 
-// physical is where dir really is, so that a directory the walk may reach
-// by several paths is reported the same way every time: its resolved
-// path, but below the first root that contains it, as that root is given.
+// physical names dir the same way whichever path the walk took. It resolves
+// dir, but under the first root that contains it, spelled as that root is
+// given.
 func physical(roots []string, dir string) string {
 	resolved := realPath(dir)
 	for _, root := range roots {
@@ -218,8 +212,8 @@ func physical(roots []string, dir string) string {
 	return resolved
 }
 
-// below reports whether a walk of roots reaches path by its name, as
-// the roots are given.
+// below reports whether a walk of roots reaches path by name, without
+// resolving symlinks.
 func below(roots []string, path string) bool {
 	return slices.ContainsFunc(roots, func(root string) bool {
 		_, ok := within(filepath.Clean(root), path)
@@ -236,9 +230,9 @@ func within(dir, path string) (string, bool) {
 	return rel, true
 }
 
-// realPath resolves symlinks so that one directory reached by two paths
-// is recognised. Of a path that is gone, what is left is resolved: git
-// may record a missing worktree through a symlink the walk does not use.
+// realPath resolves symlinks, so two paths to one directory compare equal.
+// For a missing path it resolves the part that exists, because git may
+// record a missing worktree through a symlink the walk does not use.
 func realPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		return resolved

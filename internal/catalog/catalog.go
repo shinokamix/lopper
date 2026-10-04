@@ -1,6 +1,6 @@
-// Package catalog remembers, between runs, where scans met repositories,
-// so that the next scan lists them before its walk. It changes only how
-// soon worktrees are found: a scan finds the same ones without it.
+// Package catalog remembers where scans met repositories, so the next run
+// lists them before its walk. It changes how soon a scan finds worktrees,
+// never which ones.
 package catalog
 
 import (
@@ -14,8 +14,8 @@ import (
 	"github.com/rogpeppe/go-internal/lockedfile"
 )
 
-// version changes whenever what a place means does: a file of another
-// version is ignored.
+// version changes whenever the meaning of a place does. Known ignores a
+// file of another version.
 const version = 1
 
 type file struct {
@@ -23,7 +23,7 @@ type file struct {
 	Places  []string `json:"places"`
 }
 
-// Catalog is the file the places are kept in. The zero Catalog keeps
+// Catalog is the file that keeps the places. The zero Catalog keeps
 // nothing.
 type Catalog struct{ path string }
 
@@ -37,8 +37,8 @@ func Open() Catalog {
 	return Catalog{filepath.Join(dir, "lopper", "repos.json")}
 }
 
-// Known returns the places kept, or none when there are none to read:
-// the file is missing, unreadable, or of another version.
+// Known returns the places kept. A missing or unreadable file, or one of
+// another version, gives none.
 func (c Catalog) Known() []string {
 	if c.path == "" {
 		return nil
@@ -54,10 +54,10 @@ func (c Catalog) Known() []string {
 	return f.Places
 }
 
-// Remember keeps places, met by a complete scan of roots, instead of the
-// places kept below roots: that scan would have met them again had they
-// still led to a repository. Places elsewhere stay, for scans of other
-// roots.
+// Remember replaces the places kept below roots with places, which a
+// complete scan of roots met. That scan would have met the old ones again if
+// they still led to a repository. Places outside roots stay for scans of
+// other roots.
 func (c Catalog) Remember(roots, places []string) error {
 	if c.path == "" {
 		return nil
@@ -80,8 +80,8 @@ func (c Catalog) Remember(roots, places []string) error {
 	return writeFile(c.path, data)
 }
 
-// writeFile replaces path with data at once, so that a run reading it
-// meanwhile, or two runs writing it, never leave half a file.
+// writeFile replaces path atomically, so a concurrent reader or writer never
+// sees half a file.
 func writeFile(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".repos-*.json")
 	if err != nil {
@@ -100,9 +100,9 @@ func writeFile(path string, data []byte) error {
 	return nil
 }
 
-// below reports whether a walk of roots reaches path by its name, as the
-// roots are given. It must agree with discovery's below, which picks the
-// Known places a scan looks at: a place it skips must stay kept here.
+// below reports whether a walk of roots reaches path by name, without
+// resolving symlinks. It must agree with discovery's below, because a Known
+// place that a scan skips must stay in the catalog.
 func below(roots []string, path string) bool {
 	return slices.ContainsFunc(roots, func(root string) bool {
 		rel, err := filepath.Rel(filepath.Clean(root), path)

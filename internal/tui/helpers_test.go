@@ -46,7 +46,6 @@ func plainLines(a *app) []string {
 	return strings.Split(ansi.Strip(a.View().Content), "\n")
 }
 
-// lineWith returns the index of the first line containing s.
 func lineWith(t *testing.T, lines []string, s string) int {
 	t.Helper()
 	for i, l := range lines {
@@ -58,7 +57,8 @@ func lineWith(t *testing.T, lines []string, s string) int {
 	return 0
 }
 
-// statusLine is the line above the key help: the path under the cursor.
+// statusLine is the line above the key help, which shows the path under the
+// cursor.
 func statusLine(lines []string) string {
 	return strings.TrimSpace(lines[len(lines)-2])
 }

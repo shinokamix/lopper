@@ -1,14 +1,14 @@
-// Package lopper holds the core domain types shared by every other package.
-// It must not import anything from this module.
+// Package lopper holds the types every other package shares. It must not
+// import anything from this module.
 package lopper
 
-// ID uniquely identifies a worktree: its absolute, cleaned path.
+// ID identifies a worktree by its absolute, cleaned path.
 type ID string
 
-// Repo is a main repository that owns one or more linked worktrees.
+// Repo is a main repository that owns linked worktrees.
 type Repo struct {
-	Path          string // main worktree path
-	DefaultBranch string // e.g. "main"; empty if unknown
+	Path          string // the main worktree
+	DefaultBranch string // empty if unknown
 }
 
 // Worktree is a linked worktree found on disk.
@@ -22,53 +22,50 @@ type Worktree struct {
 	State  State
 	// MovedFrom is where git still expects a StateMoved worktree.
 	MovedFrom string
-	// Reason tells why a StateUnconfirmed worktree could not be confirmed.
+	// Reason says why git could not confirm a StateUnconfirmed worktree.
 	Reason string
 }
 
-// State tells whether git tracks a worktree where it is, and if not, what
-// became of it. A worktree is in exactly one state.
+// State says whether git tracks a worktree at its path, and if not, what
+// happened to it.
 type State int
 
 const (
-	// StateTracked means git tracks it where it is.
+	// StateTracked means git tracks the worktree at its path.
 	StateTracked State = iota
-	// StateGone means git reports its directory as missing; only git's record
-	// of it is left.
+	// StateGone means the directory is gone and only git's record of it is
+	// left.
 	StateGone
-	// StateOrphaned means the directory is still there, but its repository no
-	// longer tracks it (deleted, or the worktree was pruned), so git cannot
-	// inspect it. Repo.Path is where the repository used to be.
+	// StateOrphaned means the directory exists but its repository no longer
+	// tracks it, because the repository was deleted or the worktree pruned.
+	// git cannot inspect it. Repo.Path is where the repository was.
 	StateOrphaned
-	// StateMoved means the directory was moved here by hand from MovedFrom,
-	// where git still expects it; `git worktree repair` run inside it
-	// relinks them.
+	// StateMoved means someone moved the directory here from MovedFrom, where
+	// git still expects it. `git worktree repair` run inside it relinks them.
 	StateMoved
-	// StateUnconfirmed means the directory's .git file makes it a linked
-	// worktree of Repo, but the repository could not confirm that it still
-	// tracks it here; Reason says why. git may or may not still work inside
-	// it.
+	// StateUnconfirmed means the .git file names Repo, but the repository
+	// could not confirm that it tracks the directory here. Reason says why.
+	// git may still work inside it.
 	StateUnconfirmed
 )
 
-// Facts are observations about a worktree. Inspect fills them in
-// progressively; a nil pointer means "not known". A fact that could not
-// be observed stays nil and the cause is recorded in Errors.
+// Facts are what inspect observed about a worktree, in stages. A nil field
+// is unknown, and Errors says why when an observation failed.
 type Facts struct {
 	Dirty          *int       // status entries; an untracked directory counts as one
-	UncheckedFiles *int       // files whose index flags prevent checking for edits
+	UncheckedFiles *int       // files whose index flags hide edits from status
 	Unpushed       *int       // commits neither on a remote nor in base
-	Merged         *MergeKind // how (if at all) the work reached the base branch
+	Merged         *MergeKind // how the work reached the base branch, if it did
 	SizeBytes      *int64
-	Errors         []string // why facts are missing, e.g. "could not read status: ..."
+	Errors         []string
 }
 
-// MergeKind tells how a branch was integrated into the base branch.
+// MergeKind says how a branch reached the base branch.
 type MergeKind string
 
-// How a branch reached the base branch, if it did.
+// The kinds of merge.
 const (
 	NotMerged    MergeKind = "none"
 	MergedFF     MergeKind = "ancestor" // HEAD is an ancestor of base
-	MergedSquash MergeKind = "content"  // changes found after squash, rebase, or cherry-pick
+	MergedSquash MergeKind = "content"  // base has the changes after a squash, rebase or cherry-pick
 )

@@ -95,9 +95,9 @@ func TestBlankFiltersKeepsUserOverrides(t *testing.T) {
 	}
 }
 
-// commandRepo creates, with git isolated from the developer's config, the
-// repository work/repo with a.txt committed, and returns work and plain git
-// run there. Commands from config run through sh in the worktree root, so
+// commandRepo creates the repository work/repo with a.txt committed, with git
+// isolated from the developer's config. It returns work and a plain git that
+// runs there. Commands from config run through sh in the worktree root, so
 // ../marker lands in work.
 func commandRepo(t *testing.T) (work string, git func(args ...string)) {
 	t.Helper()

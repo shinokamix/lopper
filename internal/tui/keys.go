@@ -2,7 +2,7 @@ package tui
 
 import "charm.land/bubbles/v2/key"
 
-// keyMap defines every key binding; help text is generated from it.
+// keyMap defines every key binding, and the help text comes from it.
 type keyMap struct {
 	up, down, toggle, remove, quit key.Binding
 	// On the list: its order, its search and its key help.

@@ -128,8 +128,8 @@ func TestScanReportsRootError(t *testing.T) {
 	}
 }
 
-// Cancelling while the consumer keeps reading must neither break the
-// event order nor leave goroutines behind (synctest fails on leaks).
+// Cancelling while the consumer keeps reading must neither break the event
+// order nor leave goroutines behind, which synctest detects.
 func TestScanCancelMidScan(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -147,7 +147,7 @@ func TestScanCancelMidScan(t *testing.T) {
 }
 
 // A consumer that stops reading after cancelling must not leak the
-// pipeline's goroutines (synctest fails if any stay blocked).
+// pipeline's goroutines, which synctest detects when they stay blocked.
 func TestScanAbandonedConsumer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

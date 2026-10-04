@@ -12,7 +12,8 @@ import (
 )
 
 // mergeKind checks ancestry, then whether base contains the branch's changes.
-// Comparisons use fixed commits so moving branches cannot mix histories.
+// It resolves both to commits first, so a branch that moves meanwhile cannot
+// mix histories.
 func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.MergeKind, error) {
 	out, err := in.Git.Run(ctx, dir, "rev-parse", "--revs-only", "--end-of-options", base+"^{commit}", "HEAD^{commit}")
 	if err != nil {
@@ -45,8 +46,8 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 	if len(bases) != 1 {
 		return lopper.NotMerged, nil
 	}
-	// Most branches are not merged, and the content check usually tells so
-	// before reading any blob; diffing every local commit comes after it.
+	// Most branches are not merged, and the content check usually finds that
+	// before it reads a blob, so it runs before the diff of every local commit.
 	kind, err := in.contentMerge(ctx, dir, bases[0], head, base)
 	if err != nil || kind == lopper.NotMerged {
 		return kind, err
@@ -55,8 +56,8 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 	if err != nil {
 		return lopper.NotMerged, err
 	}
-	// Keep empty commits, including merges with no changes against their first
-	// parent, even when the combined diff still matches an earlier squash.
+	// An empty commit, or a merge with no changes against its first parent,
+	// keeps the worktree even when the combined diff matches an earlier squash.
 	if local != len(commits) {
 		return lopper.NotMerged, nil
 	}
@@ -73,7 +74,6 @@ func (in Inspector) nonemptyCommits(ctx context.Context, dir, commits string) (i
 	return countLines(out), nil
 }
 
-// The limits below bound what one squash check reads.
 const (
 	// maxMergeSize is the largest file merged as text; a larger changed
 	// file counts as not merged.
@@ -98,8 +98,8 @@ type treeEntry struct{ mode, id string }
 // onto current must leave unchanged.
 type textMerge struct{ current, ancestor, other string }
 
-// contentMerge checks the entire branch's file changes against base.
-// Replaying them must leave every file unchanged, without conflicts.
+// contentMerge reports MergedSquash if replaying the branch's file changes
+// onto base leaves every file unchanged, without conflicts.
 func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base string) (lopper.MergeKind, error) {
 	out, err := in.Git.Run(ctx, dir, "diff", "--raw", "--no-abbrev", "-z", "--no-ext-diff", "--no-textconv",
 		"--no-renames", "--no-relative", "--ignore-submodules=none", ancestor, head, "--")
@@ -148,8 +148,8 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 		if cur.id == ch.dstID {
 			continue
 		}
-		// Base still has the file as the branch started from: the change
-		// is not in base, and a merge would only repeat that.
+		// Base still has the file the branch started from, so the change is
+		// not in base.
 		if cur.id == ch.srcID {
 			return lopper.NotMerged, nil
 		}
@@ -172,7 +172,7 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	if slices.ContainsFunc(ids, func(id string) bool { return sizes[id] > maxMergeSize }) {
 		return lopper.NotMerged, nil
 	}
-	// Blobs are read in batches, which bounds the memory they take.
+	// Read blobs in batches to bound the memory they take.
 	for len(merges) > 0 {
 		n, size := 0, 0
 		for n < len(merges) {
@@ -202,9 +202,9 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	return lopper.MergedSquash, nil
 }
 
-// treeEntries returns the entry of each of paths that tree has, a
-// subtree included. Paths go to ls-tree in batches that fit a command
-// line; -t keeps a tree listed when another path leads into it.
+// treeEntries returns the entries tree has for paths, subtrees included. It
+// passes paths to ls-tree in batches that fit a command line. -t keeps a
+// tree listed when another path leads into it.
 func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []string) (map[string]treeEntry, error) {
 	entries := make(map[string]treeEntry, len(paths))
 	for len(paths) > 0 {

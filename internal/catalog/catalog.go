@@ -83,9 +83,6 @@ func (c Catalog) Remember(roots, places []string) error {
 // writeFile replaces path with data at once, so that a run reading it
 // meanwhile, or two runs writing it, never leave half a file.
 func writeFile(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".repos-*.json")
 	if err != nil {
 		return err
@@ -104,7 +101,8 @@ func writeFile(path string, data []byte) error {
 }
 
 // below reports whether a walk of roots reaches path by its name, as the
-// roots are given: as discovery takes Known.
+// roots are given. It must agree with discovery's below, which picks the
+// Known places a scan looks at: a place it skips must stay kept here.
 func below(roots []string, path string) bool {
 	return slices.ContainsFunc(roots, func(root string) bool {
 		rel, err := filepath.Rel(filepath.Clean(root), path)

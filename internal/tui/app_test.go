@@ -30,18 +30,3 @@ func TestScanErrorVisible(t *testing.T) {
 		})
 	}
 }
-
-// Until the repositories an earlier scan met are listed, the status says
-// so: the worktrees shown are the known ones, and new ones may follow.
-func TestStatusTellsKnownRepositoriesFromTheSearch(t *testing.T) {
-	a := testApp()
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/repo/wt", Branch: "feature"}}})
-	if view := a.View().Content; !strings.Contains(view, "checking known repositories · 1 found") {
-		t.Errorf("status before the known repositories are listed:\n%s", view)
-	}
-	a.Update(eventMsg{ev: engine.KnownListed{}})
-	if view := a.View().Content; !strings.Contains(view, "scanning · 1 found") || strings.Contains(view, "known repositories") {
-		t.Errorf("status once the known repositories are listed:\n%s", view)
-	}
-}

@@ -27,13 +27,14 @@ var layers = map[string][]string{
 	"internal/gitx":     {},
 	"internal/archtest": {},
 	"internal/update":   {},
+	"internal/catalog":  {},
 
 	"internal/verdict":   {"internal/lopper"},
 	"internal/inspect":   {"internal/lopper", "internal/gitx"},
 	"internal/discovery": {"internal/lopper", "internal/gitx"},
 	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/discovery", "internal/inspect", "internal/verdict"},
 
-	"internal/cli": {"internal/lopper", "internal/engine", "internal/tui", "internal/update"},
+	"internal/cli": {"internal/lopper", "internal/engine", "internal/catalog", "internal/tui", "internal/update"},
 	"internal/tui": {"internal/lopper", "internal/engine", "internal/verdict"},
 }
 

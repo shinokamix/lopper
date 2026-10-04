@@ -52,6 +52,12 @@ type Options struct {
 	// Concurrency caps the git processes a scan runs at once;
 	// 0 means runtime.GOMAXPROCS(0). See [budget].
 	Concurrency int
+	// Known are places where an earlier scan met repositories: their
+	// worktrees are found first. A scan finds the same ones without them.
+	Known []string
+	// Remember, if set, receives the places where a scan met repositories
+	// once it is complete, for a later scan to take as Known.
+	Remember func(places []string)
 }
 
 // budget splits the git process limit n between discovery listers and
@@ -110,6 +116,8 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		dopts := discovery.Options{
 			Roots:   opts.Roots,
 			Listers: listers,
+			Known:   opts.Known,
+			Met:     opts.Remember,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			// Inspect only what the consumer was told about, or it would

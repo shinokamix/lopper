@@ -1,0 +1,41 @@
+# A scan remembers where it met repositories, so that the next one lists
+# them first. That changes when worktrees are found, never which.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env LOCALAPPDATA=$WORK/cache
+
+exec git init -q code/repo
+exec git -C code/repo commit -q --allow-empty -m init
+exec git -C code/repo worktree add -q -b kept ../kept
+exec git init -q other/repo
+exec git -C other/repo commit -q --allow-empty -m init
+exec git -C other/repo worktree add -q -b elsewhere ../elsewhere
+
+# LOPPER_NO_CACHE keeps nothing.
+env LOPPER_NO_CACHE=1
+exec lopper scan $WORK
+stdout 'kept'
+[darwin] ! exists $HOME/Library/Caches/lopper/repos.json
+[linux] ! exists $XDG_CACHE_HOME/lopper/repos.json
+[windows] ! exists $LOCALAPPDATA/lopper/repos.json
+env LOPPER_NO_CACHE=
+
+exec lopper scan $WORK
+stdout 'kept'
+stdout 'elsewhere'
+[darwin] exists $HOME/Library/Caches/lopper/repos.json
+[linux] exists $XDG_CACHE_HOME/lopper/repos.json
+[windows] exists $LOCALAPPDATA/lopper/repos.json
+
+# A scan of one directory lists no repository remembered elsewhere.
+exec lopper scan $WORK/code
+stdout 'kept'
+! stdout 'elsewhere'
+
+# A repository gone since leaves its worktree orphaned, as it would
+# without the cache, and its place is forgotten without a word.
+rm code/repo
+exec lopper scan --json $WORK/code
+stdout '"orphaned": true'
+! stderr .

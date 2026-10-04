@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -302,5 +303,86 @@ func TestScanRootErrors(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Scan(%s) = %v, want error containing %q", root, err, want)
 		}
+	}
+}
+
+// A scan tells where it met each repository: its own directory rather
+// than the .git file of a worktree that may be removed, or that file when
+// the repository lies outside the roots. A later scan lists those
+// repositories before its walk.
+func TestScanListsKnownRepositoriesFirst(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "deep", "er")
+	near := filepath.Join(deep, "near")
+	nearWT := filepath.Join(deep, "near-wt")
+	linkWorktree(t, near, nearWT)
+	far := filepath.Join(t.TempDir(), "far")
+	farWT := filepath.Join(deep, "far-wt")
+	linkWorktree(t, far, farWT)
+	lists := map[string][]string{near: {nearWT}, far: {farWT}}
+
+	var met []string
+	scan(t, &fakeGit{lists: lists}, Options{Roots: []string{root}, Met: func(places []string) { met = places }})
+	want := []string{filepath.Join(farWT, ".git"), filepath.Join(near, ".git")}
+	slices.Sort(want)
+	if !slices.Equal(met, want) {
+		t.Fatalf("met %v, want %v", met, want)
+	}
+
+	// Repositories made since, which the walk meets before those known.
+	for i := range 8 {
+		fresh := filepath.Join(root, "new"+strconv.Itoa(i))
+		linkWorktree(t, fresh, fresh+"-wt")
+		lists[fresh] = []string{fresh + "-wt"}
+	}
+	git := &fakeGit{lists: lists}
+	scan(t, git, Options{Roots: []string{root}, Listers: 1, Known: met})
+	if first := git.calls[:2]; !slices.Contains(first, far) || !slices.Contains(first, near) {
+		t.Errorf("git worktree list ran in %v, want %s and %s first", git.calls, far, near)
+	}
+}
+
+// Known places change only when worktrees are found, not which: one
+// outside the roots, one gone since, or one that is no repository any
+// more adds nothing.
+func TestScanKnownDoesNotChangeWhatIsFound(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	wt := filepath.Join(root, "wt")
+	linkWorktree(t, repo, wt)
+	outside := t.TempDir()
+	foreign := filepath.Join(outside, "foreign")
+	linkWorktree(t, foreign, filepath.Join(outside, "foreign-wt"))
+	mkdir(t, filepath.Join(root, "was-bare"))
+	lists := map[string][]string{repo: {wt}, foreign: {filepath.Join(outside, "foreign-wt")}}
+
+	git := &fakeGit{lists: lists}
+	known := []string{
+		filepath.Join(foreign, ".git"),
+		filepath.Join(root, "removed", ".git"),
+		filepath.Join(root, "was-bare"),
+	}
+	found := scan(t, git, Options{Roots: []string{root}, Known: known})
+
+	if !slices.Equal(git.calls, []string{repo}) {
+		t.Errorf("git worktree list ran in %v, want only %s", git.calls, repo)
+	}
+	if len(found) != 1 || found[0].Path != wt {
+		t.Errorf("found %+v, want only %s", found, wt)
+	}
+}
+
+// A cancelled scan did not meet every repository: what it met must not
+// replace what an earlier scan did.
+func TestScanCancelledReportsNothingMet(t *testing.T) {
+	root := t.TempDir()
+	linkWorktree(t, filepath.Join(root, "repo"), filepath.Join(root, "wt"))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	called := false
+	err := Scan(ctx, &fakeGit{}, Options{Roots: []string{root}, Met: func([]string) { called = true }}, func(lopper.Worktree) {})
+	if err == nil || called {
+		t.Errorf("Scan = %v, Met called: %v; want the cancellation and no call", err, called)
 	}
 }

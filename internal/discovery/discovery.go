@@ -22,6 +22,15 @@ import (
 type Options struct {
 	Roots   []string // walked in full: no directory below them is skipped
 	Listers int      // concurrent `git worktree list` processes; at least 1
+	// Known are places where an earlier scan met repositories, as Met
+	// receives them. Those below Roots are looked at before the walk, so
+	// that their repositories are listed first. Which worktrees a scan
+	// finds does not depend on them, only when.
+	Known []string
+	// Met, if set, receives the places where a scan met repositories, for
+	// a later scan to take as Known. It is called only when the walk was
+	// over, neither failed nor cancelled.
+	Met func(places []string)
 }
 
 // Scan walks opts.Roots and calls emit for every linked worktree found,
@@ -68,7 +77,7 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		})
 	}
 
-	err := findRepos(ctx, opts,
+	met, err := findRepos(ctx, opts,
 		func(gitDir string) { gitDirs <- gitDir },
 		func(dir string, gf gitFile) {
 			mu.Lock()
@@ -82,6 +91,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		})
 	close(gitDirs)
 	wg.Wait()
+	if err == nil && ctx.Err() == nil && opts.Met != nil {
+		opts.Met(met)
+	}
 
 	// A worktree whose .git file points to a moved repository still shows up
 	// in that repository's list when the walk reached it; only the rest are

@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -24,27 +26,90 @@ import (
 // while their worktrees are not. Every linked worktree met also goes to
 // linked, with what its .git file tells about the repository.
 //
+// Before the walk, the places of opts.Known below the roots are looked at
+// as the walk would look at them, so that what they lead to is reported
+// first. The walk then finds the same repositories: they change when a
+// repository is reported, not which.
+// Once the walk is over, findRepos returns where it met each repository,
+// for a later walk to take as known: its own directory, rather than the
+// .git file of a worktree that may be removed, when it met both.
+//
 // Symbolic links to directories are followed. Every physical directory
 // is walked once, whichever path reaches it first, so neither a link
 // back to an ancestor nor overlapping roots make the walk repeat itself.
-func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) error {
-	var seen sync.Map
-	var report func(gitDir string)
-	report = func(gitDir string) {
+// On Windows a directory that a link and the walk both reach, or a root
+// inside another, may be walked twice, but never in a loop.
+func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) (met []string, err error) {
+	var (
+		seen   sync.Map
+		mu     sync.Mutex
+		places = map[string]place{} // where each repository was met, by real git directory
+	)
+	var report func(gitDir string, at place)
+	report = func(gitDir string, at place) {
 		// The same repo may be reached via a symlinked path.
-		if _, dup := seen.LoadOrStore(realPath(gitDir), struct{}{}); !dup {
+		resolved := realPath(gitDir)
+		if at.path != "" {
+			mu.Lock()
+			if old, ok := places[resolved]; !ok || at.own && !old.own {
+				places[resolved] = at
+			}
+			mu.Unlock()
+		}
+		if _, dup := seen.LoadOrStore(resolved, struct{}{}); !dup {
 			found(gitDir)
-			submodules(gitDir, report)
+			submodules(gitDir, func(sub string) { report(sub, place{}) })
 		}
 	}
+	// dotGit looks at a .git entry of type typ at path.
+	dotGit := func(path string, typ fs.FileMode) {
+		if typ.IsDir() {
+			report(path, place{path, true})
+			return
+		}
+		if !typ.IsRegular() {
+			return
+		}
+		gf, ok := readGitFile(path)
+		if ok && gf.admin != gf.commonDir {
+			linked(physical(opts.Roots, filepath.Dir(path)), gf)
+		}
+		if ok && !gf.repoGone {
+			// Even without this worktree, the repository may have others.
+			report(gf.commonDir, place{path, false})
+		}
+	}
+
+	for _, path := range opts.Known {
+		if ctx.Err() != nil {
+			break
+		}
+		if !below(opts.Roots, path) {
+			continue // the walk would not meet it
+		}
+		info, err := os.Stat(path)
+		switch {
+		case err != nil:
+		case filepath.Base(path) == ".git":
+			dotGit(path, info.Mode().Type())
+		case info.IsDir() && isBare(path):
+			report(path, place{path, true})
+		}
+	}
+
 	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
+	// Only a link or a root leads to a directory twice: below them the walk
+	// follows a tree. Telling a directory apart is a stat on Unix, so every
+	// one is checked, sparing a second walk of a linked directory. Windows
+	// opens each one for it, so there only links and roots are checked.
+	everyDir := runtime.GOOS != "windows"
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
 
 	for _, root := range opts.Roots {
 		root = filepath.Clean(root)
 		if err := checkRoot(root); err != nil {
-			return err
+			return nil, err
 		}
 		err := fastwalk.Walk(&conf, root, func(path string, d fs.DirEntry, err error) error {
 			if err := ctx.Err(); err != nil {
@@ -64,29 +129,19 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				}
 				typ = info.Mode().Type()
 			}
-			if typ.IsDir() && visited.Entry(path, d) {
+			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
 				return fs.SkipDir
 			}
 			name := d.Name()
 			if name == ".git" {
+				dotGit(path, typ)
 				if typ.IsDir() {
-					report(path)
 					return fs.SkipDir
-				}
-				if typ.IsRegular() {
-					gf, ok := readGitFile(path)
-					if ok && gf.admin != gf.commonDir {
-						linked(physical(opts.Roots, filepath.Dir(path)), gf)
-					}
-					if ok && !gf.repoGone {
-						// Even without this worktree, the repository may have others.
-						report(gf.commonDir)
-					}
 				}
 				return nil
 			}
 			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
-				report(filepath.Dir(path)) // a bare repository
+				report(filepath.Dir(path), place{filepath.Dir(path), true}) // a bare repository
 				return fs.SkipDir
 			}
 			if link && typ.IsDir() {
@@ -95,10 +150,28 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 			return nil
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	for _, at := range places {
+		met = append(met, at.path)
+	}
+	slices.Sort(met)
+	return met, nil
+}
+
+// place is where the walk met a repository: own when it is the
+// repository's own directory, its .git directory or a bare repository.
+type place struct {
+	path string
+	own  bool
+}
+
+// isBare reports whether dir is a bare repository the walk would meet,
+// by its worktrees directory.
+func isBare(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "worktrees"))
+	return err == nil && info.IsDir() && isGitDir(dir)
 }
 
 // submodules calls found for every submodule repository kept in gitDir:
@@ -138,12 +211,29 @@ func modules(dir string, found func(gitDir string)) {
 func physical(roots []string, dir string) string {
 	resolved := realPath(dir)
 	for _, root := range roots {
-		rel, err := filepath.Rel(realPath(root), resolved)
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if rel, ok := within(realPath(root), resolved); ok {
 			return filepath.Join(filepath.Clean(root), rel)
 		}
 	}
 	return resolved
+}
+
+// below reports whether a walk of roots reaches path by its name, as
+// the roots are given.
+func below(roots []string, path string) bool {
+	return slices.ContainsFunc(roots, func(root string) bool {
+		_, ok := within(filepath.Clean(root), path)
+		return ok
+	})
+}
+
+// within returns path relative to dir, if it is dir or below it.
+func within(dir, path string) (string, bool) {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }
 
 // realPath resolves symlinks so that one directory reached by two paths

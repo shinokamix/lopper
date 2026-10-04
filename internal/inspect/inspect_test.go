@@ -159,8 +159,8 @@ func TestQuickNoBaseBranch(t *testing.T) {
 	}
 }
 
-// A corrupt index makes `git status` fail while history is still readable:
-// Dirty must stay unknown and the cause must be recorded.
+// A corrupt index makes `git status` fail while history is still readable.
+// Dirty must stay unknown, and Errors must record the cause.
 func TestQuickStatusFails(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "merged")
@@ -530,7 +530,7 @@ func TestSlowSize(t *testing.T) {
 	}
 }
 
-// A worktree git reports as gone has no directory to measure; it frees
+// A worktree git reports as gone has no directory to measure. It frees
 // nothing, which a known zero says and an unknown size would not.
 func TestSlowSizeOfGoneWorktreeIsZero(t *testing.T) {
 	wt := lopper.Worktree{Path: filepath.Join(t.TempDir(), "gone"), State: lopper.StateGone}

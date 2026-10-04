@@ -34,8 +34,8 @@ func TestRememberReplacesOnlyBelowRoots(t *testing.T) {
 	}
 }
 
-// A file lopper cannot use is no reason to fail: the scan walks as if
-// nothing were known, and replaces the file.
+// A file lopper cannot use is no reason to fail. The scan walks as if
+// nothing were known and replaces the file.
 func TestKnownIgnoresUnusableFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "repos.json")
 	c := Catalog{path}

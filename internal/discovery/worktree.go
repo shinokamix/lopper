@@ -10,7 +10,7 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// orphanWorktree describes a worktree from its directory alone: with the
+// orphanWorktree describes a worktree by its directory alone. With the
 // admin directory gone, its branch and HEAD are unknown.
 func orphanWorktree(dir, commonDir string) lopper.Worktree {
 	path := filepath.Clean(dir)
@@ -22,10 +22,10 @@ func orphanWorktree(dir, commonDir string) lopper.Worktree {
 	}
 }
 
-// unconfirmedWorktree describes a worktree from its directory and its
-// admin directory, which tells the branch or commit it has checked out and
-// whether it is locked. A lock that cannot be ruled out is assumed: it is
-// the user's explicit wish to keep the worktree.
+// unconfirmedWorktree describes a worktree by its directory and its admin
+// directory, which holds its checked-out branch or commit and its lock. It
+// assumes a lock unless the lock file definitely does not exist, because a
+// lock is the user's explicit wish to keep the worktree.
 func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper.Worktree {
 	path := filepath.Clean(dir)
 	wt := lopper.Worktree{
@@ -47,8 +47,8 @@ func unconfirmedWorktree(dir string, repo lopper.Repo, admin, why string) lopper
 	return wt
 }
 
-// movedWorktree is a worktree that git lists as missing because it now
-// lives in dir: what git knows about it, at the path it has now.
+// movedWorktree returns stale, which git lists as missing, at dir, where it
+// lives now.
 func movedWorktree(stale lopper.Worktree, dir string) lopper.Worktree {
 	wt := stale
 	wt.ID, wt.Path = lopper.ID(dir), dir
@@ -65,9 +65,9 @@ func repoPath(gitDir string) string {
 	return gitDir
 }
 
-// hasLinkedWorktrees tells, without spawning git, whether the repository
-// can have linked worktrees at all. Almost none do, so this saves one
-// git process per repository on disk.
+// hasLinkedWorktrees reports, without running git, whether the repository
+// can have linked worktrees. Almost none do, so this saves a git process per
+// repository.
 func hasLinkedWorktrees(gitDir string) bool {
 	f, err := os.Open(filepath.Join(gitDir, "worktrees"))
 	if err != nil {
@@ -78,14 +78,13 @@ func hasLinkedWorktrees(gitDir string) bool {
 	return len(names) > 0
 }
 
-// listRepo emits the linked worktrees the repository at gitDir lists,
-// and returns the repository, unless it has no worktrees directory to
-// list. It fails only when git does: then no worktree is emitted.
+// listRepo emits the linked worktrees that the repository at gitDir lists
+// and returns the repository, or a zero Repo if its worktrees directory is
+// missing or empty. It fails only when git does, and then emits nothing.
 func listRepo(ctx context.Context, git gitx.Runner, gitDir string, emit func(lopper.Worktree)) (lopper.Repo, error) {
 	if !hasLinkedWorktrees(gitDir) {
 		return lopper.Repo{}, nil
 	}
-	// Run git from the main worktree when there is one.
 	dir := repoPath(gitDir)
 	if dir == gitDir {
 		git = gitx.OwnWorkTree{Runner: git} // its checkout, if any, may be gone
@@ -94,8 +93,7 @@ func listRepo(ctx context.Context, git gitx.Runner, gitDir string, emit func(lop
 	if err != nil {
 		return lopper.Repo{}, err
 	}
-	// Even with no linked worktree listed, the base branch is needed for
-	// the ones found on disk that git left out.
+	// Worktrees found on disk that git left out need the base branch too.
 	repo := lopper.Repo{
 		Path:          dir,
 		DefaultBranch: gitx.DefaultBranch(ctx, git, dir),

@@ -62,9 +62,8 @@ type remover struct {
 	force bool
 }
 
-// errGone is returned for a path whose folder is gone. Only its repository
-// still knows it, and a path does not lead there: no folder is left to
-// remove, only git's record of it.
+// errGone is returned for a path whose folder is gone. Only git's record is
+// left, in a repository the path does not lead to.
 var errGone = errors.New("no such directory; if a repository lists a worktree there, " +
 	"`git worktree prune` in it removes the record")
 

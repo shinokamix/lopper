@@ -23,8 +23,8 @@ type scanRecord struct {
 	Facts       scanFacts `json:"facts"`
 }
 
-// scanFacts is how `scan --json` prints [lopper.Facts]: a format scripts
-// rely on, kept here so that renaming a field in the core cannot change it.
+// scanFacts is how `scan --json` prints [lopper.Facts]. Scripts rely on this
+// format, so it lives here, where renaming a core field cannot change it.
 type scanFacts struct {
 	Dirty          *int              `json:"dirty,omitempty"`
 	UncheckedFiles *int              `json:"unchecked_files,omitempty"`

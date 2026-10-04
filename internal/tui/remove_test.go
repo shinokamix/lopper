@@ -15,7 +15,7 @@ import (
 	"github.com/shinokamix/lopper/internal/lopper"
 )
 
-// remover stands in for Engine.Remove: it records what it was asked to
+// remover stands in for Engine.Remove. It records what it was asked to
 // remove and fails with fail's error for a worktree there.
 type remover struct {
 	calls []string // "id" or "id forced", or "measure id"
@@ -126,7 +126,7 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	}
 }
 
-// The confirmation follows the scan until the user confirms: sizes still
+// The confirmation follows the scan until the user confirms. Sizes still
 // being measured arrive, and a worktree that turns out to hold work
 // moves under the warning. What is on screen at enter is what goes.
 func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
@@ -151,7 +151,7 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 }
 
 // A worktree still being checked can be picked, but not confirmed until
-// its facts show what would be lost; until then it is in a section of
+// its facts show what would be lost. Until then it sits in a section of
 // its own, neither safe nor holding work.
 func TestConfirmationWaitsForChecks(t *testing.T) {
 	a, rm := removalApp(t)
@@ -196,7 +196,7 @@ func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
 	}
 }
 
-// Worktrees of different repositories may share a branch name: the
+// Worktrees of different repositories may share a branch name, so the
 // confirmation tells them apart by repository.
 func TestConfirmationNamesRepositories(t *testing.T) {
 	a, _ := removalApp(t)
@@ -218,10 +218,9 @@ func TestConfirmationNamesRepositories(t *testing.T) {
 	}
 }
 
-// Every worktree to be removed can be seen before confirming, however
-// many there are: the ones out of sight could hold work. Scrolled into
-// them, the warning over them stays in sight, and what is out of sight
-// is counted.
+// Every worktree to be removed can be seen before confirming, however many
+// there are, since the ones out of sight could hold work. Scrolled to them,
+// the warning over them stays in sight, and what is out of sight is counted.
 func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	a, _ := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
@@ -252,9 +251,9 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	}
 }
 
-// The summary says why each worktree was not removed, in a column the
-// screen holds however long the reason: a line wider than the screen
-// broke the whole summary, and a long path pushed the cause out of sight.
+// The summary says why each worktree was not removed, in a column that fits
+// the screen however long the reason. A line wider than the screen breaks
+// the whole summary, and a long path pushes the cause out of sight.
 func TestSummaryTellsWhyInColumn(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 72, Height: 20})
@@ -278,8 +277,8 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 		t.Errorf("reasons are not in one column:\n%s\n%s", gitErr, notSafe)
 	}
 
-	// Wider than the screen, the summary is no longer centered, and every
-	// line of it runs past the edge, cut off: "      …".
+	// A summary wider than the screen loses its centering, and every line
+	// runs past the edge and is cut off, as in "      …".
 	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	for _, l := range plainLines(a) {
 		if strings.TrimSpace(l) == "…" {
@@ -290,7 +289,7 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 }
 
 // However short the terminal, the summary says that some worktrees were
-// not removed: without it, it reads as if everything went.
+// not removed. Without that, it reads as if everything went.
 func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 9})

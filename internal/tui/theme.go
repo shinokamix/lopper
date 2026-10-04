@@ -8,14 +8,14 @@ import (
 	"github.com/shinokamix/lopper/internal/verdict"
 )
 
-// theme is the only place where colors and styles are defined.
+// theme defines every color and style.
 //
-// Color carries meaning only, taken from GitHub's Primer palette so it
-// reads as it does on GitHub: purple for merged work, yellow for work
-// that exists only locally, red for failures. ANSI palette slots would
-// follow the terminal theme, but many themes make magenta look red.
-// Everything else, including the cursor and the selection, is told apart
-// by brightness: faint, normal, bold, and a neutral background.
+// Color only carries meaning, in GitHub's Primer palette so it reads as on
+// GitHub: purple for merged work, yellow for work that exists only locally,
+// red for failures. ANSI palette slots would follow the terminal theme, but
+// many themes make magenta look red. Everything else, the cursor and the
+// selection included, differs by brightness: faint, normal, bold and a
+// neutral background.
 type theme struct {
 	title  lipgloss.Style
 	subtle lipgloss.Style

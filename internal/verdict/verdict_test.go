@@ -52,8 +52,8 @@ func TestSafe(t *testing.T) {
 	}
 }
 
-// After a squash merge, local commits legitimately exist nowhere else:
-// counting them as unpushed would warn about work that is not at risk.
+// After a squash merge, local commits exist nowhere else. Counting them as
+// unpushed would warn about work that is not at risk.
 func TestNotesCountUnpushedOnlyUntilMerged(t *testing.T) {
 	repo := lopper.Worktree{Repo: lopper.Repo{DefaultBranch: "main"}}
 	for _, tc := range []struct {

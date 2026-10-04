@@ -45,9 +45,8 @@ func git(t *testing.T, dir string, args ...string) string {
 	return out
 }
 
-// A worktree whose directory is gone can only be found through its
-// repository, which is how the list shows it; removing it drops git's
-// record of it.
+// Only its repository finds a worktree whose directory is gone, and the list
+// shows it that way. Removing it drops git's record of it.
 func TestRemoveForgetsGoneWorktree(t *testing.T) {
 	repo, wt := gitRepo(t)
 	if err := os.RemoveAll(wt); err != nil {

@@ -17,9 +17,9 @@ type row struct {
 	safe     bool
 }
 
-// store is the single source of truth for scan results: every screen
-// reads worktrees from it, and only engine events and removals mutate
-// it. UI state such as the cursor and the selection lives in the screens.
+// store holds the scan results. Every screen reads worktrees from it, and
+// only engine events and removals change it. UI state, such as the cursor
+// and the selection, lives in the screens.
 type store struct {
 	order    []lopper.ID
 	byID     map[lopper.ID]*row
@@ -39,7 +39,6 @@ func (s *store) remove(id lopper.ID) {
 	s.order = slices.DeleteFunc(s.order, func(o lopper.ID) bool { return o == id })
 }
 
-// apply folds an engine event into the store.
 func (s *store) apply(ev engine.Event) {
 	s.grouped = nil
 	switch ev := ev.(type) {
@@ -64,9 +63,8 @@ type group struct {
 	found int // worktrees found in the repository, shown or not
 }
 
-// groups returns rows grouped by repository in the order they were
-// found: a row, once shown, keeps its place as facts arrive, and new
-// rows and repositories are added at the end.
+// groups returns rows by repository in the order found. A row keeps its
+// place as facts arrive, and new rows and repositories go at the end.
 func (s *store) groups() []group {
 	if s.grouped == nil {
 		s.grouped = s.group()
@@ -91,17 +89,17 @@ func (s *store) group() []group {
 	return out
 }
 
-// ranks is a display order: the place of each worktree in its group and
-// of each group, by repository path. Those ranked later go last.
+// ranks is a display order: the place of each worktree in its group, and of
+// each group by repository path.
 type ranks struct {
 	rows  map[lopper.ID]int
 	repos map[string]int
 }
 
-// sizeRanks ranks groups largest first: groups by the total of their
-// known sizes and rows within a group by their own, so what frees the
-// most space is on top. Rows still being measured go after the measured
-// ones; ties keep the order found.
+// sizeRanks ranks groups by the total of their known sizes and rows within a
+// group by their own, largest first, so what frees the most space is on top.
+// Rows still being measured go after the measured ones, and ties keep the
+// order found.
 func sizeRanks(groups []group) ranks {
 	rk := ranks{rows: map[lopper.ID]int{}, repos: map[string]int{}}
 	totals := map[string]int64{}
@@ -129,8 +127,8 @@ func sizeRanks(groups []group) ranks {
 	return rk
 }
 
-// sort orders groups and their rows by rk in place; those it does not
-// rank, found since, go last in the order found.
+// sort orders groups and their rows by rk in place. Those found after rk was
+// made go last, in the order found.
 func (rk ranks) sort(groups []group) {
 	for _, g := range groups {
 		slices.SortStableFunc(g.rows, func(a, b *row) int {
@@ -150,9 +148,9 @@ func sizeOf(r *row) int64 {
 	return *r.facts.SizeBytes
 }
 
-// sizeText is the total size of rows as shown: spin, the spinner's
-// frame, while any is still being measured, and "?" when one could not
-// be, as a partial total would understate it.
+// sizeText is the total size of rows as shown. It is spin, the spinner's
+// frame, while a row is being measured, and "?" when one could not be, since
+// a partial total would understate it.
 func sizeText(rows []*row, spin string) string {
 	var total int64
 	unknown := false
@@ -172,8 +170,8 @@ func sizeText(rows []*row, spin string) string {
 	return formatBytes(total)
 }
 
-// totalSize sums the sizes of rows, or returns nil while any is unknown:
-// a partial total would understate what deleting them frees.
+// totalSize sums the sizes of rows, or returns nil while any is unknown,
+// since a partial total would understate what deleting them frees.
 func totalSize(rows []*row) *int64 {
 	total := new(int64)
 	for _, r := range rows {
@@ -185,7 +183,7 @@ func totalSize(rows []*row) *int64 {
 	return total
 }
 
-// rankOf is the rank of k in m, after all of them when it has none.
+// rankOf is the rank of k in m, or after all of them when it has none.
 func rankOf[K comparable](m map[K]int, k K) int {
 	if i, ok := m[k]; ok {
 		return i

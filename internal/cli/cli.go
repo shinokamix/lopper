@@ -78,9 +78,9 @@ func scanOptions(args []string) (engine.Options, error) {
 	return remembered(engine.Options{Roots: roots}), nil
 }
 
-// remembered makes a scan start with the repositories earlier ones met,
-// and remember those it meets, unless LOPPER_NO_CACHE is set. A cache
-// that cannot be read or written only leaves the scan as slow as without.
+// remembered makes a scan start with the repositories earlier scans met and
+// remember the ones it meets, unless LOPPER_NO_CACHE is set. An unreadable or
+// unwritable cache only makes the scan as slow as without one.
 func remembered(opts engine.Options) engine.Options {
 	if os.Getenv("LOPPER_NO_CACHE") != "" {
 		return opts

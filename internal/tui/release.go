@@ -19,11 +19,10 @@ import (
 type Updates struct {
 	Current string // the running version
 	Latest  string // a newer release to offer, or ""
-	Repo    string // where release notes are, under releases/tag/<tag>
+	Repo    string // release notes live under its releases/tag/<tag>
 	// Install puts release tag in place of the running binary.
 	Install func(ctx context.Context, tag string) error
-	// Postpone keeps release tag from being offered for a while, and Skip
-	// from being offered again.
+	// Postpone stops offering release tag for a while, and Skip for good.
 	Postpone, Skip func(tag string)
 	// Restart runs the installed release in place of this process. It
 	// returns only if it fails.
@@ -33,8 +32,8 @@ type Updates struct {
 // installedMsg reports how installing the newer release went.
 type installedMsg struct{ err error }
 
-// offer is the screen shown before the scan while a newer release is out:
-// it offers the release, installs it, then offers to restart into it.
+// offer is the screen shown before the scan when a newer release is out. It
+// offers the release, installs it, then offers to restart into it.
 type offer struct {
 	tag   string
 	phase offerPhase
@@ -49,24 +48,24 @@ const (
 	installed
 )
 
-// retryable reports whether installing again may succeed: not where
-// lopper may not write, which the error says how to get around.
+// retryable reports whether installing again may succeed. It cannot where
+// lopper may not write, and the error says how to get around that.
 func (o *offer) retryable() bool {
 	return !errors.Is(o.err, fs.ErrPermission)
 }
 
-// installs lets run wait for the install that runs when the TUI quits.
-// On Windows, Install moves lopper away before moving the new binary into
-// its place: exiting between the two would leave neither, so nothing may
-// end the process while it runs, not even a signal that ends the TUI.
+// installs lets run wait for an install still running when the TUI quits.
+// On Windows, Install moves lopper away before it moves the new binary in,
+// and exiting between the two would leave neither. So nothing may end the
+// process during an install, not even a signal that ends the TUI.
 type installs struct {
 	mu      sync.Mutex
 	closed  bool
 	running sync.WaitGroup
 }
 
-// start reports whether an install may start: not once the TUI quit,
-// which may drop the command running it before it does.
+// start reports whether an install may start. Once the TUI quits it may
+// not, because quitting may drop the command before it runs.
 func (s *installs) start() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,9 +116,9 @@ func (a *app) offerKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// view renders the screen in width and height. The key help is kept
-// whole, as without it there is no telling how to go on; of the rest,
-// what matters least goes first when it does not fit.
+// view renders the screen in width and height. The key help stays whole,
+// since without it the user cannot tell how to go on. When the rest does not
+// fit, what matters least goes first.
 func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, width, height int) string {
 	w := max(width-1, 1) // each line is indented by one
 	wrap := func(s string) []string { return strings.Split(ansi.Wrap(s, w, ""), "\n") }
@@ -130,10 +129,11 @@ func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, wi
 	case offered:
 		parts = append(parts, part{title, 2})
 		if o.err != nil {
-			// Its end may say how to update instead: kept when cut short.
+			// Its end may say how to update instead, so fitParts keeps the end
+			// when it cuts the error short.
 			parts = append(parts, part{wrap(t.failure.Render("update failed: " + o.err.Error())), 1})
 		}
-		// The link is not wrapped: cut short, it still leads there.
+		// Do not wrap the link. Cut short, it still leads there.
 		notes := u.Repo + "/releases/tag/" + o.tag
 		parts = append(parts, part{[]string{"What's new:", t.subtle.Hyperlink(notes).Render(notes)}, 3})
 		keys = bindings{k.install, k.later, k.skip, k.quit}
@@ -166,17 +166,16 @@ func (o *offer) view(t theme, h help.Model, k keyMap, u Updates, spin string, wi
 	return " " + strings.Join(append(lines, keyHelp...), "\n ")
 }
 
-// part is a paragraph of the update screen, and how much it matters: 1
-// most.
+// part is a paragraph of the update screen. rank 1 matters most.
 type part struct {
 	lines []string
 	rank  int
 }
 
 // fitParts drops the parts that matter least until the rest fit in height
-// lines, blank lines between them included. The last one left, if still
-// too long, keeps its first line and its end, which of an error says
-// what to do about it.
+// lines, blank lines between them included. If the last part left is still
+// too long, it keeps its first line and its end, since the end of an error
+// says what to do.
 func fitParts(parts []part, height, width int) []part {
 	size := func() int {
 		n := len(parts) - 1
@@ -199,7 +198,7 @@ func fitParts(parts []part, height, width int) []part {
 		switch {
 		case height <= 0:
 			return nil
-		case height == 1: // no room for the first line too: only the end is kept
+		case height == 1: // room for the end only
 			end := strings.Join(l, " ")
 			return []part{{[]string{ansi.TruncateLeft(end, ansi.StringWidth(end)-width+1, "…")}, rank}}
 		}
@@ -215,7 +214,7 @@ func helpLines(h help.Model, keys bindings, width int) []string {
 	if len(keys) == 0 {
 		return nil
 	}
-	h.SetWidth(0) // cutting off is what this avoids
+	h.SetWidth(0) // measure the line uncut
 	if line := h.ShortHelpView(keys); ansi.StringWidth(line) <= width {
 		return []string{line}
 	}

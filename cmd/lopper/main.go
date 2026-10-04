@@ -13,7 +13,7 @@ import (
 	"github.com/shinokamix/lopper/internal/cli"
 )
 
-// Set by goreleaser via -ldflags.
+// goreleaser sets these with -ldflags.
 var (
 	version = "dev"
 	commit  = ""
@@ -24,8 +24,7 @@ func main() {
 }
 
 func run() int {
-	// SIGTERM exists on every OS in package syscall; on Windows it is
-	// simply never delivered.
+	// syscall defines SIGTERM on every OS. Windows never delivers it.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	v, release := buildVersions()
@@ -35,9 +34,10 @@ func run() int {
 	return 0
 }
 
-// buildVersions returns the displayed version and the version eligible
-// for updates. GoReleaser stamps version; go install records the module
-// version. Local builds record VCS settings, even on a clean release tag.
+// buildVersions returns the version to display and the version to update
+// from. GoReleaser stamps version, and go install records the module
+// version. A local build records VCS settings even on a clean release tag,
+// so it gets no updates.
 func buildVersions() (display, release string) {
 	if version != "dev" {
 		return version, version

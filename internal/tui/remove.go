@@ -19,17 +19,16 @@ import (
 	"github.com/shinokamix/lopper/internal/verdict"
 )
 
-// removal is the screen that removes worktrees: it shows what goes and
-// asks once, removes them one at a time, then tells what came of it.
+// removal is the screen that removes worktrees. It shows what goes and asks
+// once, removes them one at a time, then reports the outcome.
 type removal struct {
-	// items are safe ones first, then the ones that are not. Until the
-	// user confirms, they follow the scan; then they are what the user
-	// confirmed.
+	// items are the safe ones first, then the rest. They follow the scan
+	// until the user confirms, then stay as confirmed.
 	items    []*item
 	phase    phase
 	next     int  // the item being removed
 	quitting bool // quit once the item being removed is done
-	frame    int  // of the space freed counting up, once finished
+	frame    int  // of the freed space counting up after the removal
 	offset   int  // first visible line of the worktrees
 }
 
@@ -68,7 +67,7 @@ func (rm *removal) nextFrame() tea.Cmd {
 	return tea.Tick(frameTime, func(time.Time) tea.Msg { return frameMsg{rm} })
 }
 
-// counted is how much of n the counter shows: all of it once done.
+// counted is how much of n the counter shows, all of it once done.
 func (rm *removal) counted(n int64) int64 {
 	if rm.frame >= frames {
 		return n
@@ -86,7 +85,7 @@ func newRemoval(rows []*row) *removal {
 	return rm
 }
 
-// Items are shown in sections, in this order.
+// The sections of the removal screen, in display order.
 const (
 	safeSection     = iota
 	workSection     // not safe to delete
@@ -103,15 +102,15 @@ func (it *item) section() int {
 	return workSection
 }
 
-// sort orders the items by section, as a verdict may change while the
+// sort orders the items by section, since a verdict may change while the
 // user looks.
 func (rm *removal) sort() {
 	slices.SortStableFunc(rm.items, func(a, b *item) int { return a.section() - b.section() })
 }
 
-// checked reports whether the facts of every item have arrived: until
-// then the user cannot see what would be lost, and cannot confirm. One
-// still being checked is shown as not safe until it is.
+// checked reports whether the facts of every item have arrived. Until then
+// the user cannot see what would be lost and cannot confirm. An item still
+// being checked shows as not safe.
 func (rm *removal) checked() bool {
 	for _, it := range rm.items {
 		if !it.row.checked {
@@ -121,8 +120,8 @@ func (rm *removal) checked() bool {
 	return true
 }
 
-// confirm fixes the items as the user sees them now: the scan may still
-// be updating them.
+// confirm freezes the items as the user sees them, since the scan may still
+// update them.
 func (rm *removal) confirm() {
 	rm.sort()
 	for _, it := range rm.items {
@@ -132,9 +131,9 @@ func (rm *removal) confirm() {
 	rm.phase = removing
 }
 
-// force tells whether it is removed whatever it holds: the user was
-// shown it is not safe and confirmed. One shown as safe is not forced,
-// so work that appears in it after the scan stops its removal.
+// force reports whether to remove the item whatever it holds, because the
+// user saw that it is not safe and confirmed. An item shown as safe is not
+// forced, so work that appears in it after the scan stops its removal.
 func (it *item) force() bool { return !it.row.safe }
 
 // removed reports whether the worktree is gone from disk.
@@ -151,8 +150,8 @@ func rowsOf(items []*item) []*row {
 	return out
 }
 
-// view renders the confirmation and the progress: the worktrees and a
-// line of key help, in height lines.
+// view renders the confirmation or the progress in height lines, with the
+// worktrees and a line of key help.
 func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, height int) string {
 	if rm.phase == confirming {
 		rm.sort()
@@ -190,9 +189,9 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	return head + "\n\n" + strings.Join(shown, "\n") + "\n\n " + h.View(keys)
 }
 
-// listing is lines of the screen, some of them items in sections.
+// listing holds the lines of the screen, some of them items in sections.
 type listing struct {
-	indent int // of the counts of lines out of sight
+	indent int // of the "N more" lines
 	text   []string
 	item   []int // the item on each line, or -1
 	head   []int // the heading over each line's section, or -1
@@ -200,13 +199,14 @@ type listing struct {
 
 func (rm *removal) listing(t theme, spin string, width int) listing {
 	names, notes := columns(rowsOf(rm.items))
-	// Unlike the list, rows are not grouped by repository, and branch
-	// names repeat across repositories: each row starts with its own.
+	// Unlike the list, this screen does not group rows by repository, and
+	// branch names repeat across repositories, so each row starts with its
+	// repository.
 	repoW := 0
 	for _, it := range rm.items {
 		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
 	}
-	repoW = min(repoW, width/5) // the branch says more: a long name gives way
+	repoW = min(repoW, width/5) // the branch says more, so a long repository name shrinks
 	headings := map[int]string{
 		workSection:     t.failure.Render("removal may lose work"),
 		checkingSection: t.subtle.Render("still checking"),
@@ -224,8 +224,8 @@ func (rm *removal) listing(t theme, spin string, width int) listing {
 			}
 			head = -1
 			if heading, ok := headings[sec]; ok {
-				// Level with the title, like repository headers in the list,
-				// so it reads as a heading over the rows, not as one of them.
+				// Align the heading with the title, as the list does repository
+				// headers, so it reads as a heading over the rows.
 				head = len(ls.text)
 				add(" "+heading, -1, head)
 			}
@@ -245,19 +245,18 @@ func (rm *removal) listing(t theme, spin string, width int) listing {
 	return ls
 }
 
-// window returns the lines that fit in height from *offset on, which it
-// keeps in range, and whether they do not all fit. Following, it scrolls
-// just enough to show the line of item focus instead. Lines out of sight
-// are counted in their place, and a section's heading stays on top
-// while its rows are in sight.
+// window returns the lines that fit in height from *offset, which it keeps
+// in range, and whether some lines did not fit. When following, it scrolls
+// just enough to show item focus. It counts the lines out of sight in their
+// place and keeps a section's heading on top while its rows are in sight.
 func (ls listing) window(t theme, offset *int, following bool, focus, height int) ([]string, bool) {
 	all := len(ls.text)
 	if all <= height {
 		*offset = 0
 		return ls.text, false
 	}
-	// layout tells, for a first line off, which lines are shown below the
-	// marks and the heading, and whether any are left below.
+	// layout returns, for first line off, the lines shown below the marks and
+	// the pinned heading, and whether any lines remain below.
 	layout := func(off int) (from, to int, pin, below bool) {
 		n := height
 		if off > 0 {
@@ -282,7 +281,7 @@ func (ls listing) window(t theme, offset *int, following bool, focus, height int
 			off++
 		}
 	}
-	for off > 0 { // not past the end: back while the last line still shows
+	for off > 0 { // back up while the last line still shows, to never pass the end
 		if _, _, _, below := layout(off - 1); below {
 			break
 		}
@@ -317,8 +316,8 @@ func (ls listing) window(t theme, offset *int, following bool, focus, height int
 	return out, true
 }
 
-// summary tells what the removal came to, centered in width × height,
-// with the keys that lead on from it.
+// summary reports the outcome of the removal, centered in width × height,
+// with the keys that lead on.
 func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) string {
 	var removed, failed, left []*item
 	for _, it := range rm.items {
@@ -340,8 +339,8 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	case len(removed) == 0:
 		lines = append(lines, t.title.Render("nothing removed"))
 	case size != nil:
-		// Padded to the width of the total, so the line stays put as the
-		// counter goes through the units.
+		// Pad to the width of the total, so the line stays put as the counter
+		// passes through the units.
 		total := formatBytes(*size)
 		now := fmt.Sprintf("%*s", len(total), formatBytes(rm.counted(*size)))
 		lines = append(lines, t.title.Render(now+" freed"), t.subtle.Render(count))
@@ -349,10 +348,9 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		lines = append(lines, t.title.Render(count))
 	}
 
-	// What was not removed, and what git still lists, go in a table
-	// that scrolls when it does not fit. Its lines are as wide as each
-	// other, so centering keeps them aligned, and never wider than the
-	// screen.
+	// What was not removed and what git still lists go in a table that
+	// scrolls when it does not fit. Its lines share one width, no wider than
+	// the screen, so centering keeps them aligned.
 	branchW := 0
 	for _, it := range append(failed, left...) {
 		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
@@ -380,11 +378,11 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 
 	var table []string
 	scrolls := false
-	switch room := height - len(lines) - 3; { // left by a blank line, the key help and one above it
+	switch room := height - len(lines) - 3; { // what the key help and two blank lines leave
 	case len(tbl.text) == 0:
 	case room < 3:
-		// Too short to scroll: at least say how many, or the summary
-		// reads as if everything went.
+		// Too short to scroll. Still say how many, or the summary reads as if
+		// everything went.
 		table = titles[:min(len(titles), max(room, 1))]
 	default:
 		table, scrolls = tbl.window(t, &rm.offset, false, 0, room)
@@ -413,7 +411,6 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(lines, "\n"))
 }
 
-// repoLabel names a worktree's repository in a row.
 func repoLabel(repo lopper.Repo) string {
 	if repo.Path == "" {
 		return "unknown"
@@ -434,7 +431,7 @@ func reason(err error) string {
 	if e, ok := errors.AsType[*engine.RecordLeftError](err); ok {
 		return "run git worktree prune in " + repoLabel(lopper.Repo{Path: e.Repo})
 	}
-	// The row already says which worktree: a path in the message only
+	// The row already names the worktree, and a path in the message only
 	// pushes the cause out of sight.
 	return quoted.ReplaceAllStringFunc(err.Error(), func(q string) string {
 		if p := strings.Trim(q, "'"); filepath.IsAbs(p) {

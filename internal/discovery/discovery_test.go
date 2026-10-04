@@ -19,8 +19,8 @@ import (
 // and records every directory it was asked about.
 type fakeGit struct {
 	mu    sync.Mutex
-	lists map[string][]string // repo dir -> linked worktree paths
-	fail  map[string]error    // repo dir -> error of git
+	lists map[string][]string // linked worktree paths by repository directory
+	fail  map[string]error    // git's error by repository directory
 	calls []string
 }
 
@@ -135,7 +135,7 @@ func TestScanFollowsLinkedWorktreeToMainRepo(t *testing.T) {
 	wt := filepath.Join(elsewhere, "wt")
 	linkWorktree(t, main, wt)
 	// A submodule's .git file points at a whole repository, which has no
-	// linked worktrees of its own: no git process for it.
+	// linked worktrees of its own, so no git process runs for it.
 	write(t, filepath.Join(main, ".git", "modules", "sub", "HEAD"), "ref: refs/heads/main\n")
 	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "objects"))
 	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "refs"))
@@ -162,7 +162,7 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	write(t, filepath.Join(dir, "HEAD"), "")
 	// A submodule whose repository is gone is not a worktree.
 	write(t, filepath.Join(dir, "agent", "sub", ".git"), "gitdir: "+filepath.Join(gone, ".git", "modules", "sub")+"\n")
-	// A repository moved after `git worktree add`: the worktree's .git file
+	// A repository moved after `git worktree add`. The worktree's .git file
 	// is stale, but the repository still tracks it.
 	moved := filepath.Join(dir, "moved")
 	mkdir(t, filepath.Join(moved, ".git", "worktrees", "wt"))
@@ -187,7 +187,7 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	}
 }
 
-// Caches and dependency trees are walked too: agents and tools create
+// The walk enters caches and dependency trees too. Agents and tools create
 // worktrees there, and a worktree nobody sees is never cleaned up.
 func TestScanWalksEveryDirectory(t *testing.T) {
 	root := t.TempDir()
@@ -266,8 +266,8 @@ func TestScanFollowsSymlinkedDirectories(t *testing.T) {
 	orphan := filepath.Join(target, "orphan")
 	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(outside, "gone", ".git", "worktrees", "orphan")+"\n")
 	symlink(t, target, filepath.Join(root, "alias"))
-	// Two links back to an ancestor: without loop detection, the number
-	// of paths doubles with every level.
+	// Two links back to an ancestor. Without loop detection, the number of
+	// paths doubles with every level.
 	symlink(t, root, filepath.Join(root, "deep", "up"))
 	symlink(t, root, filepath.Join(target, "up"))
 
@@ -306,9 +306,9 @@ func TestScanRootErrors(t *testing.T) {
 	}
 }
 
-// A scan tells where it met each repository: its own directory rather
-// than the .git file of a worktree that may be removed, or that file when
-// the repository lies outside the roots. A later scan lists those
+// A scan reports where it met each repository. That is its own directory
+// rather than the .git file of a worktree that may be removed, or that file
+// when the repository lies outside the roots. A later scan lists those
 // repositories before its walk.
 func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 	root := t.TempDir()
@@ -342,9 +342,9 @@ func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 	}
 }
 
-// Known places change only when worktrees are found, not which: one
-// outside the roots, one gone since, or one that is no repository any
-// more adds nothing.
+// Known places change when worktrees are found, never which. A place outside
+// the roots, one gone since, or one that is no longer a repository adds
+// nothing.
 func TestScanKnownDoesNotChangeWhatIsFound(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -372,8 +372,8 @@ func TestScanKnownDoesNotChangeWhatIsFound(t *testing.T) {
 	}
 }
 
-// A cancelled scan did not meet every repository: what it met must not
-// replace what an earlier scan did.
+// A cancelled scan did not meet every repository, so what it met must not
+// replace what an earlier scan met.
 func TestScanCancelledReportsNothingMet(t *testing.T) {
 	root := t.TempDir()
 	linkWorktree(t, filepath.Join(root, "repo"), filepath.Join(root, "wt"))

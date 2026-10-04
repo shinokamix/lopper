@@ -30,9 +30,9 @@ func TestDefaultRootsWithoutHome(t *testing.T) {
 	}
 }
 
-// TestTempDirs checks that the temporary directory the environment names
-// is a candidate. Whether it becomes a root is up to TestTempRoots' rules:
-// under /tmp, as t.TempDir is on Linux, it does not.
+// TestTempDirs checks that the temporary directory the environment names is
+// a candidate. TestTempRoots decides whether it becomes a root. Under /tmp,
+// where t.TempDir is on Linux, it does not.
 func TestTempDirs(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "tmp")
 	t.Setenv("TMPDIR", dir) // Unix
@@ -98,7 +98,7 @@ func TestTempRoots(t *testing.T) {
 	}
 }
 
-// realDir resolves symlinks in a test directory: on macOS the temporary
+// realDir resolves symlinks in a test directory. On macOS the temporary
 // directory lies under /var, a link to /private/var.
 func realDir(t *testing.T, dir string) string {
 	t.Helper()

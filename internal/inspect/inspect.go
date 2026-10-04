@@ -11,7 +11,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
+
+	"github.com/charlievieth/fastwalk"
 
 	"github.com/shinokamix/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/internal/lopper"
@@ -114,8 +117,9 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 	return len(unchecked), nil
 }
 
-// Slow gathers expensive facts that require walking the directory.
-// Size excludes unreadable or vanished entries below the root. A root
+// Slow gathers expensive facts that require walking the directory, which
+// it reads in parallel: a dependency tree holds hundreds of thousands of
+// files. Size excludes unreadable or vanished entries below the root. A root
 // error or cancellation leaves the size unknown; a worktree git reports
 // as gone takes no space.
 // TODO: LastTouched from non-ignored files, busy processes.
@@ -126,9 +130,11 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 		return f
 	case lopper.StateTracked, lopper.StateOrphaned, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
-	var size int64
+	var size atomic.Int64
 	f.SizeBytes = nil
-	err := filepath.WalkDir(wt.Path, func(path string, d fs.DirEntry, err error) error {
+	conf := fastwalk.DefaultConfig
+	conf.ToSlash = false // paths are compared with wt.Path
+	err := fastwalk.Walk(&conf, wt.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -140,7 +146,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 		}
 		if d.Type().IsRegular() {
 			if info, err := d.Info(); err == nil {
-				size += info.Size()
+				size.Add(info.Size())
 			}
 		}
 		return nil
@@ -149,7 +155,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 		f.Errors = append(f.Errors, "could not measure size: "+firstLine(err.Error()))
 		return f
 	}
-	f.SizeBytes = &size
+	f.SizeBytes = new(size.Load())
 	return f
 }
 

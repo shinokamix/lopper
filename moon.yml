@@ -1,0 +1,131 @@
+language: go
+
+fileGroups:
+  sources:
+    - cmd/**/*
+    - internal/**/*
+    - go.mod
+    - go.sum
+  # Changing any of these can change what a check reports.
+  tooling:
+    - tools/go.mod
+    - tools/go.sum
+    - .golangci.yml
+    - .prototools
+    - moon.yml
+    - .github/workflows/ci.yml
+    - .github/actions/**/*
+
+# Go caches builds and test results itself; Moon only picks what to run.
+taskOptions:
+  cache: false
+  windowsShell: bash
+
+tasks:
+  build:
+    description: Build lopper into bin/
+    command: go build -o bin/ ./cmd/lopper
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - bin/*
+
+  fix:
+    description: Tidy both go.mod files, format and apply automatic lint fixes
+    script: go mod tidy && (cd tools && go mod tidy) && go tool -modfile tools/go.mod golangci-lint run --fix
+    options:
+      runInCI: false
+
+  lint:
+    description: Lint and check formatting for every target OS
+    deps:
+      - ~:lint-darwin
+      - ~:lint-linux
+      - ~:lint-windows
+    inputs: &checked
+      - '@group(sources)'
+      - '@group(tooling)'
+
+  # `go tool` would build golangci-lint itself for $GOOS, so resolve the
+  # host binary first and set GOOS only for the lint run.
+  lint-darwin:
+    script: GOOS=darwin "$(go tool -n -modfile tools/go.mod golangci-lint)" run --allow-parallel-runners
+    inputs: *checked
+    options:
+      internal: true
+
+  lint-linux:
+    script: GOOS=linux "$(go tool -n -modfile tools/go.mod golangci-lint)" run --allow-parallel-runners
+    inputs: *checked
+    options:
+      internal: true
+
+  lint-windows:
+    script: GOOS=windows "$(go tool -n -modfile tools/go.mod golangci-lint)" run --allow-parallel-runners
+    inputs: *checked
+    options:
+      internal: true
+
+  test:
+    description: Run all tests with the race detector
+    command: go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -race ./...
+    inputs: *checked
+
+  coverage:
+    description: Run tests and open the coverage report
+    script: |
+      go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./...
+      go tool cover -html=coverage.out
+    preset: utility
+
+  fuzz:
+    description: Fuzz the git worktree list parser (30s; pass -fuzztime after -- to change)
+    command: go test ./internal/gitx -run '^$' -fuzz FuzzParseWorktreeList -fuzztime 30s
+    preset: utility
+
+  tidy-check:
+    description: Fail if either go.mod needs tidying
+    script: go mod tidy -diff && cd tools && go mod tidy -diff
+    inputs: *checked
+
+  vuln:
+    description: Check dependencies for known vulnerabilities
+    command: go tool -modfile tools/go.mod govulncheck ./...
+    inputs: *checked
+    options:
+      # New advisories appear without any change here.
+      runInCI: always
+
+  check:
+    description: Everything CI checks; the pre-push hook runs it
+    deps:
+      - ~:tidy-check
+      - ~:lint
+      - ~:test
+      - ~:vuln
+
+  fixture:
+    description: Create a sandbox with sample worktrees in .tmp/fixture
+    script: |
+      set -e
+      rm -rf .tmp/fixture && mkdir -p .tmp/fixture && cd .tmp/fixture
+      git init -q -b main repo
+      git -C repo commit -q --allow-empty -m init
+      git -C repo worktree add -q -b merged ../wt-merged
+      git -C repo worktree add -q -b wip .claude/worktrees/wip
+      git -C repo/.claude/worktrees/wip commit -q --allow-empty -m wip
+      touch repo/.claude/worktrees/wip/dirty.txt
+      git -C repo worktree add -q -b unpushed ../wt-unpushed
+      git -C wt-unpushed commit -q --allow-empty -m work
+      echo 'Fixture ready. Try: go run ./cmd/lopper .tmp/fixture'
+    env:
+      # Keep a global core.hooksPath from running hooks on the fixture commits.
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.hooksPath
+      GIT_CONFIG_VALUE_0: /dev/null
+    preset: utility
+
+  demo:
+    description: Record the README animation into docs/demo.gif (needs ttyd and ffmpeg)
+    command: go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape
+    preset: utility

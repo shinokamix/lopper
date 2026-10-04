@@ -10,8 +10,8 @@ concurrency:
   group: pr-title-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# PRs are squash-merged with the title as the commit message, so the title must
-# pass the same Conventional Commits rules as the commit-msg hook (lefthook.yml).
+# PRs are squash-merged with the title as the commit message, so this is the
+# only place commit messages on main get checked.
 jobs:
   conventional:
     runs-on: ubuntu-latest

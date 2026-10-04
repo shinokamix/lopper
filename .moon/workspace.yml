@@ -1,0 +1,15 @@
+projects:
+  lopper: .
+
+defaultProject: lopper
+
+vcs:
+  defaultBranch: main
+  # Moon installs the hooks on its first run in a checkout.
+  sync: true
+  hookFormat: bash
+  hooks:
+    pre-commit:
+      - moon run :lint :tidy-check --affected --status staged
+    pre-push:
+      - moon run :check

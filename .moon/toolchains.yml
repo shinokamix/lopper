@@ -1,0 +1,8 @@
+# Read by moonrepo/setup-toolchain to install proto in CI.
+proto:
+  version: '0.62.3'
+
+# Moon installs this Go through proto and runs every task with it. Keep it in
+# step with the go line in tools/go.mod, which setup-go reads for goreleaser.
+go:
+  version: '1.26.6'

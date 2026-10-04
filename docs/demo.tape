@@ -1,4 +1,4 @@
-# The README animation. Regenerate with `task demo`.
+# The README animation. Regenerate with `moon run demo`.
 
 Output docs/demo.gif
 

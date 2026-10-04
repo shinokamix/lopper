@@ -1,0 +1,5 @@
+moon = "2.5.6"
+
+[settings]
+# Go is pinned in .moon/toolchains.yml; don't let proto pick another from go.mod.
+detect-strategy = "only-prototools"

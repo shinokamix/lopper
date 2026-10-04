@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/rogpeppe/go-internal/lockedfile"
 )
 
 // version changes whenever what a place means does: a file of another
@@ -60,6 +62,15 @@ func (c Catalog) Remember(roots, places []string) error {
 	if c.path == "" {
 		return nil
 	}
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
+		return err
+	}
+	unlock, err := lockedfile.MutexAt(c.path + ".lock").Lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	kept := slices.DeleteFunc(c.Known(), func(place string) bool { return below(roots, place) })
 	kept = slices.Compact(slices.Sorted(slices.Values(append(kept, places...))))
 	data, err := json.Marshal(file{Version: version, Places: kept})

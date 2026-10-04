@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -55,5 +57,37 @@ func TestKnownIgnoresUnusableFile(t *testing.T) {
 	}
 	if got := c.Known(); !slices.Equal(got, []string{place}) {
 		t.Errorf("Known() = %v after Remember, want [%s]", got, place)
+	}
+}
+
+// Concurrent scans update one catalog without losing places found by the
+// other scan. Both callers use the same path, as separate lopper processes do.
+func TestRememberConcurrentWritersKeepBothPlaces(t *testing.T) {
+	c := Catalog{filepath.Join(t.TempDir(), "cache", "repos.json")}
+	const n = 32
+	start := make(chan struct{})
+	errs := make(chan error, n)
+	want := make([]string, 0, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		place := filepath.Join(t.TempDir(), "repo-"+strconv.Itoa(i), ".git")
+		want = append(want, place)
+		wg.Go(func() {
+			<-start
+			errs <- c.Remember(nil, []string{place})
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	slices.Sort(want)
+	if got := c.Known(); !slices.Equal(got, want) {
+		t.Fatalf("Known() = %v, want %v", got, want)
 	}
 }

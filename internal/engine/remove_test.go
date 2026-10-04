@@ -115,6 +115,7 @@ func TestRemoveRechecksIndexFlagsAfterScan(t *testing.T) {
 			if ev.Final {
 				checked = ev.Safe
 			}
+		case KnownListed:
 		case ScanDone:
 			if ev.Err != nil {
 				t.Fatal(ev.Err)

@@ -50,6 +50,12 @@ lopper update       # update to the latest release
 lopper checks GitHub for updates in the background.
 Set `LOPPER_NO_UPDATE_CHECK=1` to disable the check.
 
+lopper remembers where it found repositories, in `lopper/repos.json`
+under your user cache directory, so that the next scan lists their
+worktrees first and finds the rest while you work. The cache only
+changes how soon worktrees appear, never which, and nothing is removed
+without being checked again. Set `LOPPER_NO_CACHE=1` to scan without it.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues go through

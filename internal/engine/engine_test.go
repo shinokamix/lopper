@@ -70,6 +70,7 @@ type checker struct {
 	t      *testing.T
 	known  map[lopper.ID]bool
 	final  int
+	listed int // KnownListed events
 	done   bool
 	doneEv ScanDone
 }
@@ -96,7 +97,12 @@ func (c *checker) see(ev Event) {
 		if ev.Final {
 			c.final++
 		}
+	case KnownListed:
+		c.listed++
 	case ScanDone:
+		if ev.Err == nil && c.listed != 1 {
+			c.t.Errorf("KnownListed sent %d times before a complete scan ended, want once", c.listed)
+		}
 		c.done, c.doneEv = true, ev
 	}
 }

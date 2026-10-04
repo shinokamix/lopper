@@ -39,11 +39,17 @@ type FactsUpdated struct {
 	Final bool // no more updates will follow for this worktree
 }
 
+// KnownListed is sent once, when the repositories of Options.Known have
+// been listed: the worktrees found after it are in repositories the
+// earlier scan did not meet, or not listed by git.
+type KnownListed struct{}
+
 // ScanDone is the last event of a scan.
 type ScanDone struct{ Err error }
 
 func (WorktreeFound) isEvent() {}
 func (FactsUpdated) isEvent()  {}
+func (KnownListed) isEvent()   {}
 func (ScanDone) isEvent()      {}
 
 // Options control a scan.
@@ -52,6 +58,12 @@ type Options struct {
 	// Concurrency caps the git processes a scan runs at once;
 	// 0 means runtime.GOMAXPROCS(0). See [budget].
 	Concurrency int
+	// Known are places where an earlier scan met repositories: their
+	// worktrees are found first. A scan finds the same ones without them.
+	Known []string
+	// Remember, if set, receives the places where a scan met repositories
+	// once it is complete, for a later scan to take as Known.
+	Remember func(places []string)
 }
 
 // budget splits the git process limit n between discovery listers and
@@ -84,8 +96,9 @@ func (e *Engine) Check(ctx context.Context) error {
 }
 
 // Scan starts a scan and returns its event stream. WorktreeFound for a
-// worktree always precedes its FactsUpdated events; ScanDone is the last
-// event and the channel is closed after it. Cancel ctx to stop early: the
+// worktree always precedes its FactsUpdated events; KnownListed comes
+// once, before ScanDone, which is the last event: the channel is closed
+// after it. Cancel ctx to stop early: the
 // channel is still closed, but ScanDone may be dropped if nobody is
 // reading anymore.
 func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
@@ -110,6 +123,11 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		dopts := discovery.Options{
 			Roots:   opts.Roots,
 			Listers: listers,
+			Known:   opts.Known,
+			KnownListed: func() {
+				send[Event](ctx, events, KnownListed{})
+			},
+			Met: opts.Remember,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			// Inspect only what the consumer was told about, or it would

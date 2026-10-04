@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shinokamix/lopper/internal/catalog"
 	"github.com/shinokamix/lopper/internal/engine"
 	"github.com/shinokamix/lopper/internal/tui"
 	"github.com/shinokamix/lopper/internal/update"
@@ -64,7 +65,7 @@ func directories(_ *cobra.Command, args []string) error {
 func scanOptions(args []string) (engine.Options, error) {
 	if len(args) == 0 {
 		roots, err := defaultRoots()
-		return engine.Options{Roots: roots}, err
+		return remembered(engine.Options{Roots: roots}), err
 	}
 	roots := make([]string, 0, len(args))
 	for _, a := range args {
@@ -74,7 +75,20 @@ func scanOptions(args []string) (engine.Options, error) {
 		}
 		roots = append(roots, abs)
 	}
-	return engine.Options{Roots: roots}, nil
+	return remembered(engine.Options{Roots: roots}), nil
+}
+
+// remembered makes a scan start with the repositories earlier ones met,
+// and remember those it meets, unless LOPPER_NO_CACHE is set. A cache
+// that cannot be read or written only leaves the scan as slow as without.
+func remembered(opts engine.Options) engine.Options {
+	if os.Getenv("LOPPER_NO_CACHE") != "" {
+		return opts
+	}
+	c := catalog.Open()
+	opts.Known = c.Known()
+	opts.Remember = func(places []string) { _ = c.Remember(opts.Roots, places) }
+	return opts
 }
 
 // offerUpdates lets the TUI offer a newer release that an earlier start

@@ -24,6 +24,7 @@ type store struct {
 	order    []lopper.ID
 	byID     map[lopper.ID]*row
 	scanning bool
+	listed   bool // the repositories an earlier scan met are listed
 	err      error
 	grouped  []group // groups() until the next event; nil when stale
 }
@@ -52,6 +53,8 @@ func (s *store) apply(ev engine.Event) {
 		if r, ok := s.byID[ev.ID]; ok {
 			r.facts, r.safe, r.checked, r.final = ev.Facts, ev.Safe, true, ev.Final
 		}
+	case engine.KnownListed:
+		s.listed = true
 	case engine.ScanDone:
 		s.scanning, s.err = false, ev.Err
 	}

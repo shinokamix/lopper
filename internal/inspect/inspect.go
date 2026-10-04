@@ -134,6 +134,8 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 	f.SizeBytes = nil
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false // paths are compared with wt.Path
+	// Slow runs in one worker per worktree; keep each walk's own pool small.
+	conf.NumWorkers = 4
 	err := fastwalk.Walk(&conf, wt.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()

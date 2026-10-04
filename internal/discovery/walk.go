@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -27,6 +28,8 @@ import (
 // Symbolic links to directories are followed. Every physical directory
 // is walked once, whichever path reaches it first, so neither a link
 // back to an ancestor nor overlapping roots make the walk repeat itself.
+// On Windows a directory that a link and the walk both reach, or a root
+// inside another, may be walked twice, but never in a loop.
 func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) error {
 	var seen sync.Map
 	var report func(gitDir string)
@@ -38,6 +41,11 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		}
 	}
 	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
+	// Only a link or a root leads to a directory twice: below them the walk
+	// follows a tree. Telling a directory apart is a stat on Unix, so every
+	// one is checked, sparing a second walk of a linked directory. Windows
+	// opens each one for it, so there only links and roots are checked.
+	everyDir := runtime.GOOS != "windows"
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false // keep native separators under MSYS/Git Bash: paths are reported as found
 
@@ -64,7 +72,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				}
 				typ = info.Mode().Type()
 			}
-			if typ.IsDir() && visited.Entry(path, d) {
+			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
 				return fs.SkipDir
 			}
 			name := d.Name()

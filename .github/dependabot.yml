@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directories: [/, /tools]
+    directories: [/apps/lopper, /apps/lopper/tools]
     schedule:
       interval: weekly
     # Skip releases younger than a week: most compromised versions are yanked by then.

@@ -2,7 +2,7 @@
 
 Clean up the Git worktrees you and your agents left behind.
 
-![lopper removes four merged worktrees and, after a warning, two with uncommitted work](docs/demo.gif)
+![lopper removes four merged worktrees and, after a warning, two with uncommitted work](apps/lopper/docs/demo.gif)
 
 Worktrees end up all over the disk. You create some by hand, coding
 agents create one per task, and every tool keeps them in a different
@@ -32,7 +32,7 @@ irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
 With Go:
 
 ```sh
-go install github.com/shinokamix/lopper/cmd/lopper@latest
+go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest
 ```
 
 Binaries are also on the [releases page](https://github.com/shinokamix/lopper/releases/latest).

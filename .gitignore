@@ -1,11 +1,11 @@
-/bin/
+/apps/lopper/bin/
 /.moon/cache/
 /.moon/hooks/
-/.tmp/
+/apps/lopper/.tmp/
 /dist/
 coverage.out
 *.test
 .DS_Store
-/lopper
+/apps/lopper/lopper
 /.vscode/
 /.idea/

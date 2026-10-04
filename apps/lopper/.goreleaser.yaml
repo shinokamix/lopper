@@ -1,0 +1,46 @@
+version: 2
+project_name: lopper
+builds:
+  - dir: apps/lopper
+    main: ./cmd/lopper
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    # Reproducible builds: no local paths, file mtimes pinned to the commit.
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+archives:
+  # No version in the name, so each platform has a stable download URL:
+  # releases/latest/download/lopper_darwin_arm64.tar.gz
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+checksum:
+  name_template: checksums.txt
+release:
+  prerelease: auto # v1.2.0-rc.1 is a pre-release, never the latest
+# Release notes from Conventional Commit titles (see CONTRIBUTING.md).
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^(build|chore|ci|docs|refactor|style|test)(\(.+\))?:' # breaking ones ("!") stay
+  groups:
+    - title: Breaking changes
+      regexp: '^\w+(\(.+\))?!:'
+      order: 0
+    - title: Features
+      regexp: '^feat(\(.+\))?:'
+      order: 1
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?:'
+      order: 2
+    - title: Performance
+      regexp: '^perf(\(.+\))?:'
+      order: 3
+    - title: Other changes
+      order: 999
+# TODO: homebrew_casks, scoops, winget, nfpms (deb/rpm)

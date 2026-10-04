@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -311,11 +312,12 @@ func TestScanRootErrors(t *testing.T) {
 // repositories before its walk.
 func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 	root := t.TempDir()
-	near := filepath.Join(root, "near")
-	nearWT := filepath.Join(root, "near-wt")
+	deep := filepath.Join(root, "deep", "er")
+	near := filepath.Join(deep, "near")
+	nearWT := filepath.Join(deep, "near-wt")
 	linkWorktree(t, near, nearWT)
 	far := filepath.Join(t.TempDir(), "far")
-	farWT := filepath.Join(root, "far-wt")
+	farWT := filepath.Join(deep, "far-wt")
 	linkWorktree(t, far, farWT)
 	lists := map[string][]string{near: {nearWT}, far: {farWT}}
 
@@ -327,26 +329,16 @@ func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 		t.Fatalf("met %v, want %v", met, want)
 	}
 
-	var (
-		mu         sync.Mutex
-		emitted    []string
-		beforeWalk []string
-	)
-	opts := Options{Roots: []string{root}, Known: met, KnownListed: func() {
-		mu.Lock()
-		defer mu.Unlock()
-		beforeWalk = slices.Sorted(slices.Values(emitted))
-	}}
-	err := Scan(t.Context(), &fakeGit{lists: lists}, opts, func(wt lopper.Worktree) {
-		mu.Lock()
-		defer mu.Unlock()
-		emitted = append(emitted, wt.Path)
-	})
-	if err != nil {
-		t.Fatalf("Scan: %v", err)
+	// Repositories made since, which the walk meets before those known.
+	for i := range 8 {
+		fresh := filepath.Join(root, "new"+strconv.Itoa(i))
+		linkWorktree(t, fresh, fresh+"-wt")
+		lists[fresh] = []string{fresh + "-wt"}
 	}
-	if want := []string{farWT, nearWT}; !slices.Equal(beforeWalk, want) {
-		t.Errorf("emitted %v once known repositories were listed, want %v", beforeWalk, want)
+	git := &fakeGit{lists: lists}
+	scan(t, git, Options{Roots: []string{root}, Listers: 1, Known: met})
+	if first := git.calls[:2]; !slices.Contains(first, far) || !slices.Contains(first, near) {
+		t.Errorf("git worktree list ran in %v, want %s and %s first", git.calls, far, near)
 	}
 }
 

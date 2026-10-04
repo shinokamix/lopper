@@ -27,9 +27,6 @@ type Options struct {
 	// that their repositories are listed first. Which worktrees a scan
 	// finds does not depend on them, only when.
 	Known []string
-	// KnownListed, if set, is called once every repository met at Known
-	// has been listed and its worktrees emitted, before Scan returns.
-	KnownListed func()
 	// Met, if set, receives the places where a scan met repositories, for
 	// a later scan to take as Known. It is called only when the walk was
 	// over, neither failed nor cancelled.
@@ -43,15 +40,8 @@ type Options struct {
 // emit may be called concurrently. A missing or unreadable root is an
 // error; unreadable directories below a root are skipped.
 func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.Worktree)) error {
-	type repo struct {
-		gitDir string
-		known  bool // met at opts.Known
-	}
-	gitDirs := make(chan repo, 64)
-	var (
-		listed sync.Map       // real paths of worktrees reported by their repository
-		known  sync.WaitGroup // repositories met at opts.Known, until listed
-	)
+	gitDirs := make(chan string, 64)
+	var listed sync.Map // real paths of worktrees reported by their repository
 
 	var (
 		mu         sync.Mutex
@@ -65,8 +55,7 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 	var wg sync.WaitGroup
 	for range max(opts.Listers, 1) {
 		wg.Go(func() {
-			for r := range gitDirs {
-				gitDir := r.gitDir
+			for gitDir := range gitDirs {
 				repo, err := listRepo(ctx, git, gitDir, func(wt lopper.Worktree) {
 					if !present(&wt) { // unless it was moved, see below
 						mu.Lock()
@@ -84,21 +73,12 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 					repos[realPath(gitDir)] = repo
 				}
 				mu.Unlock()
-				if r.known {
-					known.Done()
-				}
 			}
 		})
 	}
 
-	var knownDone sync.WaitGroup
 	met, err := findRepos(ctx, opts,
-		func(gitDir string, isKnown bool) {
-			if isKnown {
-				known.Add(1)
-			}
-			gitDirs <- repo{gitDir, isKnown}
-		},
+		func(gitDir string) { gitDirs <- gitDir },
 		func(dir string, gf gitFile) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -108,20 +88,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 				return
 			}
 			candidates[realPath(dir)] = orphan{lopper.Worktree{Path: filepath.Clean(dir)}, gf}
-		},
-		func() {
-			// Every known repository has been queued by now; the walk
-			// queues the rest behind them.
-			knownDone.Go(func() {
-				known.Wait()
-				if opts.KnownListed != nil {
-					opts.KnownListed()
-				}
-			})
 		})
 	close(gitDirs)
 	wg.Wait()
-	knownDone.Wait()
 	if err == nil && ctx.Err() == nil && opts.Met != nil {
 		opts.Met(met)
 	}

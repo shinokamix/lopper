@@ -281,8 +281,6 @@ func (l *list) header(t theme, s *store, spin string, width int) string {
 	switch {
 	case s.err != nil:
 		status = t.failure.Render("scan failed: " + s.err.Error())
-	case s.scanning && !s.listed:
-		status = t.subtle.Render(fmt.Sprintf("%s checking known repositories · %d found", spin, found))
 	case s.scanning && l.query != "":
 		status = t.subtle.Render(fmt.Sprintf("%s scanning · %d of %d found", spin, shown, found))
 	case s.scanning:

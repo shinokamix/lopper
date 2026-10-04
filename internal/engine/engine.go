@@ -39,17 +39,11 @@ type FactsUpdated struct {
 	Final bool // no more updates will follow for this worktree
 }
 
-// KnownListed is sent once, when the repositories of Options.Known have
-// been listed: the worktrees found after it are in repositories the
-// earlier scan did not meet, or not listed by git.
-type KnownListed struct{}
-
 // ScanDone is the last event of a scan.
 type ScanDone struct{ Err error }
 
 func (WorktreeFound) isEvent() {}
 func (FactsUpdated) isEvent()  {}
-func (KnownListed) isEvent()   {}
 func (ScanDone) isEvent()      {}
 
 // Options control a scan.
@@ -96,9 +90,8 @@ func (e *Engine) Check(ctx context.Context) error {
 }
 
 // Scan starts a scan and returns its event stream. WorktreeFound for a
-// worktree always precedes its FactsUpdated events; KnownListed comes
-// once, before ScanDone, which is the last event: the channel is closed
-// after it. Cancel ctx to stop early: the
+// worktree always precedes its FactsUpdated events; ScanDone is the last
+// event and the channel is closed after it. Cancel ctx to stop early: the
 // channel is still closed, but ScanDone may be dropped if nobody is
 // reading anymore.
 func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
@@ -124,10 +117,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 			Roots:   opts.Roots,
 			Listers: listers,
 			Known:   opts.Known,
-			KnownListed: func() {
-				send[Event](ctx, events, KnownListed{})
-			},
-			Met: opts.Remember,
+			Met:     opts.Remember,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			// Inspect only what the consumer was told about, or it would

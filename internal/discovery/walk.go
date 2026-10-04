@@ -27,9 +27,9 @@ import (
 // linked, with what its .git file tells about the repository.
 //
 // Before the walk, the places of opts.Known below the roots are looked at
-// as the walk would look at them, and what they lead to is reported as
-// known; revisited is called after them. The walk then finds the same
-// repositories, so they change when a repository is reported, not which.
+// as the walk would look at them, so that what they lead to is reported
+// first. The walk then finds the same repositories: they change when a
+// repository is reported, not which.
 // Once the walk is over, findRepos returns where it met each repository,
 // for a later walk to take as known: its own directory, rather than the
 // .git file of a worktree that may be removed, when it met both.
@@ -39,14 +39,14 @@ import (
 // back to an ancestor nor overlapping roots make the walk repeat itself.
 // On Windows a directory that a link and the walk both reach, or a root
 // inside another, may be walked twice, but never in a loop.
-func findRepos(ctx context.Context, opts Options, found func(gitDir string, known bool), linked func(dir string, gf gitFile), revisited func()) (met []string, err error) {
+func findRepos(ctx context.Context, opts Options, found func(gitDir string), linked func(dir string, gf gitFile)) (met []string, err error) {
 	var (
 		seen   sync.Map
 		mu     sync.Mutex
 		places = map[string]place{} // where each repository was met, by real git directory
 	)
-	var report func(gitDir string, at place, known bool)
-	report = func(gitDir string, at place, known bool) {
+	var report func(gitDir string, at place)
+	report = func(gitDir string, at place) {
 		// The same repo may be reached via a symlinked path.
 		resolved := realPath(gitDir)
 		if at.path != "" {
@@ -57,14 +57,14 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string, know
 			mu.Unlock()
 		}
 		if _, dup := seen.LoadOrStore(resolved, struct{}{}); !dup {
-			found(gitDir, known)
-			submodules(gitDir, func(sub string) { report(sub, place{}, known) })
+			found(gitDir)
+			submodules(gitDir, func(sub string) { report(sub, place{}) })
 		}
 	}
 	// dotGit looks at a .git entry of type typ at path.
-	dotGit := func(path string, typ fs.FileMode, known bool) {
+	dotGit := func(path string, typ fs.FileMode) {
 		if typ.IsDir() {
-			report(path, place{path, true}, known)
+			report(path, place{path, true})
 			return
 		}
 		if !typ.IsRegular() {
@@ -76,7 +76,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string, know
 		}
 		if ok && !gf.repoGone {
 			// Even without this worktree, the repository may have others.
-			report(gf.commonDir, place{path, false}, known)
+			report(gf.commonDir, place{path, false})
 		}
 	}
 
@@ -91,12 +91,11 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string, know
 		switch {
 		case err != nil:
 		case filepath.Base(path) == ".git":
-			dotGit(path, info.Mode().Type(), true)
+			dotGit(path, info.Mode().Type())
 		case info.IsDir() && isBare(path):
-			report(path, place{path, true}, true)
+			report(path, place{path, true})
 		}
 	}
-	revisited()
 
 	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
 	// Only a link or a root leads to a directory twice: below them the walk
@@ -135,14 +134,14 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string, know
 			}
 			name := d.Name()
 			if name == ".git" {
-				dotGit(path, typ, false)
+				dotGit(path, typ)
 				if typ.IsDir() {
 					return fs.SkipDir
 				}
 				return nil
 			}
 			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
-				report(filepath.Dir(path), place{filepath.Dir(path), true}, false) // a bare repository
+				report(filepath.Dir(path), place{filepath.Dir(path), true}) // a bare repository
 				return fs.SkipDir
 			}
 			if link && typ.IsDir() {

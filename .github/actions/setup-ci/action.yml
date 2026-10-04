@@ -20,11 +20,13 @@ runs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.cache == 'true'
       with:
-        # Go's default module cache, then its build cache on Linux, macOS and Windows.
+        # Go's default module cache, its build cache on Linux, macOS and Windows,
+        # then golangci-lint's analysis cache (lint runs on Linux only).
         path: |
           ~/go/pkg/mod
           ~/.cache/go-build
           ~/Library/Caches/go-build
           ~/AppData/Local/go-build
+          ~/.cache/golangci-lint
         # Per job: lint, test and vuln build different things.
         key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'tools/go.sum', '.moon/toolchains.yml') }}

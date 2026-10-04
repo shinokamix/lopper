@@ -39,3 +39,6 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 )
+
+// Projects under apps/ (and their node_modules) are not part of this module.
+ignore ./apps

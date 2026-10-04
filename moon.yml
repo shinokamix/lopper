@@ -1,4 +1,7 @@
+$schema: ./.moon/cache/schemas/project.json
+
 language: go
+layer: application
 
 fileGroups:
   sources:
@@ -30,11 +33,22 @@ tasks:
     outputs:
       - bin/*
 
+  # The pre-commit hook passes only the staged Go files (affectedFiles); run
+  # directly, it checks the whole module. In CI, `lint` checks formatting.
+  format:
+    description: Fail if Go files need formatting (gofumpt, gci)
+    command: go tool -modfile tools/go.mod golangci-lint fmt --diff
+    inputs:
+      - cmd/**/*.go
+      - internal/**/*.go
+    options:
+      affectedFiles: args
+      runInCI: false
+
   fix:
     description: Tidy both go.mod files, format and apply automatic lint fixes
     script: go mod tidy && (cd tools && go mod tidy) && go tool -modfile tools/go.mod golangci-lint run --fix
-    options:
-      runInCI: false
+    preset: utility
 
   lint:
     description: Lint and check formatting for every target OS
@@ -73,9 +87,8 @@ tasks:
 
   coverage:
     description: Run tests and open the coverage report
-    script: |
-      go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./...
-      go tool cover -html=coverage.out
+    # One command: a script line that fails does not stop the next.
+    script: go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
     preset: utility
 
   fuzz:
@@ -95,14 +108,6 @@ tasks:
     options:
       # New advisories appear without any change here.
       runInCI: always
-
-  check:
-    description: Everything CI checks; the pre-push hook runs it
-    deps:
-      - ~:tidy-check
-      - ~:lint
-      - ~:test
-      - ~:vuln
 
   fixture:
     description: Create a sandbox with sample worktrees in .tmp/fixture

@@ -15,15 +15,17 @@ dev tools are pinned in [`tools/go.mod`](tools/go.mod) and run via `go tool`.
 
 ```sh
 moon tasks          # list tasks
-moon run check      # what CI runs: tidy, lint (all OSes), tests, govulncheck
+moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
 moon run fix        # tidy, format and autofix what the hooks reject
 moon run fixture    # sandbox with sample worktrees in .tmp/fixture
 go run ./cmd/lopper .tmp/fixture
 ```
 
-The first `moon` command installs the git hooks into this checkout: commits get
-lint and tidy checks, pushes run `moon run check`. CI runs the same tasks,
-skipping those no changed file affects.
+The first `moon` command installs a pre-commit hook into this checkout: it
+checks the formatting of staged Go files and tidiness of both go.mod files, in
+seconds.
+CI runs what `moon check --all` does, skipping tasks no changed file affects;
+run it before pushing to catch the rest early.
 
 The Go module is the root project (`lopper`). Other projects, such as a website,
 go under `apps/` as their own Moon projects.

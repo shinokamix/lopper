@@ -1,3 +1,5 @@
+$schema: ./cache/schemas/toolchains.json
+
 # Read by moonrepo/setup-toolchain to install proto in CI.
 proto:
   version: '0.62.3'

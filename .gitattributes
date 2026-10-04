@@ -1,0 +1,3 @@
+# Check out LF everywhere: with CRLF on Windows, gci and `go mod tidy -diff`
+# report every file.
+* text=auto eol=lf

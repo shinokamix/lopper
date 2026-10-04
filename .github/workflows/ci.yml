@@ -11,12 +11,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Jobs run the same Moon tasks as `moon run :check` locally, but `moon ci` skips
-# the ones no changed file affects. It diffs against main, so checkouts fetch the
+# `moon ci` runs every task a changed file affects, the same ones
+# `moon check --all` runs locally. It diffs against main, so checkouts fetch the
 # full history, without file contents (blob:none). Each job puts a table of what
 # ran into its summary.
 jobs:
-  lint:
+  # Lint (for every target OS), tidiness, tests and govulncheck.
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,7 +26,7 @@ jobs:
           filter: blob:none
           persist-credentials: false
       - uses: $/.github/actions/setup-ci
-      - run: moon ci --summary minimal :tidy-check :lint
+      - run: moon ci --summary minimal
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
         # No report when no task was affected.
         if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
@@ -33,11 +34,12 @@ jobs:
           access-token: ${{ github.token }}
           skip-comment: true # a comment per job would flood the PR
 
+  # Tests on the other OSes; the rest doesn't depend on the host.
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,23 +55,7 @@ jobs:
         with:
           access-token: ${{ github.token }}
           skip-comment: true # a comment per job would flood the PR
-
-  vuln:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          persist-credentials: false
-      - uses: $/.github/actions/setup-ci
-      - run: moon ci --summary minimal :vuln
-      - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
-        # No report when no task was affected.
-        if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
-        with:
-          access-token: ${{ github.token }}
-          skip-comment: true # a comment per job would flood the PR
+          matrix: ${{ toJSON(matrix) }}
 
   release-snapshot:
     if: github.event_name == 'pull_request'

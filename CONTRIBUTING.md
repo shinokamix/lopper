@@ -11,13 +11,15 @@ You need [proto](https://moonrepo.dev/proto): `proto install` fetches the
 [Moon](https://moonrepo.dev/moon) version pinned in [`.prototools`](.prototools),
 and Moon runs every task with the Go pinned in
 [`.moon/toolchains.yml`](.moon/toolchains.yml), installing it on first use. Go
-dev tools are pinned in [`tools/go.mod`](tools/go.mod) and run via `go tool`.
+dev tools are pinned in
+[`apps/lopper/tools/go.mod`](apps/lopper/tools/go.mod) and run via `go tool`.
 
 ```sh
 moon tasks          # list tasks
 moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
 moon run fix        # tidy, format and autofix what the hooks reject
-moon run fixture    # sandbox with sample worktrees in .tmp/fixture
+moon run fixture    # sandbox in apps/lopper/.tmp/fixture
+cd apps/lopper
 go run ./cmd/lopper .tmp/fixture
 ```
 
@@ -27,10 +29,26 @@ seconds.
 CI runs what `moon check --all` does, skipping tasks no changed file affects;
 run it before pushing to catch the rest early.
 
-The Go module is the root project (`lopper`). Other projects, such as a website,
-go under `apps/` as their own Moon projects.
+Applications live under `apps/` as separate Moon projects. The Go CLI is
+`apps/lopper`, with its own module, tools and build configuration. Moon runs its
+tasks from that directory; run Moon commands from the repository root.
+
+Binary releases keep repository tags such as `v0.5.0`. The Go module path is
+`github.com/shinokamix/lopper/apps/lopper`, and `go install` finds its versions
+by tags such as `apps/lopper/v0.5.0`. The release workflow adds that tag for each
+`v*` tag, so push only `v0.5.0`.
+
+To check release artifacts without publishing, run from the repository root:
+
+```sh
+goreleaser release --config apps/lopper/.goreleaser.yaml --snapshot --clean
+```
+
+GoReleaser builds from `apps/lopper` and writes archives to the root `dist/`.
 
 ## Architecture
+
+Paths below are relative to `apps/lopper`.
 
 ```
 cmd/lopper        entry point
@@ -49,14 +67,14 @@ internal/
 Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx`, and
 the stages and UIs share the types in `lopper`. The UIs reach stages only through
 `engine`, except `verdict`, whose notes they show.
-[`internal/archtest`](internal/archtest/arch_test.go) enforces this with the
+[`internal/archtest`](apps/lopper/internal/archtest/arch_test.go) enforces this with the
 tests: every package needs a layer there, and `os/exec`, Charm and cobra are
 allowed only where needed. If it fails, move the code rather than loosening the rule.
 
 ## Tests
 
 - Unit tests live next to the code; `verdict.Safe` is table-driven.
-- [`cmd/lopper/testdata/script`](cmd/lopper/testdata/script) holds end-to-end
+- [`cmd/lopper/testdata/script`](apps/lopper/cmd/lopper/testdata/script) holds end-to-end
   [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
   scenarios that build real repositories and run `lopper` against them.
 - `moon run fuzz` fuzzes the `git worktree list` parser.

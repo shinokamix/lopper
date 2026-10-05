@@ -29,4 +29,4 @@ runs:
           ~/AppData/Local/go-build
           ~/.cache/golangci-lint
         # Per job: lint, test and vuln build different things.
-        key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'tools/go.sum', '.moon/toolchains.yml') }}
+        key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.moon/toolchains.yml') }}

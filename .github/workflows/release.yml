@@ -48,7 +48,13 @@ jobs:
       # lopper update does not treat as a release.
       - name: Tag the Go module
         run: |
+          module_tag="apps/lopper/$GITHUB_REF_NAME"
           sha=$(git rev-parse "$GITHUB_REF_NAME^{commit}")
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/apps/lopper/$GITHUB_REF_NAME" -f "sha=$sha"
+          # A rerun or a manual fix may have created the tag already.
+          if git rev-parse -q --verify "refs/tags/$module_tag" >/dev/null; then
+            test "$(git rev-parse "$module_tag^{commit}")" = "$sha"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$module_tag" -f "sha=$sha"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}

@@ -24,10 +24,10 @@ jobs:
         with:
           fail-on-severity: moderate
           allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0
-          # These exact versions were already present before the Go project moved
-          # under apps/lopper. Dependency review sees the move as a new dependency
-          # and rechecks their licenses. Keep the exception version-specific so a
-          # future upgrade still goes through the license policy.
+          # Temporary migration exception for PR #33. These exact versions were
+          # already present before the Go project moved under apps/lopper, but
+          # dependency review sees the new manifest paths as new dependencies.
+          # Remove this list after the migration lands in main.
           allow-dependencies-licenses: >-
             pkg:golang/github.com/golangci/golangci-lint/v2,
             pkg:golang/github.com/OpenPeeDeeP/depguard/v2@2.2.1,

@@ -34,8 +34,9 @@ Applications live under `apps/` as separate Moon projects. The Go CLI is
 tasks from that directory; run Moon commands from the repository root.
 
 Binary releases keep repository tags such as `v0.5.0`. The Go module path is
-`github.com/shinokamix/lopper/apps/lopper`. Without module tags such as
-`apps/lopper/v0.5.0`, `go install ...@latest` builds the default branch.
+`github.com/shinokamix/lopper/apps/lopper`, and `go install` finds its versions
+by tags such as `apps/lopper/v0.5.0`. The release workflow adds that tag for each
+`v*` tag, so push only `v0.5.0`.
 
 To check release artifacts without publishing, run from the repository root:
 

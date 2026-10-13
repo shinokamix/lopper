@@ -133,6 +133,6 @@ tasks:
     preset: utility
 
   demo:
-    description: Record the README animation into docs/demo.gif (needs ttyd and ffmpeg)
+    description: Record the demo into docs/demo.gif and docs/demo.mp4 (needs ttyd and ffmpeg)
     command: go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape
     preset: utility

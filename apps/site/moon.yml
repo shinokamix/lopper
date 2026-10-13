@@ -1,0 +1,52 @@
+$schema: ../../.moon/cache/schemas/project.json
+
+language: typescript
+layer: application
+
+fileGroups:
+  sources:
+    - src/**/*
+    - public/**/*
+    - astro.config.ts
+    - tsconfig.json
+    - /apps/lopper/docs/demo.mp4
+  # Changing any of these can change what a check reports.
+  tooling:
+    - package.json
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
+    - .prettierrc.json
+    - .prettierignore
+    - vercel.json
+    - moon.yml
+    - /.moon/toolchains.yml
+    - /.github/workflows/ci.yml
+    - /.github/actions/**/*
+
+env:
+  ASTRO_TELEMETRY_DISABLED: '1'
+
+tasks:
+  dev:
+    description: Serve the site with live reload on localhost:4321
+    command: astro dev
+    preset: server
+
+  build:
+    description: Build the static site into dist/
+    command: astro build
+    inputs: &checked
+      - '@group(sources)'
+      - '@group(tooling)'
+    outputs:
+      - dist
+
+  format:
+    description: Fail if files need formatting
+    command: prettier --check .
+    inputs: *checked
+
+  fix:
+    description: Format all files
+    command: prettier --write .
+    preset: utility

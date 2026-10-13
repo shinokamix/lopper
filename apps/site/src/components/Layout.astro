@@ -1,0 +1,62 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const image = new URL("/og.png", Astro.site);
+const repo = "https://github.com/shinokamix/lopper";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={image} />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <header>
+      <a href="/">lopper</a>
+      <a href={repo}>GitHub</a>
+    </header>
+    <slot />
+    <footer class="dim">
+      MIT licensed · <a href={`${repo}/releases`}>Releases</a>
+    </footer>
+  </body>
+</html>
+
+<style>
+  header {
+    display: flex;
+    justify-content: space-between;
+    padding-block: 1.5rem;
+  }
+
+  header a {
+    text-decoration: none;
+  }
+
+  header a:first-child {
+    font-weight: 600;
+  }
+
+  footer {
+    padding-block: 4rem 2rem;
+    font-size: 0.875rem;
+  }
+</style>

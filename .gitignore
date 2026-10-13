@@ -9,3 +9,6 @@ coverage.out
 /apps/lopper/lopper
 /.vscode/
 /.idea/
+/apps/site/node_modules/
+/apps/site/dist/
+/apps/site/.astro/

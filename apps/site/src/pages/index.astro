@@ -1,0 +1,197 @@
+---
+import Layout from "../components/Layout.astro";
+import demo from "../../../lopper/docs/demo.mp4";
+
+const description =
+  "lopper finds Git worktrees all over the disk, shows how much space each one takes and removes the ones whose work is merged.";
+
+const ways = [
+  {
+    id: "unix",
+    label: "macOS, Linux",
+    command:
+      "curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh",
+  },
+  {
+    id: "windows",
+    label: "Windows",
+    command:
+      "irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex",
+  },
+  {
+    id: "go",
+    label: "Go",
+    command:
+      "go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest",
+  },
+];
+
+const usage = `lopper              # interactive UI, scans home and temporary directories
+lopper ~/code       # scan a specific directory
+lopper scan --json  # JSON output
+lopper rm ../wt     # remove if safe, --force otherwise
+lopper update       # update to the latest release`;
+---
+
+<Layout
+  title="lopper: clean up the Git worktrees you and your agents left behind"
+  description={description}
+>
+  <main>
+    <h1>Clean up the Git worktrees you and your agents left behind.</h1>
+    <p class="dim">{description}</p>
+
+    <div class="install">
+      <fieldset aria-label="Install with">
+        {ways.map((w, i) => (
+          <label>
+            <input type="radio" name="way" value={w.id} checked={i === 0} />
+            {w.label}
+          </label>
+        ))}
+      </fieldset>
+      {ways.map((w) => (
+        <div class="command" data-way={w.id}>
+          <pre><code>{w.command}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      ))}
+    </div>
+
+    <video
+      src={demo}
+      poster="/og.png"
+      width="1200"
+      height="720"
+      autoplay
+      muted
+      loop
+      playsinline
+      aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
+    ></video>
+
+    <h2>Usage</h2>
+    <pre><code>{usage}</code></pre>
+  </main>
+</Layout>
+
+<script>
+  if (navigator.userAgent.includes("Windows")) {
+    document.querySelector<HTMLInputElement>('[value="windows"]')!.checked =
+      true;
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>(
+    ".command button",
+  )) {
+    const code = button.previousElementSibling!;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(code.textContent!);
+        button.textContent = "Copied";
+        setTimeout(() => (button.textContent = "Copy"), 1500);
+      } catch {
+        // The clipboard API needs a secure context and permission. Selecting
+        // the command leaves the copy to the visitor.
+        getSelection()!.selectAllChildren(code);
+      }
+    });
+  }
+
+  // Autoplay ignores the reduced motion setting.
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const video = document.querySelector("video")!;
+    video.pause();
+    video.controls = true;
+  }
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+    margin-top: 3rem;
+  }
+
+  h1 + p {
+    margin-top: 0.75rem;
+  }
+
+  .install {
+    margin-top: 2rem;
+  }
+
+  fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0 0 0.5rem;
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.875rem;
+  }
+
+  label {
+    color: var(--dim);
+    cursor: pointer;
+  }
+
+  label:has(:checked) {
+    color: var(--fg);
+  }
+
+  label:has(:focus-visible) {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  input {
+    position: absolute;
+    opacity: 0;
+  }
+
+  .command {
+    display: none;
+    background: var(--band);
+    border-radius: 6px;
+  }
+
+  .install:has([value="unix"]:checked) [data-way="unix"],
+  .install:has([value="windows"]:checked) [data-way="windows"],
+  .install:has([value="go"]:checked) [data-way="go"] {
+    display: flex;
+  }
+
+  .command pre {
+    flex: 1;
+    padding-right: 0;
+    font-size: 0.75rem;
+  }
+
+  button {
+    border: 0;
+    background: none;
+    color: var(--dim);
+    font: inherit;
+    font-size: 0.8rem;
+    width: 4.5rem;
+    cursor: pointer;
+  }
+
+  button:hover {
+    color: var(--fg);
+  }
+
+  video {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: 3rem;
+    border-radius: 6px;
+  }
+
+  h2 {
+    font-size: 1rem;
+    margin: 3rem 0 0.75rem;
+  }
+</style>

@@ -1,0 +1,8 @@
+# Skip releases younger than a week: most compromised versions are yanked by
+# then. Dependabot waits as long for Go modules and actions.
+minimumReleaseAge: 10080
+
+# esbuild's install script only checks the binary that its optional
+# per-platform package already brings.
+allowBuilds:
+  esbuild: false

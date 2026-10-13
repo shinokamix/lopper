@@ -1,6 +1,7 @@
-# The README animation. Regenerate with `moon run demo`.
+# The README and site animation. Regenerate with `moon run demo`.
 
 Output docs/demo.gif
+Output docs/demo.mp4
 
 Set Shell zsh
 Set FontSize 18

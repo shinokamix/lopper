@@ -9,8 +9,8 @@ Security issues go through [SECURITY.md](SECURITY.md), not issues or PRs.
 
 You need [proto](https://moonrepo.dev/proto): `proto install` fetches the
 [Moon](https://moonrepo.dev/moon) version pinned in [`.prototools`](.prototools),
-and Moon runs every task with the Go pinned in
-[`.moon/toolchains.yml`](.moon/toolchains.yml), installing it on first use. Go
+and Moon runs every task with the Go, Node and pnpm pinned in
+[`.moon/toolchains.yml`](.moon/toolchains.yml), installing them on first use. Go
 dev tools are pinned in
 [`apps/lopper/tools/go.mod`](apps/lopper/tools/go.mod) and run via `go tool`.
 
@@ -18,6 +18,7 @@ dev tools are pinned in
 moon tasks          # list tasks
 moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
 moon run fix        # tidy, format and autofix what the hooks reject
+moon run site:dev   # serve the Astro site in apps/site on localhost:4321
 moon run fixture    # sandbox in apps/lopper/.tmp/fixture
 cd apps/lopper
 go run ./cmd/lopper .tmp/fixture

@@ -31,10 +31,10 @@ type WorktreeFound struct{ Worktree lopper.Worktree }
 
 // FactsUpdated is sent whenever more facts about a worktree are known.
 type FactsUpdated struct {
-	ID    lopper.ID
-	Facts lopper.Facts
-	Safe  bool
-	Final bool // the last update for this worktree
+	ID      lopper.ID
+	Facts   lopper.Facts
+	Verdict lopper.Verdict
+	Final   bool // the last update for this worktree
 }
 
 // ScanDone is the last event of a scan.
@@ -102,9 +102,9 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		workers.Go(func() {
 			for wt := range found {
 				f := insp.Quick(ctx, wt)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Safe: verdict.Safe(wt, f)})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f)})
 				f = insp.Slow(ctx, wt, f)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Safe: verdict.Safe(wt, f), Final: true})
+				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
 			}
 		})
 	}
@@ -139,21 +139,18 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 
 // NotSafeError is returned by Remove, unless forced, for a worktree that
 // is not safe to delete.
-type NotSafeError struct {
-	Worktree lopper.Worktree
-	Facts    lopper.Facts
-}
+type NotSafeError struct{ Verdict lopper.Verdict }
 
 func (e *NotSafeError) Error() string {
 	var why []string
-	for _, n := range verdict.Notes(e.Worktree, e.Facts) {
+	var hints []string
+	for _, n := range e.Verdict.Notes {
 		why = append(why, n.Text)
+		if n.Hint != "" {
+			hints = append(hints, n.Hint)
+		}
 	}
-	if e.Facts.UncheckedFiles != nil && *e.Facts.UncheckedFiles > 0 {
-		why = append(why, "index flags hide their edits from git: `git ls-files -v | grep '^[a-zS]'` lists them, "+
-			"`git update-index --no-assume-unchanged -- <file>` and `git update-index --no-skip-worktree -- <file>` "+
-			"clear them for `git status`")
-	}
+	why = append(why, hints...)
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 
@@ -189,8 +186,8 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 		return errors.New("the current directory is inside it")
 	}
 	if !force {
-		if f := (inspect.Inspector{Git: e.git}).Quick(ctx, now); !verdict.Safe(now, f) {
-			return &NotSafeError{Worktree: now, Facts: f}
+		if v := verdict.Of(now, (inspect.Inspector{Git: e.git}).Quick(ctx, now)); !v.Safe {
+			return &NotSafeError{Verdict: v}
 		}
 	}
 	switch now.State {

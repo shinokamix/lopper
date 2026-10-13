@@ -26,11 +26,19 @@ const ways = [
   },
 ];
 
-const usage = `lopper              # interactive UI, scans home and temporary directories
-lopper ~/code       # scan a specific directory
-lopper scan --json  # JSON output
-lopper rm ../wt     # remove if safe, --force otherwise
-lopper update       # update to the latest release`;
+const usage = [
+  ["lopper", "interactive UI, scans home and temporary directories"],
+  ["lopper ~/code", "scan a specific directory"],
+  ["lopper scan --json", "JSON output"],
+  ["lopper rm ../wt", "remove if safe, --force otherwise"],
+  ["lopper update", "update to the latest release"],
+]
+  // Built as one string, since Astro keeps template line breaks inside pre.
+  .map(
+    ([command, note]) =>
+      `${command.padEnd(20)}<span class="dim"># ${note}</span>`,
+  )
+  .join("\n");
 ---
 
 <Layout
@@ -46,20 +54,20 @@ lopper update       # update to the latest release`;
     <section class="row">
       <h2 class="label">install</h2>
       <div class="install">
-        <div class="tabs">
-          <fieldset aria-label="Install with">
-            {ways.map((w, i) => (
-              <label>
-                <input type="radio" name="way" value={w.id} checked={i === 0} />
-                {w.label}
-              </label>
-            ))}
-          </fieldset>
+        <fieldset aria-label="Install with">
+          {ways.map((w, i) => (
+            <label>
+              <input type="radio" name="way" value={w.id} checked={i === 0} />
+              {w.label}
+            </label>
+          ))}
+        </fieldset>
+        <div class="code">
+          {ways.map((w) => <pre data-way={w.id}><code>{w.command}</code></pre>)}
           <button type="button" aria-live="polite">
             Copy
           </button>
         </div>
-        {ways.map((w) => <pre data-way={w.id}><code>{w.command}</code></pre>)}
       </div>
     </section>
 
@@ -79,7 +87,7 @@ lopper update       # update to the latest release`;
 
     <section class="row">
       <h2 class="label">usage</h2>
-      <pre><code>{usage}</code></pre>
+      <pre><code set:html={usage} /></pre>
     </section>
 
     <section class="row">
@@ -173,6 +181,8 @@ lopper update       # update to the latest release`;
     margin: 0;
     display: flex;
     gap: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
   }
 
   label {
@@ -182,6 +192,9 @@ lopper update       # update to the latest release`;
 
   label:has(:checked) {
     color: var(--fg);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    text-underline-offset: 0.2em;
   }
 
   label:has(:focus-visible) {
@@ -194,16 +207,14 @@ lopper update       # update to the latest release`;
     opacity: 0;
   }
 
-  .tabs {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 0.5rem;
-    font-size: 0.875rem;
+  .code {
+    position: relative;
   }
 
   .install pre {
     display: none;
+    /* Keeps the end of a long command clear of the button. */
+    padding-right: 4.5rem;
   }
 
   .install:has([value="unix"]:checked) [data-way="unix"],
@@ -213,11 +224,16 @@ lopper update       # update to the latest release`;
   }
 
   button {
+    position: absolute;
+    top: 1rem;
+    right: 0;
     border: 0;
-    background: none;
+    padding: 0 1rem 0 0.5rem;
+    background: var(--band);
     color: var(--dim);
     font: inherit;
-    padding: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
     cursor: pointer;
   }
 

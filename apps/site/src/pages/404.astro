@@ -4,9 +4,21 @@ import Layout from "../components/Layout.astro";
 
 <Layout title="Page not found · lopper" description="This page does not exist.">
   <main>
-    <h1>Page not found</h1>
-    <p class="dim">
-      This page does not exist. Go to the <a href="/">home page</a>.
-    </p>
+    <section class="row">
+      <h1>Page not found</h1>
+      <p class="dim">
+        This page does not exist. Go to the <a href="/">home page</a>.
+      </p>
+    </section>
   </main>
 </Layout>
+
+<style>
+  section {
+    margin-top: 6rem;
+  }
+
+  p {
+    margin-top: 1.25rem;
+  }
+</style>

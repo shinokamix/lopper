@@ -1,14 +1,20 @@
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#fff, #0d0d0d);
-  --fg: light-dark(#111, #e8e8e8);
-  --dim: light-dark(#6b6b6b, #8a8a8a);
-  --band: light-dark(#f5f5f5, #171717);
+  /* The dark background matches the demo terminal so the video has no edge. */
+  --bg: light-dark(#fbfbfa, #0f1115);
+  --fg: light-dark(#1a1a19, #e6e6e3);
+  --dim: light-dark(#6f6f6b, #8b8b86);
+  --band: light-dark(#f1f1ee, #171a1f);
   --merged: light-dark(#8250df, #a371f7);
   --work: light-dark(#9a6700, #d29922);
 
+  --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, serif;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --gutter: 8rem;
+  --gap: 2.5rem;
+  --measure: 40rem;
 }
 
 *,
@@ -23,20 +29,30 @@ html {
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
 body {
-  max-width: 48rem;
+  max-width: calc(var(--gutter) + var(--gap) + var(--measure) + 2.5rem);
   margin: 0 auto;
   padding: 0 1.25rem;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--merged) 25%, transparent);
+}
+
 a {
   color: inherit;
-  text-decoration-color: var(--dim);
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
   text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
 }
 
 :focus-visible {
@@ -46,24 +62,18 @@ a {
 
 h1,
 h2 {
-  font-weight: 600;
-  line-height: 1.25;
   margin: 0;
 }
 
 h1 {
-  font-size: clamp(2rem, 6vw, 2.75rem);
-  letter-spacing: -0.03em;
+  font: 400 clamp(2.1rem, 5.5vw, 3rem) / 1.1 var(--serif);
+  letter-spacing: -0.015em;
   text-wrap: balance;
-  margin-top: 3rem;
-}
-
-h1 + p {
-  margin-top: 0.75rem;
 }
 
 p {
   margin: 0;
+  text-wrap: pretty;
 }
 
 code,
@@ -72,14 +82,50 @@ pre {
 }
 
 pre {
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.7;
   margin: 0;
-  padding: 0.85rem 1rem;
+  padding: 1rem 1.25rem;
   background: var(--band);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow-x: auto;
 }
 
 .dim {
   color: var(--dim);
+}
+
+/* A small mono label in the margin and the content in the text column. */
+.row {
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, var(--measure));
+  column-gap: var(--gap);
+  margin-top: 5rem;
+}
+
+.row > .label {
+  font: 0.75rem/1.6 var(--mono);
+  color: var(--dim);
+  padding-top: 0.15rem;
+}
+
+.row > :not(.label) {
+  grid-column: 2;
+}
+
+.row.wide > :not(.label) {
+  grid-column: 1 / -1;
+}
+
+@media (width < 44rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.75rem;
+    margin-top: 3.5rem;
+  }
+
+  .row > :not(.label),
+  .row.wide > :not(.label) {
+    grid-column: 1;
+  }
 }

@@ -9,7 +9,6 @@ Set Width 1200
 Set Height 720
 Set Padding 24
 Set Theme "GitHub Dark"
-Set WindowBar Colorful
 Set TypingSpeed 80ms
 
 Hide

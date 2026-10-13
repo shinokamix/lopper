@@ -10,6 +10,10 @@ const { title, description } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const image = new URL("/og.png", Astro.site);
 const repo = "https://github.com/shinokamix/lopper";
+const nav = [
+  { href: `${repo}/releases`, label: "Changelog" },
+  { href: repo, label: "GitHub" },
+];
 ---
 
 <!doctype html>
@@ -32,12 +36,14 @@ const repo = "https://github.com/shinokamix/lopper";
   <body>
     <header>
       <a href="/">lopper</a>
-      <a href={repo}>GitHub</a>
+      <nav>
+        {nav.map((n) => (
+          <a href={n.href}>{n.label}</a>
+        ))}
+      </nav>
     </header>
     <slot />
-    <footer class="dim">
-      MIT licensed · <a href={`${repo}/releases`}>Releases</a>
-    </footer>
+    <footer class="dim">MIT licensed</footer>
   </body>
 </html>
 
@@ -52,8 +58,18 @@ const repo = "https://github.com/shinokamix/lopper";
     text-decoration: none;
   }
 
-  header a:first-child {
+  header > a {
     font-weight: 600;
+  }
+
+  nav {
+    display: flex;
+    gap: 1.25rem;
+    color: var(--dim);
+  }
+
+  nav a:hover {
+    color: var(--fg);
   }
 
   footer {

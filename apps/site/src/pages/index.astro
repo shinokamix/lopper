@@ -26,6 +26,24 @@ const ways = [
   },
 ];
 
+const verdicts = [
+  {
+    tone: "merged",
+    label: "merged",
+    text: "Its commits are in the base branch and nothing is uncommitted. lopper removes it.",
+  },
+  {
+    tone: "work",
+    label: "uncommitted, unpushed",
+    text: "Removing it would lose work. lopper removes it only after a warning or with --force.",
+  },
+  {
+    tone: "dim",
+    label: "locked, moved",
+    text: "Git cannot check it, so lopper treats it as unsafe too.",
+  },
+];
+
 const usage = `lopper              # interactive UI, scans home and temporary directories
 lopper ~/code       # scan a specific directory
 lopper scan --json  # JSON output
@@ -71,6 +89,16 @@ lopper update       # update to the latest release`;
       playsinline
       aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
     ></video>
+
+    <h2>What it removes</h2>
+    <dl>
+      {verdicts.map((v) => (
+        <div>
+          <dt class={v.tone}>{v.label}</dt>
+          <dd>{v.text}</dd>
+        </div>
+      ))}
+    </dl>
 
     <h2>Usage</h2>
     <pre><code>{usage}</code></pre>
@@ -179,6 +207,42 @@ lopper update       # update to the latest release`;
     height: auto;
     margin-top: 3rem;
     border-radius: 6px;
+  }
+
+  dl {
+    margin: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  dl div {
+    display: grid;
+    grid-template-columns: 12rem 1fr;
+    gap: 0 1.5rem;
+  }
+
+  dt {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    line-height: 1.85;
+  }
+
+  dd {
+    margin: 0;
+  }
+
+  .merged {
+    color: var(--merged);
+  }
+
+  .work {
+    color: var(--work);
+  }
+
+  @media (width < 36rem) {
+    dl div {
+      grid-template-columns: 1fr;
+    }
   }
 
   h2 {

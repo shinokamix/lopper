@@ -53,14 +53,16 @@ lopper update       # update to the latest release`;
       {ways.map((w) => (
         <div class="command" data-way={w.id}>
           <pre><code>{w.command}</code></pre>
-          <button type="button">Copy</button>
+          <button type="button" aria-live="polite">
+            Copy
+          </button>
         </div>
       ))}
     </div>
 
     <video
       src={demo}
-      poster="/og.png"
+      poster="/poster.png"
       width="1200"
       height="720"
       autoplay

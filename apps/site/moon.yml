@@ -19,7 +19,9 @@ fileGroups:
     - .prettierignore
     - vercel.json
     - moon.yml
+    - /.prototools
     - /.moon/toolchains.yml
+    - /.moon/workspace.yml
     - /.github/workflows/ci.yml
     - /.github/actions/**/*
 

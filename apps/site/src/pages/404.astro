@@ -1,0 +1,23 @@
+---
+import Layout from "../components/Layout.astro";
+---
+
+<Layout title="Page not found · lopper" description="This page does not exist.">
+  <main>
+    <h1>Page not found</h1>
+    <p class="dim">
+      This page does not exist. Go to the <a href="/">home page</a>.
+    </p>
+  </main>
+</Layout>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin-top: 3rem;
+  }
+
+  h1 + p {
+    margin-top: 0.75rem;
+  }
+</style>

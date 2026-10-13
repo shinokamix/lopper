@@ -5,16 +5,19 @@
   --fg: light-dark(#1a1a19, #e6e6e3);
   --dim: light-dark(#6f6f6b, #8b8b86);
   --band: light-dark(#f1f1ee, #171a1f);
-  --merged: light-dark(#8250df, #a371f7);
-  --work: light-dark(#9a6700, #d29922);
 
-  --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, serif;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --gutter: 8rem;
   --gap: 2.5rem;
   --measure: 40rem;
+  --section: 6rem;
+}
+
+@media (width < 44rem) {
+  :root {
+    --section: 4rem;
+  }
 }
 
 *,
@@ -26,7 +29,12 @@
 html {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--sans);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   font-size: 16px;
   line-height: 1.6;
   font-variant-numeric: tabular-nums;
@@ -42,7 +50,7 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--merged) 25%, transparent);
+  background: light-dark(#8250df40, #a371f740);
 }
 
 a {
@@ -66,8 +74,10 @@ h2 {
 }
 
 h1 {
-  font: 400 clamp(2.1rem, 5.5vw, 3rem) / 1.1 var(--serif);
-  letter-spacing: -0.015em;
+  font-size: clamp(2rem, 5.5vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
@@ -85,7 +95,7 @@ pre {
   font-size: 0.8125rem;
   line-height: 1.7;
   margin: 0;
-  padding: 1rem 1.25rem;
+  padding: 1rem;
   background: var(--band);
   border-radius: 8px;
   overflow-x: auto;
@@ -100,13 +110,13 @@ pre {
   display: grid;
   grid-template-columns: var(--gutter) minmax(0, var(--measure));
   column-gap: var(--gap);
-  margin-top: 5rem;
+  align-items: baseline;
+  margin-top: var(--section);
 }
 
 .row > .label {
-  font: 0.75rem/1.6 var(--mono);
+  font: 0.8125rem/1.6 var(--mono);
   color: var(--dim);
-  padding-top: 0.15rem;
 }
 
 .row > :not(.label) {
@@ -120,8 +130,7 @@ pre {
 @media (width < 44rem) {
   .row {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 0.75rem;
-    margin-top: 3.5rem;
+    row-gap: 0.5rem;
   }
 
   .row > :not(.label),

@@ -64,7 +64,6 @@ lopper update       # update to the latest release`;
     </section>
 
     <section class="row wide">
-      <h2 class="label">demo</h2>
       <video
         src={demo}
         poster="/poster.png"
@@ -163,13 +162,8 @@ lopper update       # update to the latest release`;
 </script>
 
 <style>
-  .hero {
-    margin-top: 6rem;
-  }
-
   .hero p {
-    margin-top: 1.25rem;
-    font-size: 1.0625rem;
+    margin-top: 1rem;
     max-width: 34rem;
   }
 
@@ -178,8 +172,7 @@ lopper update       # update to the latest release`;
     padding: 0;
     margin: 0;
     display: flex;
-    gap: 1.25rem;
-    font-size: 0.875rem;
+    gap: 1rem;
   }
 
   label {
@@ -205,13 +198,12 @@ lopper update       # update to the latest release`;
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
   }
 
   .install pre {
     display: none;
-    padding-inline: 1rem;
-    font-size: 0.75rem;
   }
 
   .install:has([value="unix"]:checked) [data-way="unix"],
@@ -225,7 +217,6 @@ lopper update       # update to the latest release`;
     background: none;
     color: var(--dim);
     font: inherit;
-    font-size: 0.875rem;
     padding: 0;
     cursor: pointer;
   }
@@ -238,22 +229,16 @@ lopper update       # update to the latest release`;
     display: block;
     width: 100%;
     height: auto;
-    border-radius: 10px;
+    border-radius: 8px;
     background: #0f1115;
-  }
-  /* Lines the label up with the first question. */
-  @media (width >= 44rem) {
-    .row:has(.faq) > .label {
-      padding-top: 1rem;
-    }
   }
 
   .faq {
-    border-top: 1px solid var(--band);
+    border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
   }
 
   details {
-    border-bottom: 1px solid var(--band);
+    border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
     /* Lets the panel animate to its natural height where supported. */
     interpolate-size: allow-keywords;
   }
@@ -274,7 +259,7 @@ lopper update       # update to the latest release`;
     display: flex;
     justify-content: space-between;
     gap: 1rem;
-    padding-block: 0.9rem;
+    padding-block: 1rem;
     cursor: pointer;
     list-style: none;
   }
@@ -294,13 +279,12 @@ lopper update       # update to the latest release`;
   }
 
   details p {
-    padding-bottom: 1.1rem;
+    padding-bottom: 1rem;
     color: var(--dim);
-    font-size: 0.9375rem;
   }
 
   details code {
-    font-size: 0.85em;
+    font-size: 0.875em;
     color: var(--fg);
     white-space: nowrap;
   }

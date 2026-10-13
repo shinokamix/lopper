@@ -7,4 +7,4 @@ proto:
 # Moon installs this Go through proto and runs every task with it. Keep it in
 # step with apps/lopper/tools/go.mod, which setup-go reads for GoReleaser.
 go:
-  version: '1.26.6'
+  version: '1.27.2'

@@ -37,14 +37,20 @@ tasks:
 
   # The pre-commit hook passes only the staged Go files (affectedFiles); run
   # directly, it checks the whole module. In CI, `lint` checks formatting.
+  # moon counts a staged deletion as affected, and golangci-lint fails on a
+  # path that does not exist, so the script drops those.
   format:
     description: Fail if Go files need formatting (gofumpt, gci)
-    command: go tool -modfile tools/go.mod golangci-lint fmt --diff
+    script: |
+      IFS=":;" read -ra listed <<< "${MOON_AFFECTED_FILES:-.}"
+      files=()
+      for f in "${listed[@]}"; do [ -e "$f" ] && files+=("$f"); done
+      [ ${#files[@]} -eq 0 ] || go tool -modfile tools/go.mod golangci-lint fmt --diff "${files[@]}"
     inputs:
       - cmd/**/*.go
       - internal/**/*.go
     options:
-      affectedFiles: args
+      affectedFiles: env
       runInCI: false
 
   fix:

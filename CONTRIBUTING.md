@@ -16,7 +16,7 @@ dev tools are pinned in
 
 ```sh
 moon tasks          # list tasks
-moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
+moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck, site
 moon run fix        # tidy, format and autofix what the hooks reject
 moon run site:dev   # serve the Astro site in apps/site on localhost:4321
 moon run fixture    # sandbox in apps/lopper/.tmp/fixture

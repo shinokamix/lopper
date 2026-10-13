@@ -17,7 +17,6 @@ fileGroups:
     - pnpm-workspace.yaml
     - .prettierrc.json
     - .prettierignore
-    - vercel.json
     - moon.yml
     - /.prototools
     - /.moon/toolchains.yml

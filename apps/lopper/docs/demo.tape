@@ -22,7 +22,7 @@ Enter
 Sleep 15s
 Show
 
-Sleep 800ms
+Sleep 200ms
 Type "lopper ~/code"
 Sleep 600ms
 Enter

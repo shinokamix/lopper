@@ -14,6 +14,7 @@ fileGroups:
   # Changing any of these can change what a check reports.
   tooling:
     - package.json
+    - eslint.config.js
     - /package.json
     - /pnpm-lock.yaml
     - /pnpm-workspace.yaml
@@ -53,6 +54,13 @@ tasks:
       - '@group(sources)'
       - '@group(tooling)'
 
+  lint:
+    description: Fail if a file imports another project by path
+    command: eslint .
+    inputs:
+      - '@group(sources)'
+      - '@group(tooling)'
+
   # The pre-commit hook runs it, so only the files that Prettier checks or that
   # configure it make it affected.
   format:
@@ -61,7 +69,8 @@ tasks:
     inputs:
       - src/**/*
       - astro.config.ts
-        - package.json
+      - eslint.config.js
+      - package.json
       - tsconfig.json
       - /pnpm-lock.yaml
       - .prettierrc.json

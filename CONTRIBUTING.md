@@ -36,8 +36,8 @@ tasks from that directory; run Moon commands from the repository root.
 
 What more than one project uses lives under `packages/`, each a Moon project
 and a pnpm package. A project reaches another one only through its package,
-never by a path into its folder, and Moon rejects a dependency that breaks the
-project layers.
+never by a path into its folder. Moon rejects a dependency that breaks the
+project layers, and `moon run site:lint` rejects such an import in the site.
 The demo recording for the README and the site is `packages/demo`, and
 `moon run demo:record` records it again with ttyd and ffmpeg.
 

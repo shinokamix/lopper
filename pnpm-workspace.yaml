@@ -6,7 +6,8 @@ packages:
 # then. Dependabot waits as long for Go modules and actions.
 minimumReleaseAge: 10080
 
-# esbuild's install script only checks the binary that its optional
-# per-platform package already brings.
+# These install scripts only check the binary that an optional per-platform
+# package already brings.
 allowBuilds:
   esbuild: false
+  unrs-resolver: false

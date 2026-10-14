@@ -4,10 +4,10 @@ Output docs/demo.gif
 Output docs/demo.mp4
 
 Set Shell zsh
-Set FontSize 18
-Set Width 1200
-Set Height 720
-Set Padding 24
+Set FontSize 36
+Set Width 2400
+Set Height 1440
+Set Padding 48
 Set Theme "GitHub Dark"
 Set TypingSpeed 80ms
 

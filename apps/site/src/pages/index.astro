@@ -48,7 +48,24 @@ const usage = [
   <main>
     <section class="row hero">
       <h1>Clean up the Git worktrees you and your agents left behind.</h1>
-      <p class="dim">{description}</p>
+      <p class="dim">
+        Finds worktrees anywhere on the disk, shows how much space each takes
+        and removes the ones whose work is merged.
+      </p>
+    </section>
+
+    <section class="row wide">
+      <video
+        src={demo}
+        poster="/poster.png"
+        width="1200"
+        height="672"
+        autoplay
+        muted
+        loop
+        playsinline
+        aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
+      ></video>
     </section>
 
     <section class="row">
@@ -69,20 +86,6 @@ const usage = [
           </button>
         </div>
       </div>
-    </section>
-
-    <section class="row wide">
-      <video
-        src={demo}
-        poster="/poster.png"
-        width="1200"
-        height="672"
-        autoplay
-        muted
-        loop
-        playsinline
-        aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
-      ></video>
     </section>
 
     <section class="row">

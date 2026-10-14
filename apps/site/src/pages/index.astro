@@ -214,6 +214,11 @@ const usage = [
   label {
     color: var(--dim);
     cursor: pointer;
+    user-select: none;
+  }
+
+  label:hover {
+    color: var(--fg);
   }
 
   label:has(:checked) {
@@ -222,6 +227,7 @@ const usage = [
     text-decoration-color: var(--accent);
     text-decoration-thickness: 2px;
     text-underline-offset: 0.35em;
+    cursor: default;
   }
 
   label:has(:focus-visible) {
@@ -229,9 +235,15 @@ const usage = [
     outline-offset: 2px;
   }
 
+  /* The radio stays focusable but covers none of the label, so the whole
+     label shows the hand cursor. */
   input {
     position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
     opacity: 0;
+    pointer-events: none;
   }
 
   .code {

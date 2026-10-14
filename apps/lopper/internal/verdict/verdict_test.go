@@ -147,7 +147,7 @@ func TestHints(t *testing.T) {
 	}{
 		{"branch", wt, f, []string{
 			"unlock it with `git -C /src/repo worktree unlock '/tmp/my wt'`",
-			"push them with `git -C '/tmp/my wt' push -u origin topic`",
+			"push them with `git -C '/tmp/my wt' push`, or `git -C '/tmp/my wt' push -u origin topic` if the branch was never pushed",
 			"merge it into main, or run `git -C '/tmp/my wt' fetch` if it was merged on the remote",
 		}},
 		{"detached", detached, f, []string{

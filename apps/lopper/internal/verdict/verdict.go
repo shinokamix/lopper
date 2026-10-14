@@ -76,7 +76,8 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 			"%d unchecked", *f.UncheckedFiles)
 	}
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
-		hint := "push them with " + git(path, "push -u origin", quote(wt.Branch))
+		hint := "push them with " + git(path, "push") + ", or " + git(path, "push -u origin", quote(wt.Branch)) +
+			" if the branch was never pushed"
 		if detached {
 			hint = "keep them on a branch with " + git(path, "switch -c <branch>")
 		}

@@ -1,6 +1,5 @@
 # The README and site animation. Regenerate with `moon run demo`.
 
-Output docs/demo.gif
 Output docs/demo.mp4
 
 Set Shell zsh

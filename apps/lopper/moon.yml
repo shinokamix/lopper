@@ -132,7 +132,9 @@ tasks:
       GIT_CONFIG_VALUE_0: /dev/null
     preset: utility
 
+  # The site plays the full-size mp4. The README GIF is downscaled to the
+  # width GitHub shows it at, which halves its size.
   demo:
     description: Record the demo into docs/demo.gif and docs/demo.mp4 (needs ttyd and ffmpeg)
-    command: go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape
+    script: go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape && ffmpeg -v error -y -i docs/demo.mp4 -vf "scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" docs/demo.gif
     preset: utility

@@ -17,7 +17,7 @@ dev tools are pinned in
 ```sh
 moon tasks          # list tasks
 moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck, site
-moon run fix        # tidy, format and autofix what the hooks reject
+moon run :fix       # tidy, format and autofix what the hooks reject
 moon run site:dev   # serve the Astro site in apps/site on localhost:4321
 moon run fixture    # sandbox in apps/lopper/.tmp/fixture
 cd apps/lopper
@@ -25,8 +25,8 @@ go run ./cmd/lopper .tmp/fixture
 ```
 
 The first `moon` command installs a pre-commit hook into this checkout: it
-checks the formatting of staged Go files and tidiness of both go.mod files, in
-seconds.
+checks the formatting of staged Go files and of the site, and tidiness of both
+go.mod files, in seconds.
 CI runs what `moon check --all` does, skipping tasks no changed file affects;
 run it before pushing to catch the rest early.
 

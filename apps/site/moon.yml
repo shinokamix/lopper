@@ -36,16 +36,20 @@ tasks:
   build:
     description: Build the static site into dist/
     command: astro build
-    inputs: &checked
+    inputs:
       - '@group(sources)'
       - '@group(tooling)'
+      # astro.config.ts builds the canonical and og:image links from this domain.
+      - $VERCEL_PROJECT_PRODUCTION_URL
     outputs:
       - dist
 
   typecheck:
     description: Type-check the pages and scripts
     command: astro check
-    inputs: *checked
+    inputs: &checked
+      - '@group(sources)'
+      - '@group(tooling)'
 
   format:
     description: Fail if files need formatting

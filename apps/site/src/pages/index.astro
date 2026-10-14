@@ -82,8 +82,8 @@ const usage = commands
     <section class="demo">
       <video
         src={demo}
-        width="1200"
-        height="720"
+        width="2400"
+        height="1440"
         autoplay
         muted
         loop
@@ -199,13 +199,6 @@ const usage = commands
       copyStatus.hidden = false;
     }
   });
-
-  // Autoplay ignores the reduced motion setting.
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    const video = document.querySelector("video")!;
-    video.pause();
-    video.controls = true;
-  }
 </script>
 
 <style>
@@ -333,7 +326,6 @@ const usage = commands
     display: block;
     width: 100%;
     height: auto;
-    aspect-ratio: 5 / 3;
   }
 
   summary {

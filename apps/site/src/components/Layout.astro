@@ -10,17 +10,11 @@ const { title, description } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const image = new URL("/og.png", Astro.site);
 const repo = "https://github.com/shinokamix/lopper";
-const nav = [
-  { href: repo, label: "GitHub" },
-  { href: `${repo}/releases`, label: "Changelog" },
-];
-// The footer reads like the key hints under the lopper list, and the keys
-// work.
-const keys = [
-  { key: "g", href: repo, label: "github" },
-  { key: "c", href: `${repo}/releases`, label: "changelog" },
-  { key: "i", href: `${repo}/issues`, label: "issues" },
-  { key: "l", href: `${repo}/blob/main/LICENSE`, label: "license" },
+const links = [
+  { href: repo, label: "github" },
+  { href: `${repo}/releases`, label: "changelog" },
+  { href: `${repo}/issues`, label: "issues" },
+  { href: `${repo}/blob/main/LICENSE`, label: "license" },
 ];
 ---
 
@@ -42,102 +36,35 @@ const keys = [
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <header>
-      <a href="/">lopper</a>
-      <nav>
-        {nav.map((n) => (
-          <a href={n.href}>{n.label}</a>
-        ))}
-      </nav>
-    </header>
     <slot />
     <footer>
-      {keys.map((k) => (
-        <a href={k.href} data-key={k.key}>
-          <kbd>{k.key}</kbd> {k.label}
-        </a>
-      ))}
+      <nav aria-label="Project links">
+        {links.map((link) => (
+          <a href={link.href}>{link.label}</a>
+        ))}
+      </nav>
     </footer>
   </body>
 </html>
 
-<script>
-  document.addEventListener("keydown", (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
-      return;
-    }
-    // Typing into a field or picking a radio must not leave the page.
-    if ((event.target as Element).closest("input, textarea, select")) {
-      return;
-    }
-    if (!/^[a-z]$/.test(event.key)) {
-      return;
-    }
-    const link = document.querySelector<HTMLAnchorElement>(
-      `footer [data-key="${event.key}"]`,
-    );
-    if (link) {
-      location.href = link.href;
-    }
-  });
-</script>
-
 <style>
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 1lh var(--pad);
-    border-bottom: 1px solid var(--line);
-  }
-
-  header a,
   footer a {
     text-decoration: none;
   }
 
-  header > a {
-    font-weight: 700;
-  }
-
   nav {
     display: flex;
-    gap: 1.5rem;
-    color: var(--dim);
+    flex-wrap: wrap;
+    gap: 0.5lh 3ch;
   }
 
-  nav a:hover,
   footer a:hover {
     color: var(--fg);
   }
 
   footer {
-    display: flex;
-    flex-wrap: wrap;
     padding: 1lh var(--pad);
     border-top: 1px solid var(--line);
     color: var(--dim);
-  }
-
-  footer a + a::before {
-    content: "•";
-    margin-inline: 1.5ch;
-  }
-
-  /* A wrapped line would start with a bullet, and a phone has no keys to
-     press anyway. */
-  @media (width < 44rem) {
-    footer {
-      gap: 0.5lh 3ch;
-    }
-
-    footer a + a::before {
-      content: none;
-    }
-  }
-
-  kbd {
-    font: inherit;
-    color: var(--fg);
   }
 </style>

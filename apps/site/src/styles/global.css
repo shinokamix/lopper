@@ -1,11 +1,7 @@
-/* Monaspace is a typeface of GitHub, whose Primer palette the lopper list
-   uses. */
 @import "@fontsource/monaspace-neon/400.css";
 @import "@fontsource/monaspace-neon/700.css";
 
 :root {
-  /* One dark palette, since the demo recording is dark. The neutrals lean
-     toward the purple that lopper marks merged worktrees in. */
   color-scheme: dark;
   --bg: #050507;
   --fg: #f1eff6;
@@ -13,12 +9,10 @@
   --band: #0e0d12;
   --line: #ffffff17;
   --accent: #a371f7;
-  /* The band under the cursor row of the lopper list. */
   --cursor: #2a2a2e;
 
   --mono: "Monaspace Neon", ui-monospace, "SF Mono", Menlo, monospace;
   --radius: 4px;
-  /* Sizes count character cells and lines, as a terminal does. */
   --pad: 8ch;
   --measure: 72ch;
 }
@@ -44,7 +38,6 @@ html {
   text-size-adjust: 100%;
 }
 
-/* The page is one framed column, and every section spans it. */
 body {
   max-width: 116ch;
   min-height: 100vh;
@@ -54,7 +47,6 @@ body {
   border-inline: 1px solid var(--line);
 }
 
-/* Keeps the footer at the bottom of a short page. */
 main {
   flex: 1;
 }
@@ -64,7 +56,6 @@ section {
   border-bottom: 1px solid var(--line);
 }
 
-/* The footer draws the line under the last section. */
 main > section:last-child {
   border-bottom: 0;
 }

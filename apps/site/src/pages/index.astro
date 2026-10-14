@@ -44,45 +44,15 @@ const usage = commands
       `${command.padEnd(20)}<span class="dim"># ${note}</span>`,
   )
   .join("\n");
-
-// Answers are HTML strings, so that a formatter cannot change the spacing
-// around their code.
-const faq = [
-  [
-    "Does it delete my branches?",
-    "No. lopper removes the worktree directory, but keeps the branch and its commits. You can check out the branch again later.",
-  ],
-  [
-    "How does it decide what's safe to remove?",
-    "lopper checks for merged changes and uncommitted work. It recognizes merged changes even after a squash merge, rebase, or cherry-pick. In the interactive UI, you must confirm a warning before removing an unsafe worktree. With <code>lopper rm</code>, you must use <code>--force</code>. lopper treats locked worktrees and worktrees that Git cannot check as unsafe.",
-  ],
-  [
-    "What is the base branch?",
-    "The base branch is the branch that lopper checks your changes against. lopper uses the branch that <code>origin/HEAD</code> points to. If <code>origin/HEAD</code> is missing, lopper looks for <code>main</code>, then <code>master</code>.",
-  ],
-  [
-    "Why do worktrees take up so much space?",
-    "A worktree can contain dependencies and build output, such as <code>node_modules</code>, <code>.venv</code>, or <code>target/</code>. These files take up space even if Git ignores them. Removing the worktree directory frees that space.",
-  ],
-  [
-    "Does it find worktrees created by coding agents?",
-    "Yes. lopper scans your home and temporary directories, including worktrees created by coding agents. To scan a specific directory, run <code>lopper ~/code</code>.",
-  ],
-  [
-    "Does it use the network?",
-    "lopper checks GitHub for new releases in the background. To disable the check, set <code>LOPPER_NO_UPDATE_CHECK=1</code>.",
-  ],
-];
 ---
 
 <Layout title="lopper: a cleaner for Git worktrees" description={description}>
   <main>
     <section>
-      <h1>A cleaner for Git worktrees.</h1>
+      <h1>lopper</h1>
       <p class="lede dim">
-        Coding agents leave Git worktrees across your computer. lopper lists
-        them with their status and disk usage so you can remove the ones you no
-        longer need.
+        Find Git worktrees, check their status and disk usage, and remove the
+        ones you no longer need.
       </p>
       <h2>install</h2>
       <div class="install">
@@ -103,6 +73,9 @@ const faq = [
             Copy
           </button>
         </div>
+        <p class="copy-status dim" role="status" hidden>
+          Command selected. Copy it with your keyboard or context menu.
+        </p>
       </div>
     </section>
 
@@ -145,12 +118,57 @@ const faq = [
 
     <section>
       <h2>faq</h2>
-      {faq.map(([question, answer]) => (
-        <details name="faq">
-          <summary>{question}</summary>
-          <p set:html={answer} />
-        </details>
-      ))}
+      <details name="faq">
+        <summary>Does it delete my branches?</summary>
+        <p>
+          No. lopper removes the worktree directory, but keeps the branch and
+          its commits. You can check out the branch again later.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>How does it decide what's safe to remove?</summary>
+        <p>
+          lopper checks for merged changes and uncommitted work. It recognizes
+          merged changes even after a squash merge, rebase, or cherry-pick. In
+          the interactive UI, you must confirm a warning before removing an
+          unsafe worktree. With <code>lopper rm</code>, you must use
+          <code>--force</code>. lopper treats locked worktrees and worktrees
+          that Git cannot check as unsafe.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>What is the base branch?</summary>
+        <p>
+          The base branch is the branch that lopper checks your changes against.
+          lopper uses the branch that <code>origin/HEAD</code> points to. If{" "}
+          <code>origin/HEAD</code> is missing, lopper looks for
+          <code>main</code>, then <code>master</code>.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Why do worktrees take up so much space?</summary>
+        <p>
+          A worktree can contain dependencies and build output, such as
+          <code>node_modules</code>, <code>.venv</code>, or
+          <code>target/</code>. These files take up space even if Git ignores
+          them. Removing the worktree directory frees that space.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Does it find worktrees created by coding agents?</summary>
+        <p>
+          Yes. lopper scans your home and temporary directories, including
+          worktrees created by coding agents. To scan a specific directory, run{" "}
+          <code>lopper ~/code</code>.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Does it use the network?</summary>
+        <p>
+          lopper checks GitHub for new releases in the background. To disable
+          the check, set <code>LOPPER_NO_UPDATE_CHECK=1</code>.
+        </p>
+      </details>
     </section>
   </main>
 </Layout>
@@ -162,7 +180,15 @@ const faq = [
   }
 
   const button = document.querySelector<HTMLButtonElement>(".install button")!;
+  const copyStatus =
+    document.querySelector<HTMLParagraphElement>(".copy-status")!;
+  document
+    .querySelector(".install fieldset")!
+    .addEventListener("change", () => {
+      copyStatus.hidden = true;
+    });
   button.addEventListener("click", async () => {
+    copyStatus.hidden = true;
     const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
     const code = document.querySelector(`[data-way="${way.value}"] code`)!;
     try {
@@ -170,9 +196,8 @@ const faq = [
       button.textContent = "Copied";
       setTimeout(() => (button.textContent = "Copy"), 1500);
     } catch {
-      // The clipboard API needs a secure context and permission. Selecting
-      // the command leaves the copy to the visitor.
       getSelection()!.selectAllChildren(code);
+      copyStatus.hidden = false;
     }
   });
 
@@ -205,6 +230,11 @@ const faq = [
     background: var(--band);
     border: 1px solid var(--line);
     border-radius: var(--radius);
+  }
+
+  .copy-status {
+    padding: 0 1.25rem 0.75rem;
+    font-size: 0.875rem;
   }
 
   fieldset {
@@ -295,8 +325,6 @@ const faq = [
     color: var(--fg);
   }
 
-  /* The recording fills the frame on its own background, so it needs no
-     window around it. */
   .demo {
     padding: 0;
     background: #0f1014;
@@ -308,26 +336,6 @@ const faq = [
     height: auto;
   }
 
-  details {
-    /* Lets the panel animate to its natural height where supported. */
-    interpolate-size: allow-keywords;
-  }
-
-  details::details-content {
-    block-size: 0;
-    overflow: hidden;
-    transition:
-      block-size 0.2s ease,
-      content-visibility 0.2s allow-discrete;
-  }
-
-  details[open]::details-content {
-    block-size: auto;
-  }
-
-  /* A row under the pointer gets the band the lopper list draws under its
-     cursor, across the whole frame. An open question is bold, like a
-     selected row. */
   summary {
     display: flex;
     gap: 1.5ch;

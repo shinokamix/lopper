@@ -3,7 +3,7 @@ import Layout from "../components/Layout.astro";
 import demo from "../../../lopper/docs/demo.mp4";
 
 const description =
-  "lopper finds Git worktrees all over the disk, shows how much space each one takes and removes the ones whose work is merged.";
+  "lopper finds Git worktrees anywhere on the disk, shows how much space each takes and removes only the ones whose work is merged.";
 
 const ways = [
   {
@@ -277,11 +277,12 @@ const usage = [
 
   button {
     position: absolute;
+    /* Lines up with the command inside the border and padding of pre. */
     top: calc(1rem + 1px);
-    right: 1px;
+    right: calc(1rem + 1px);
     border: 0;
-    padding: 0 1rem 0 0.5rem;
-    background: var(--band);
+    padding: 0;
+    background: none;
     color: var(--dim);
     font: inherit;
     font-size: 0.875rem;
@@ -305,7 +306,7 @@ const usage = [
     z-index: -1;
     background: radial-gradient(
       closest-side,
-      light-dark(#8250df1a, #a371f729),
+      color-mix(in srgb, var(--accent) 14%, transparent),
       transparent
     );
     pointer-events: none;

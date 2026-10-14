@@ -13,5 +13,8 @@
     "prettier-plugin-astro": "^1",
     "typescript": "^6"
   },
+  "engines": {
+    "node": "24.x"
+  },
   "packageManager": "pnpm@12.9.1"
 }

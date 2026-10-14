@@ -3,7 +3,7 @@ import Layout from "../components/Layout.astro";
 import demo from "../../../lopper/docs/demo.mp4";
 
 const description =
-  "lopper shows every Git worktree on your disk in one list, with its size and whether its work is merged, and asks before it removes uncommitted or unpushed work.";
+  "Find Git worktrees on your computer with lopper. Check their status, see how much space they use, and remove the ones you no longer need.";
 
 const ways = [
   {
@@ -30,10 +30,10 @@ const ways = [
 ];
 
 const commands = [
-  ["lopper", "interactive UI, scans home and temporary directories"],
+  ["lopper", "open the interactive UI"],
   ["lopper ~/code", "scan a specific directory"],
-  ["lopper scan --json", "JSON output"],
-  ["lopper rm ../wt", "remove if safe, --force otherwise"],
+  ["lopper scan --json", "print scan results as JSON"],
+  ["lopper rm ../wt", "remove a worktree if safe"],
   ["lopper update", "update to the latest release"],
 ];
 
@@ -50,41 +50,39 @@ const usage = commands
 const faq = [
   [
     "Does it delete my branches?",
-    "No. lopper runs <code>git worktree remove</code>, which deletes the folder and leaves the branch and its commits alone. You can check the branch out again whenever you like.",
+    "No. lopper removes the worktree directory, but keeps the branch and its commits. You can check out the branch again later.",
   ],
   [
-    "Which worktrees does it remove?",
-    "A worktree is safe to remove when its changes are already in the base branch and nothing in it is uncommitted. lopper notices merged work even after a squash, a rebase or a cherry-pick. A worktree with uncommitted or unpushed work goes only after you confirm a warning, or with <code>lopper rm --force</code>. Git cannot check locked or moved worktrees, so lopper treats them as unsafe.",
+    "How does it decide what's safe to remove?",
+    "lopper checks for merged changes and uncommitted work. It recognizes merged changes even after a squash merge, rebase, or cherry-pick. In the interactive UI, you must confirm a warning before removing an unsafe worktree. With <code>lopper rm</code>, you must use <code>--force</code>. lopper treats locked worktrees and worktrees that Git cannot check as unsafe.",
   ],
   [
     "What is the base branch?",
-    "The branch <code>origin/HEAD</code> points to. A repository without it uses <code>main</code>, and then <code>master</code>.",
+    "The base branch is the branch that lopper checks your changes against. lopper uses the branch that <code>origin/HEAD</code> points to. If <code>origin/HEAD</code> is missing, lopper looks for <code>main</code>, then <code>master</code>.",
   ],
   [
-    "Where does the space come from?",
-    "Each worktree has its own <code>node_modules</code>, <code>.venv</code> or <code>target/</code>. Git ignores these files but deletes them with the worktree, so you get the space back.",
+    "Why do worktrees take up so much space?",
+    "A worktree can contain dependencies and build output, such as <code>node_modules</code>, <code>.venv</code>, or <code>target/</code>. These files take up space even if Git ignores them. Removing the worktree directory frees that space.",
   ],
   [
-    "Will it find the worktrees my agent created?",
-    "Yes. lopper walks your home and temporary directories, so it finds worktrees wherever a tool put them. To scan one directory, run <code>lopper ~/code</code>.",
+    "Does it find worktrees created by coding agents?",
+    "Yes. lopper scans your home and temporary directories, including worktrees created by coding agents. To scan a specific directory, run <code>lopper ~/code</code>.",
   ],
   [
     "Does it use the network?",
-    "Only to check GitHub for a new release, in the background. Set <code>LOPPER_NO_UPDATE_CHECK=1</code> to turn that off.",
+    "lopper checks GitHub for new releases in the background. To disable the check, set <code>LOPPER_NO_UPDATE_CHECK=1</code>.",
   ],
 ];
 ---
 
-<Layout
-  title="lopper: clean up the Git worktrees you and your agents left behind"
-  description={description}
->
+<Layout title="lopper: a cleaner for Git worktrees" description={description}>
   <main>
     <section>
       <h1>A cleaner for Git worktrees.</h1>
       <p class="lede dim">
-        Coding agents leave Git worktrees all over your disk. lopper finds them
-        and cleans up the ones you're done with.
+        Coding agents leave Git worktrees across your computer. lopper lists
+        them with their status and disk usage so you can remove the ones you no
+        longer need.
       </p>
       <h2>install</h2>
       <div class="install">
@@ -118,32 +116,30 @@ const faq = [
         muted
         loop
         playsinline
-        aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
+        aria-label="Demo of lopper removing merged worktrees and warning before removing uncommitted work"
       ></video>
     </section>
 
     <section>
-      <h2>about</h2>
+      <h2>why lopper</h2>
       <p>
-        Worktrees pile up. You make some by hand, a coding agent makes one for
-        every task, and each tool puts them in its own folder. Every worktree is
-        a full copy of the project with its own <code>node_modules</code>,
-        <code>.venv</code> or Rust <code>target/</code>, so a few of them can
-        take gigabytes.
+        A task ends, but its worktree stays on disk. Dependencies and build
+        output, such as <code>node_modules</code>, <code>.venv</code>, and
+        <code>target/</code>, can take up gigabytes across unused worktrees.
       </p>
       <p>
-        Git lists worktrees one repository at a time. Nothing tells you how many
-        you have, which repository each belongs to or how much space they take.
+        Git lists worktrees one repository at a time. Checking each repository
+        leaves you to work out which worktrees you still need.
       </p>
       <p>
-        lopper walks your home and temporary directories, finds them all and
-        groups them by repository. Worktrees whose work is merged are marked in
-        purple, so you can tell which ones are safe to remove.
+        lopper brings worktrees into one list, grouped by repository. You can
+        compare their sizes, check their status, and select the ones to remove.
+        Purple marks worktrees whose changes are merged.
       </p>
     </section>
 
     <section>
-      <h2>usage</h2>
+      <h2>commands</h2>
       <pre><code set:html={usage} /></pre>
     </section>
 

@@ -47,14 +47,23 @@ tasks:
   typecheck:
     description: Type-check the pages and scripts
     command: astro check
-    inputs: &checked
+    inputs:
       - '@group(sources)'
       - '@group(tooling)'
 
+  # The pre-commit hook runs it, so only the files that Prettier checks or that
+  # configure it make it affected.
   format:
     description: Fail if files need formatting
     command: prettier --check .
-    inputs: *checked
+    inputs:
+      - src/**/*
+      - astro.config.ts
+      - package.json
+      - tsconfig.json
+      - pnpm-lock.yaml
+      - .prettierrc.json
+      - .prettierignore
 
   fix:
     description: Format all files

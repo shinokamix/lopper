@@ -35,8 +35,9 @@ tasks:
     outputs:
       - bin/*
 
-  # The pre-commit hook passes only the staged Go files (affectedFiles); run
-  # directly, it checks the whole module. In CI, `lint` checks formatting.
+  # The pre-commit hook runs it when a staged Go file changes. It checks the
+  # whole module, since moon would also pass the files a commit deletes and
+  # golangci-lint fails on a missing path. In CI, `lint` checks formatting.
   format:
     description: Fail if Go files need formatting (gofumpt, gci)
     command: go tool -modfile tools/go.mod golangci-lint fmt --diff
@@ -44,7 +45,6 @@ tasks:
       - cmd/**/*.go
       - internal/**/*.go
     options:
-      affectedFiles: args
       runInCI: false
 
   fix:

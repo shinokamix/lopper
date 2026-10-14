@@ -112,7 +112,7 @@ func TestRemoveRechecksIndexFlagsAfterScan(t *testing.T) {
 			wt = ev.Worktree
 		case FactsUpdated:
 			if ev.Final {
-				checked = ev.Safe
+				checked = ev.Verdict.Safe
 			}
 		case ScanDone:
 			if ev.Err != nil {

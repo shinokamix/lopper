@@ -25,8 +25,8 @@ go run ./cmd/lopper .tmp/fixture
 ```
 
 The first `moon` command installs a pre-commit hook into this checkout: it
-checks the formatting of staged Go files and of the site, and tidiness of both
-go.mod files, in seconds.
+checks the formatting of Go files and of the site, and tidiness of both go.mod
+files, when a commit changes them, in seconds.
 CI runs what `moon check --all` does, skipping tasks no changed file affects;
 run it before pushing to catch the rest early.
 
@@ -54,11 +54,11 @@ Paths below are relative to `apps/lopper`.
 ```
 cmd/lopper        entry point
 internal/
-  lopper          core types: Worktree and its State, Facts (no dependencies)
+  lopper          core types: Worktree and its State, Facts, Verdict (no dependencies)
   gitx            thin wrapper over the git CLI
   discovery       where worktrees are
   inspect         facts about a worktree (dirty, unpushed, merged, size…)
-  verdict         what lopper concludes: whether a worktree is safe to delete, and its notes
+  verdict         what lopper concludes: whether a worktree is safe to delete, and why
   engine          scan pipeline, emits events
   update          self-update from GitHub releases
   cli             cobra commands; wires everything together, owns the --json format
@@ -67,14 +67,14 @@ internal/
 
 Dependencies only point downward: `cli`/`tui` → `engine` → stages → `gitx`, and
 the stages and UIs share the types in `lopper`. The UIs reach stages only through
-`engine`, except `verdict`, whose notes they show.
+`engine`, which hands them the facts and the verdict.
 [`internal/archtest`](apps/lopper/internal/archtest/arch_test.go) enforces this with the
 tests: every package needs a layer there, and `os/exec`, Charm and cobra are
 allowed only where needed. If it fails, move the code rather than loosening the rule.
 
 ## Tests
 
-- Unit tests live next to the code; `verdict.Safe` is table-driven.
+- Unit tests live next to the code; `verdict.Of` is table-driven.
 - [`cmd/lopper/testdata/script`](apps/lopper/cmd/lopper/testdata/script) holds end-to-end
   [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
   scenarios that build real repositories and run `lopper` against them.

@@ -35,7 +35,7 @@ var layers = map[string][]string{
 	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/discovery", "internal/inspect", "internal/verdict"},
 
 	"internal/cli": {"internal/lopper", "internal/engine", "internal/catalog", "internal/tui", "internal/update"},
-	"internal/tui": {"internal/lopper", "internal/engine", "internal/verdict"},
+	"internal/tui": {"internal/lopper", "internal/engine"},
 }
 
 // restricted limits sensitive imports, matched by prefix, to specific packages.

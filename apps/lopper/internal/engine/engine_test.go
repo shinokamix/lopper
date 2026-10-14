@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"testing/synctest"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
 // fakeGit lists n linked worktrees for every repository. Any other git
@@ -115,6 +117,40 @@ func TestScanEventOrder(t *testing.T) {
 			t.Errorf("got %d worktrees and %d final updates, want %d of each", len(c.known), c.final, n)
 		}
 	})
+}
+
+// The UIs show the verdict a scan sends and decide nothing themselves, so
+// every update must carry the notes that explain it, not only Safe.
+func TestScanSendsVerdictWithNotes(t *testing.T) {
+	_, path := gitRepo(t)
+	git(t, path, "commit", "-q", "--allow-empty", "-m", "work")
+
+	var wt lopper.Worktree
+	var updates, final int
+	for ev := range New().Scan(t.Context(), Options{Roots: []string{path}}) {
+		switch ev := ev.(type) {
+		case WorktreeFound:
+			wt = ev.Worktree
+		case FactsUpdated:
+			updates++
+			if want := verdict.Of(wt, ev.Facts); !reflect.DeepEqual(ev.Verdict, want) {
+				t.Errorf("update %d has verdict %+v, want %+v", updates, ev.Verdict, want)
+			}
+			if ev.Final {
+				final++
+				if ev.Verdict.Safe || len(ev.Verdict.Notes) == 0 {
+					t.Errorf("final verdict %+v, want unsafe with notes for an unpushed commit", ev.Verdict)
+				}
+			}
+		case ScanDone:
+			if ev.Err != nil {
+				t.Fatal(ev.Err)
+			}
+		}
+	}
+	if updates != 2 || final != 1 {
+		t.Errorf("got %d updates and %d final, want 2 and 1", updates, final)
+	}
 }
 
 func TestScanReportsRootError(t *testing.T) {

@@ -30,7 +30,10 @@ jobs:
       # Only this job builds the site, so only it caches the pnpm store.
       - id: pnpm
         working-directory: apps/site
-        run: echo "store=$("$(moon bin pnpm)" store path --silent)" >> "$GITHUB_OUTPUT"
+        # The assignment fails the step when pnpm is missing, and echo would not.
+        run: |
+          store=$("$(moon bin pnpm)" store path --silent)
+          echo "store=$store" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.pnpm.outputs.store }}

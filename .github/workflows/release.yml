@@ -26,7 +26,9 @@ jobs:
           # Release artifacts must not come from a cache PRs could have written.
           cache: false
       # A tag on a commit CI never passed would still be released: check again.
-      - run: moon check --all
+      # It checks only lopper, so no npm package from the site runs in a job
+      # that can publish and sign a release.
+      - run: moon check lopper
       # goreleaser runs go itself, outside Moon.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

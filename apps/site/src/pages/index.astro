@@ -9,18 +9,21 @@ const ways = [
   {
     id: "unix",
     label: "macOS, Linux",
+    prompt: "$",
     command:
       "curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh",
   },
   {
     id: "windows",
     label: "Windows",
+    prompt: ">",
     command:
       "irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex",
   },
   {
     id: "go",
     label: "Go",
+    prompt: "$",
     command:
       "go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest",
   },
@@ -54,18 +57,33 @@ const usage = [
       </p>
     </section>
 
-    <section class="row wide">
-      <video
-        src={demo}
-        poster="/poster.png"
-        width="1200"
-        height="672"
-        autoplay
-        muted
-        loop
-        playsinline
-        aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
-      ></video>
+    <section class="row wide demo">
+      <figure>
+        <div class="window">
+          <div class="bar" aria-hidden="true">
+            <span class="lights">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+            <span>~/code</span>
+          </div>
+          <video
+            src={demo}
+            poster="/poster.png"
+            width="1200"
+            height="672"
+            autoplay
+            muted
+            loop
+            playsinline
+          ></video>
+        </div>
+        <figcaption class="dim">
+          lopper removes four merged worktrees and, after a warning, two with
+          uncommitted work.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="row">
@@ -80,7 +98,10 @@ const usage = [
           ))}
         </fieldset>
         <div class="code">
-          {ways.map((w) => <pre data-way={w.id}><code>{w.command}</code></pre>)}
+          {ways.map((w) => <pre
+            data-way={w.id}
+            data-prompt={w.prompt}
+          ><code>{w.command}</code></pre>)}
           <button type="button" aria-live="polite">
             Copy
           </button>
@@ -196,8 +217,9 @@ const usage = [
   label:has(:checked) {
     color: var(--fg);
     text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
-    text-underline-offset: 0.2em;
+    text-decoration-color: var(--accent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.35em;
   }
 
   label:has(:focus-visible) {
@@ -216,8 +238,21 @@ const usage = [
 
   .install pre {
     display: none;
+    position: relative;
+    padding-left: 2.25rem;
     /* Keeps the end of a long command clear of the button. */
     padding-right: 4.5rem;
+    /* A command wraps rather than scrolls, and Copy takes it whole. */
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .install pre::before {
+    content: attr(data-prompt);
+    position: absolute;
+    left: 1rem;
+    color: var(--accent);
+    user-select: none;
   }
 
   .install:has([value="unix"]:checked) [data-way="unix"],
@@ -228,8 +263,8 @@ const usage = [
 
   button {
     position: absolute;
-    top: 1rem;
-    right: 0;
+    top: calc(1rem + 1px);
+    right: 1px;
     border: 0;
     padding: 0 1rem 0 0.5rem;
     background: var(--band);
@@ -244,20 +279,79 @@ const usage = [
     color: var(--fg);
   }
 
+  .demo {
+    position: relative;
+  }
+
+  /* A faint light behind the window, in the purple of merged worktrees. */
+  .demo::before {
+    content: "";
+    position: absolute;
+    inset: -15% -10% 5%;
+    z-index: -1;
+    background: radial-gradient(
+      closest-side,
+      light-dark(#8250df1a, #a371f729),
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  figure {
+    margin: 0;
+  }
+
+  /* The window stays dark in both themes, since the recording is dark. */
+  .window {
+    overflow: hidden;
+    border: 1px solid light-dark(#0000001f, #ffffff1a);
+    border-radius: 12px;
+    background: #0f1115;
+    box-shadow:
+      0 1px 2px #0000000f,
+      0 24px 48px -24px light-dark(#00000059, #000000b3);
+  }
+
+  .bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid #ffffff12;
+    color: #8b8b94;
+    font: 0.75rem/1 var(--mono);
+  }
+
+  .lights {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .lights i {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: #ffffff1f;
+  }
+
   video {
     display: block;
     width: 100%;
     height: auto;
-    border-radius: 8px;
-    background: #0f1115;
+  }
+
+  figcaption {
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    text-align: center;
   }
 
   .faq {
-    border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+    border-top: 1px solid var(--line);
   }
 
   details {
-    border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+    border-bottom: 1px solid var(--line);
     /* Lets the panel animate to its natural height where supported. */
     interpolate-size: allow-keywords;
   }

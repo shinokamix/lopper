@@ -1,10 +1,12 @@
 :root {
   color-scheme: light dark;
-  /* The dark background matches the demo terminal so the video has no edge. */
-  --bg: light-dark(#fbfbfa, #0f1115);
-  --fg: light-dark(#1a1a19, #e6e6e3);
-  --dim: light-dark(#6f6f6b, #8b8b86);
-  --band: light-dark(#f1f1ee, #171a1f);
+  --bg: light-dark(#fbfbfa, #0b0b0e);
+  --fg: light-dark(#1a1a19, #ececee);
+  --dim: light-dark(#6f6f6b, #8b8b94);
+  --band: light-dark(#f3f3f1, #131318);
+  --line: color-mix(in srgb, var(--fg) 10%, transparent);
+  /* lopper marks merged worktrees in this purple. */
+  --accent: light-dark(#8250df, #a371f7);
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
@@ -29,6 +31,8 @@
 html {
   background: var(--bg);
   color: var(--fg);
+  /* Keeps the glow behind the demo from widening the page. */
+  overflow-x: clip;
   font-family:
     system-ui,
     -apple-system,
@@ -50,7 +54,7 @@ body {
 }
 
 ::selection {
-  background: light-dark(#8250df40, #a371f740);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 a {
@@ -60,7 +64,7 @@ a {
 }
 
 a:hover {
-  text-decoration-color: currentColor;
+  text-decoration-color: var(--accent);
 }
 
 :focus-visible {
@@ -97,6 +101,7 @@ pre {
   margin: 0;
   padding: 1rem;
   background: var(--band);
+  border: 1px solid var(--line);
   border-radius: 8px;
   overflow-x: auto;
 }

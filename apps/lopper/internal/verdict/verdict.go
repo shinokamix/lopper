@@ -6,7 +6,6 @@ package verdict
 import (
 	"fmt"
 	"strings"
-	"unicode"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
@@ -62,7 +61,7 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 	detached := wt.Branch == ""
 	merged := f.Merged != nil && *f.Merged != lopper.NotMerged
 	if wt.Locked {
-		add(lopper.NoteWork, true, "unlock it with "+git(repo, "worktree unlock", quote(path)), "locked")
+		add(lopper.NoteWork, true, "unlock it with "+git(repo, "worktree unlock", lopper.Quote(path)), "locked")
 	}
 	if f.Dirty != nil && *f.Dirty > 0 {
 		add(lopper.NoteWork, true, "commit or stash them", "%d uncommitted", *f.Dirty)
@@ -76,7 +75,7 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 			"%d unchecked", *f.UncheckedFiles)
 	}
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
-		hint := "push them with " + git(path, "push") + ", or " + git(path, "push -u origin", quote(wt.Branch)) +
+		hint := "push them with " + git(path, "push") + ", or " + git(path, "push -u origin", lopper.Quote(wt.Branch)) +
 			" if the branch was never pushed"
 		if detached {
 			hint = "keep them on a branch with " + git(path, "switch -c <branch>")
@@ -90,13 +89,13 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 		add(lopper.NotePlain, false, "", "folder gone")
 		inspected = false
 	case lopper.StateOrphaned:
-		add(lopper.NotePlain, true, "copy out what you need, then delete it with `lopper rm --force "+quote(path)+"`",
+		add(lopper.NotePlain, true, "copy out what you need, then delete it with `lopper rm --force "+lopper.Quote(path)+"`",
 			"not tracked by git")
 		inspected = false
 	case lopper.StateMoved:
-		add(lopper.NotePlain, true, "relink it with "+git(repo, "worktree repair", quote(path)), "moved by hand")
+		add(lopper.NotePlain, true, "relink it with "+git(repo, "worktree repair", lopper.Quote(path)), "moved by hand")
 	case lopper.StateUnconfirmed:
-		add(lopper.NotePlain, true, "try "+git(repo, "worktree repair", quote(path)), "not confirmed by git")
+		add(lopper.NotePlain, true, "try "+git(repo, "worktree repair", lopper.Quote(path)), "not confirmed by git")
 	}
 	noBase := f.Merged == nil && base == ""
 	if inspected && (f.Dirty == nil || f.UncheckedFiles == nil || f.Unpushed == nil || f.Merged == nil && !noBase) {
@@ -119,16 +118,5 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 // git words a git command that runs in dir, since lopper runs from anywhere
 // and a pasted command must not act on the repository the shell is in.
 func git(dir string, args ...string) string {
-	return "`git -C " + quote(dir) + " " + strings.Join(args, " ") + "`"
-}
-
-// quote quotes a path for a POSIX shell when it needs it, so a hint's
-// command still works when pasted.
-func quote(path string) string {
-	if path != "" && !strings.ContainsFunc(path, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("/._-+:@,~", r)
-	}) {
-		return path
-	}
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+	return "`git -C " + lopper.Quote(dir) + " " + strings.Join(args, " ") + "`"
 }

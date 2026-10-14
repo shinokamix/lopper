@@ -171,20 +171,6 @@ func TestHints(t *testing.T) {
 	}
 }
 
-func TestQuote(t *testing.T) {
-	for path, want := range map[string]string{
-		"/tmp/wt-a_1.2": "/tmp/wt-a_1.2",
-		"/tmp/my wt":    "'/tmp/my wt'",
-		"/tmp/it's":     `'/tmp/it'\''s'`,
-		"/tmp/$HOME":    "'/tmp/$HOME'",
-		"":              "''",
-	} {
-		if got := quote(path); got != want {
-			t.Errorf("quote(%q) = %s, want %s", path, got, want)
-		}
-	}
-}
-
 // withoutHints lets a test pin a note's text, kind and whether it blocks,
 // while TestHints pins the hints.
 func withoutHints(notes []lopper.Note) []lopper.Note {

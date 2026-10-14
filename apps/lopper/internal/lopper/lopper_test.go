@@ -21,3 +21,17 @@ func TestFormatSize(t *testing.T) {
 		}
 	}
 }
+
+func TestQuote(t *testing.T) {
+	for path, want := range map[string]string{
+		"/tmp/wt-a_1.2": "/tmp/wt-a_1.2",
+		"/tmp/my wt":    "'/tmp/my wt'",
+		"/tmp/it's":     `'/tmp/it'\''s'`,
+		"/tmp/$HOME":    "'/tmp/$HOME'",
+		"":              "''",
+	} {
+		if got := Quote(path); got != want {
+			t.Errorf("Quote(%q) = %s, want %s", path, got, want)
+		}
+	}
+}

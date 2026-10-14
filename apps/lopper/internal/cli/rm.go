@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -28,29 +31,27 @@ func newRmCmd(eng *engine.Engine) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rm := remover{eng: eng, force: force}
-			failed, unsafe := 0, 0
+			var r report
 			for _, a := range args {
 				err := rm.remove(cmd.Context(), a)
-				if left, ok := errors.AsType[*engine.RecordLeftError](err); ok {
-					fmt.Fprintf(cmd.OutOrStdout(), "removed %s; %v\n", a, left)
+				if e, ok := errors.AsType[*engine.RecordLeftError](err); ok {
+					r.left = append(r.left, recordLeft{path: a, repo: e.Repo})
+					err = nil
+				}
+				if e, ok := errors.AsType[*engine.NotSafeError](err); ok {
+					r.refused = append(r.refused, refusal{path: a, why: strings.Join(e.Verdict.Reasons(), ", "), unsafe: true})
 					continue
 				}
 				if err != nil {
-					failed++
-					if _, ok := errors.AsType[*engine.NotSafeError](err); ok {
-						unsafe++
-					}
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: not removed: %v\n", a, err)
+					r.refused = append(r.refused, refusal{path: a, why: err.Error(), gone: errors.Is(err, errGone)})
 					continue
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", a)
+				r.removed = true
 			}
-			switch {
-			case unsafe > 0:
-				return fmt.Errorf("%d of %d worktrees not removed; `lopper explain <path>` shows what to do, "+
-					"and --force removes the ones not safe to delete anyway", failed, len(args))
-			case failed > 0:
-				return fmt.Errorf("%d of %d worktrees not removed", failed, len(args))
+			r.print(cmd.ErrOrStderr())
+			if len(r.refused) > 0 {
+				return fmt.Errorf("%d of %d worktrees not removed", len(r.refused), len(args))
 			}
 			return nil
 		},
@@ -66,8 +67,7 @@ type remover struct {
 
 // errGone is returned for a path whose folder is gone. Only git's record is
 // left, in a repository the path does not lead to.
-var errGone = errors.New("no such directory; if a repository lists a worktree there, " +
-	"`git worktree prune` in it removes the record")
+var errGone = errors.New("no such directory")
 
 // remove removes the worktree at path, found as lopper scan would find it.
 func (r *remover) remove(ctx context.Context, path string) error {
@@ -88,4 +88,66 @@ func find(ctx context.Context, eng *engine.Engine, path string) (lopper.Worktree
 		return lopper.Worktree{}, errGone
 	}
 	return eng.Find(ctx, []string{abs}, abs)
+}
+
+// report is what rm prints after the removed worktrees, the way git lists
+// what it refused and then hints at what to do.
+type report struct {
+	removed bool
+	refused []refusal
+	left    []recordLeft
+}
+
+type refusal struct {
+	path, why string
+	unsafe    bool // --force would remove it
+	gone      bool // explain says how to clear what git still records
+}
+
+// recordLeft is a removed worktree whose record git kept.
+type recordLeft struct{ path, repo string }
+
+func (r report) print(w io.Writer) {
+	var explain, unsafe []string
+	if len(r.refused) > 0 {
+		if r.removed {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintln(w, "not removed:")
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		for _, f := range r.refused {
+			fmt.Fprintf(tw, "  %s\t%s\n", f.path, f.why)
+			if f.unsafe || f.gone {
+				explain = append(explain, lopper.Quote(f.path))
+			}
+			if f.unsafe {
+				unsafe = append(unsafe, lopper.Quote(f.path))
+			}
+		}
+		_ = tw.Flush()
+	}
+	var hints []string
+	switch len(explain) {
+	case 0:
+	case 1:
+		hints = append(hints, "run `lopper explain "+explain[0]+"` to see what to do")
+	default:
+		hints = append(hints, "run `lopper explain <path>` to see what to do")
+	}
+	switch len(unsafe) {
+	case 0:
+	case 1:
+		hints = append(hints, "run `lopper rm --force "+unsafe[0]+"` to delete it anyway")
+	default:
+		hints = append(hints, "run `lopper rm --force "+strings.Join(unsafe, " ")+"` to delete them anyway")
+	}
+	for _, l := range r.left {
+		hints = append(hints, "run `git -C "+lopper.Quote(l.repo)+" worktree prune` to remove git's record of "+l.path)
+	}
+	if len(hints) > 0 && (r.removed || len(r.refused) > 0) {
+		fmt.Fprintln(w)
+	}
+	for _, h := range hints {
+		fmt.Fprintln(w, "hint:", h)
+	}
 }

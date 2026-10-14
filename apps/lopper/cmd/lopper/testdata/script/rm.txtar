@@ -15,16 +15,17 @@ exec git -C repo worktree list --porcelain
 exec git -C repo rev-parse --verify -q refs/heads/merged
 
 # locked, unpushed and dirty: without --force the worktree and its work
-# stay, and the error says why, where to see what to do and how to remove
-# it anyway. explain says what to do about each reason.
+# stay. rm lists the reasons that block it, then hints at explain, which
+# says what to do about each, and at --force.
 exec git -C repo worktree add -q -b unpushed ../wt-unpushed
 exec git -C wt-unpushed commit -q --allow-empty -m work
 cp notes.txt wt-unpushed/notes.txt
 exec git -C repo worktree lock $WORK/wt-unpushed
 ! exec lopper rm wt-unpushed
-stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged$'
-stderr 'lopper explain <path>. shows what to do'
-stderr '--force'
+stderr '^not removed:$'
+stderr '^  wt-unpushed  locked, 1 uncommitted, 1 unpushed, not merged$'
+stderr '^hint: run `lopper explain wt-unpushed` to see what to do$'
+stderr '^hint: run `lopper rm --force wt-unpushed` to delete it anyway$'
 exec lopper explain wt-unpushed
 stdout '^  locked: unlock it with `git -C .*repo''? worktree unlock .*wt-unpushed''?`'
 exists wt-unpushed/notes.txt
@@ -43,6 +44,7 @@ exec git -C repo worktree add -q -b here ../wt-here
 cd wt-here
 ! exec lopper rm --force .
 stderr 'the current directory is inside it'
+! stderr 'hint:'
 cd $WORK
 exists wt-here/.git
 
@@ -50,7 +52,8 @@ exists wt-here/.git
 # is still tried.
 exec git -C repo worktree add -q -b other ../wt-other
 ! exec lopper rm --force repo wt-other
-stderr '^repo: not removed: not a linked worktree$'
+stderr '^  repo  not a linked worktree$'
+! stderr 'hint:'
 stdout '^removed wt-other$'
 stderr '(?i)1 of 2 worktrees not removed'
 exists repo/.git
@@ -65,8 +68,10 @@ exec lopper scan --json $WORK
 stdout -count=1 '"prunable": true'
 exec git -C repo worktree add -q -b next ../wt-next
 ! exec lopper rm --force missing wt-gone wt-next
-stderr '^missing: not removed: no such directory; if a repository lists a worktree there, `git worktree prune` in it removes the record$'
-stderr '^wt-gone: not removed: no such directory'
+stderr '^  missing  no such directory$'
+stderr '^  wt-gone  no such directory$'
+stderr '^hint: run `lopper explain <path>` to see what to do$'
+! stderr '--force'
 stdout '^removed wt-next$'
 stderr '(?i)2 of 3 worktrees not removed'
 exec git -C repo worktree list --porcelain
@@ -79,7 +84,7 @@ stdout 'wt-gone'
 exec git -C repo worktree add -q -b damaged ../wt-damaged
 rm repo/.git/worktrees/wt-damaged/HEAD
 ! exec lopper rm wt-damaged
-stderr '^wt-damaged: not removed: not safe to delete: not confirmed by git'
+stderr '^  wt-damaged  not confirmed by git'
 exec lopper rm --force wt-damaged
 stdout '^removed wt-damaged$'
 ! exists wt-damaged
@@ -90,14 +95,15 @@ stdout '^removed wt-damaged$'
 exec git -C repo worktree add -q -b unlinked ../wt-unlinked
 rm repo/.git/worktrees/wt-unlinked/gitdir
 exec lopper rm --force wt-unlinked
-stdout '^removed wt-unlinked; git''s record of it is left in .*repo: `git worktree prune` there removes it$'
+stdout '^removed wt-unlinked$'
+stderr '^hint: run `git -C .*repo''? worktree prune` to remove git''s record of wt-unlinked$'
 ! exists wt-unlinked
 
 # Moved by hand: relinked, then removed with its record.
 exec git -C repo worktree add -q -b moved ../wt-moved-from
 mv wt-moved-from wt-moved
 ! exec lopper rm wt-moved
-stderr 'not safe to delete: moved by hand'
+stderr '  wt-moved  moved by hand'
 exec lopper rm --force wt-moved
 stdout '^removed wt-moved$'
 ! exists wt-moved
@@ -110,7 +116,7 @@ exec git -C lost commit -q --allow-empty -m init
 exec git -C lost worktree add -q -b orphan ../wt-orphan
 rm lost
 ! exec lopper rm wt-orphan
-stderr 'not safe to delete: not tracked by git'
+stderr '  wt-orphan  not tracked by git'
 exec lopper rm --force wt-orphan
 stdout '^removed wt-orphan$'
 ! exists wt-orphan

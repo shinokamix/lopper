@@ -36,7 +36,7 @@ stdout '"safe": false'
 
 # Removing this detached worktree would drop the only reference to its new HEAD.
 ! exec lopper rm wt
-stderr 'not safe to delete: .*not merged'
+stderr '  wt  .*not merged'
 exists wt/.git
 exec git -C repo worktree list --porcelain
 stdout 'worktree .*[/\\]wt'

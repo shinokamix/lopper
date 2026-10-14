@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -28,6 +29,10 @@ func newExplainCmd(eng *engine.Engine) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			wt, err := find(cmd.Context(), eng, args[0])
 			if err != nil {
+				if errors.Is(err, errGone) {
+					return fmt.Errorf("%s: %w; if a repository still lists a worktree there, "+
+						"`git worktree prune` in it removes its record", args[0], err)
+				}
 				return fmt.Errorf("%s: %w", args[0], err)
 			}
 			f, v := eng.Inspect(cmd.Context(), wt)

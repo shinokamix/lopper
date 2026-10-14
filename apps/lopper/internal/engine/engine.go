@@ -142,11 +142,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 type NotSafeError struct{ Verdict lopper.Verdict }
 
 func (e *NotSafeError) Error() string {
-	var why []string
-	for _, n := range e.Verdict.Notes {
-		why = append(why, n.Text)
-	}
-	return "not safe to delete: " + strings.Join(why, " · ")
+	return "not safe to delete: " + strings.Join(e.Verdict.Reasons(), ", ")
 }
 
 // RecordLeftError is returned by Remove when a worktree's directory is gone

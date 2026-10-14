@@ -49,12 +49,12 @@ func removalApp(t *testing.T) (*app, *remover) {
 }
 
 // found reports a checked worktree of repository /r with its size.
-func found(a *app, id string, size int64, safe bool, f lopper.Facts) {
+func found(a *app, id string, size int64, f lopper.Facts) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: lopper.ID(id), Path: "/r/" + id, Branch: id, Repo: lopper.Repo{Path: "/r"},
 	}}})
 	f.SizeBytes = &size
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(id), Facts: f, Safe: safe}})
+	inspected(a, lopper.ID(id), f)
 }
 
 // Removing asks once, showing what would be lost, and then removes every
@@ -62,9 +62,9 @@ func found(a *app, id string, size int64, safe bool, f lopper.Facts) {
 // and one shown as not safe with force, since the user confirmed it.
 func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	a, rm := removalApp(t)
-	found(a, "clean", 2_000_000_000, true, clean())
-	found(a, "wip", 1_000_000_000, false, lopper.Facts{Dirty: new(3)})
-	found(a, "other", 100, true, clean())
+	found(a, "clean", 2_000_000_000, clean())
+	found(a, "wip", 1_000_000_000, lopper.Facts{Dirty: new(3)})
+	found(a, "other", 100, clean())
 	press(a, ' ') // clean, then the cursor moves to wip
 	press(a, ' ')
 
@@ -104,10 +104,10 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 // removed stays, and the summary says why.
 func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	a, rm := removalApp(t)
-	found(a, "big", 2000, true, clean())
-	found(a, "busy", 1000, true, clean())
+	found(a, "big", 2000, clean())
+	found(a, "busy", 1000, clean())
 	rm.fail = map[lopper.ID]error{"busy": &engine.NotSafeError{
-		Worktree: lopper.Worktree{ID: "busy"}, Facts: lopper.Facts{Dirty: new(1)},
+		Verdict: lopper.Verdict{Notes: []lopper.Note{{Text: "1 uncommitted", Kind: lopper.NoteWork, Blocks: true}}},
 	}}
 	press(a, tea.KeyDown)
 
@@ -132,13 +132,13 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: clean(), Safe: true}})
+	inspected(a, "wt", clean())
 	press(a, 'd')
 	if v := view(a); strings.Contains(v, "removal may lose work") {
 		t.Fatalf("safe worktree is shown under the warning:\n%s", v)
 	}
 
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: lopper.Facts{Dirty: new(2), SizeBytes: new(int64(5_000_000))}}})
+	inspected(a, "wt", lopper.Facts{Dirty: new(2), SizeBytes: new(int64(5_000_000))})
 	lines := plainLines(a)
 	if !strings.Contains(lines[lineWith(t, lines, "Remove")], "5.0 MB") ||
 		lineWith(t, lines, "removal may lose work") > lineWith(t, lines, "2 uncommitted") {
@@ -168,7 +168,7 @@ func TestConfirmationWaitsForChecks(t *testing.T) {
 
 	checked := clean()
 	checked.SizeBytes = new(int64(1))
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "wt", Facts: checked, Safe: true}})
+	inspected(a, "wt", checked)
 	settle(a, press(a, tea.KeyEnter))
 	if want := []string{"wt"}; !slices.Equal(rm.calls, want) {
 		t.Errorf("removed %v once checked, want %v", rm.calls, want)
@@ -179,9 +179,9 @@ func TestConfirmationWaitsForChecks(t *testing.T) {
 // so the summary still tells the space freed.
 func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
 	a, rm := removalApp(t)
-	found(a, "known", 1_000_000, true, clean())
+	found(a, "known", 1_000_000, clean())
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "new", Path: "/r/new", Branch: "new", Repo: lopper.Repo{Path: "/r"}}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "new", Facts: clean(), Safe: true}})
+	inspected(a, "new", clean())
 	rm.sizes = map[lopper.ID]int64{"new": 4_000_000}
 	press(a, ' ')
 	press(a, ' ')
@@ -204,7 +204,7 @@ func TestConfirmationNamesRepositories(t *testing.T) {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 			ID: lopper.ID(repo), Path: "/code/" + repo + "-fix", Branch: "fix", Repo: lopper.Repo{Path: "/code/" + repo},
 		}}})
-		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(repo), Facts: clean(), Safe: true}})
+		inspected(a, lopper.ID(repo), clean())
 	}
 	press(a, ' ')
 	press(a, ' ')
@@ -225,10 +225,10 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	a, _ := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
 	for i := range 3 {
-		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), true, clean())
+		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), clean())
 	}
 	for i := 3; i < 12; i++ {
-		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), false, lopper.Facts{Dirty: new(i)})
+		found(a, fmt.Sprintf("wt%02d", i), int64(1000-i), lopper.Facts{Dirty: new(i)})
 	}
 	for range 12 {
 		press(a, ' ')
@@ -257,11 +257,15 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 func TestSummaryTellsWhyInColumn(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 72, Height: 20})
-	found(a, "unpushed", 100, false, lopper.Facts{})
-	found(a, "feature/login-page", 90, true, clean())
+	found(a, "unpushed", 100, lopper.Facts{})
+	found(a, "feature/login-page", 90, clean())
 	rm.fail = map[lopper.ID]error{
-		"unpushed":           fmt.Errorf("failed to delete '%s': Permission denied", filepath.Join(t.TempDir(), "code", "app", ".claude", "worktrees", "unpushed")),
-		"feature/login-page": &engine.NotSafeError{Facts: lopper.Facts{Dirty: new(1), Unpushed: new(0), Merged: new(lopper.MergedFF)}},
+		"unpushed": fmt.Errorf("failed to delete '%s': Permission denied", filepath.Join(t.TempDir(), "code", "app", ".claude", "worktrees", "unpushed")),
+		"feature/login-page": &engine.NotSafeError{Verdict: lopper.Verdict{Notes: []lopper.Note{
+			{Text: "1 uncommitted", Kind: lopper.NoteWork, Blocks: true},
+			{Text: "couldn't check", Blocks: true},
+			{Text: "merged", Kind: lopper.NoteMerged},
+		}}},
 	}
 	press(a, ' ')
 	press(a, ' ')
@@ -293,8 +297,8 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 9})
-	found(a, "gone", 2000, true, clean())
-	found(a, "kept", 100, true, clean())
+	found(a, "gone", 2000, clean())
+	found(a, "kept", 100, clean())
 	rm.fail = map[lopper.ID]error{"kept": errors.New("permission denied")}
 	press(a, ' ')
 	press(a, ' ')
@@ -314,11 +318,11 @@ func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 func TestSummaryScrollsThroughFailures(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 12})
-	found(a, "gone", 2000, true, clean())
+	found(a, "gone", 2000, clean())
 	rm.fail = map[lopper.ID]error{}
 	for i := range 8 {
 		id := fmt.Sprintf("kept%d", i)
-		found(a, id, int64(100-i), true, clean())
+		found(a, id, int64(100-i), clean())
 		rm.fail[lopper.ID(id)] = errors.New("permission denied")
 	}
 	for range 9 {
@@ -342,8 +346,8 @@ func TestSummaryScrollsThroughFailures(t *testing.T) {
 // could leave half deleted, and removes no more.
 func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {
 	a, rm := removalApp(t)
-	found(a, "one", 2000, true, clean())
-	found(a, "two", 1000, true, clean())
+	found(a, "one", 2000, clean())
+	found(a, "two", 1000, clean())
 	press(a, ' ')
 	press(a, ' ')
 	press(a, 'd')
@@ -373,8 +377,8 @@ func TestScanAgainDropsOldScan(t *testing.T) {
 		scans++
 		return make(chan engine.Event)
 	}
-	found(a, "gone", 1000, true, clean())
-	found(a, "kept", 500, true, clean())
+	found(a, "gone", 1000, clean())
+	found(a, "kept", 500, clean())
 	press(a, 'd')
 	settle(a, press(a, tea.KeyEnter))
 

@@ -178,16 +178,15 @@ func searchApp() *app {
 	for _, wt := range []struct {
 		id, repo string
 		facts    lopper.Facts
-		safe     bool
 	}{
-		{"feature/login", "/r/app", clean(), true},
-		{"fix/typo", "/r/app", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged)}, false},
-		{"chore/deps", "/r/api", lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)}, false},
+		{"feature/login", "/r/app", clean()},
+		{"fix/typo", "/r/app", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged)}},
+		{"chore/deps", "/r/api", lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)}},
 	} {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 			ID: lopper.ID(wt.id), Path: "/w/" + wt.id, Branch: wt.id, Repo: lopper.Repo{Path: wt.repo},
 		}}})
-		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(wt.id), Facts: wt.facts, Safe: wt.safe}})
+		inspected(a, lopper.ID(wt.id), wt.facts)
 	}
 	return a
 }
@@ -381,10 +380,7 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: "deps", Path: "/home/me/code/api-deps", Branch: "chore/deps", Repo: lopper.Repo{Path: "/home/me/code/api"},
 	}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{
-		ID:    "wt",
-		Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)},
-	}})
+	inspected(a, "wt", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)})
 
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	lines := plainLines(a)
@@ -445,9 +441,7 @@ func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: "wt", Path: "/w/wt", Branch: "fix/login", State: lopper.StateUnconfirmed, Reason: "HEAD is missing",
 	}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{
-		ID: "wt", Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)},
-	}})
+	inspected(a, "wt", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)})
 
 	a.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
 	if row := plainLines(a)[lineWith(t, plainLines(a), "fix/login")]; !strings.Contains(row, "3 uncommitted · not confirmed by git · merged") {
@@ -464,9 +458,7 @@ func TestNarrowRowShowsUncheckedFilesBeforeMerged(t *testing.T) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: "wt", Path: "/w/wt", Branch: "fix/login",
 	}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{
-		ID: "wt", Facts: lopper.Facts{Dirty: new(0), UncheckedFiles: new(2), Unpushed: new(0), Merged: new(lopper.MergedFF)},
-	}})
+	inspected(a, "wt", lopper.Facts{Dirty: new(0), UncheckedFiles: new(2), Unpushed: new(0), Merged: new(lopper.MergedFF)})
 	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	lines := plainLines(a)
 	line := lines[lineWith(t, lines, "fix/login")]
@@ -505,8 +497,8 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	for _, id := range []string{"measured", "measuring"} {
 		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(id), Branch: "a-branch-long-enough-to-be-cut-" + id}}})
 	}
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measured", Facts: measured, Safe: true}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{ID: "measuring", Facts: clean(), Safe: true}})
+	inspected(a, "measured", measured)
+	inspected(a, "measuring", clean())
 
 	lines := plainLines(a)
 	at := lineWith(t, lines, "a-branch") // measured first, since it is larger
@@ -588,10 +580,7 @@ func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: "wt", Path: repo.Path + "/.claude/worktrees/x", Branch: "feature/a-branch-name-longer-than-the-screen", Repo: repo,
 	}}})
-	a.Update(eventMsg{ev: engine.FactsUpdated{
-		ID:    "wt",
-		Facts: lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged), SizeBytes: new(int64(1_200_000_000))},
-	}})
+	inspected(a, "wt", lopper.Facts{Dirty: new(3), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged), SizeBytes: new(int64(1_200_000_000))})
 	a.Update(tea.KeyPressMsg{Code: ' '})
 
 	lines := plainLines(a)

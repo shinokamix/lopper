@@ -74,7 +74,7 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 					if r == nil {
 						continue // not announced by WorktreeFound; nothing to attach to
 					}
-					r.Facts, r.Safe = newScanFacts(ev.Facts), ev.Safe
+					r.Facts, r.Safe = newScanFacts(ev.Facts), ev.Verdict.Safe
 				case engine.ScanDone:
 					if ev.Err != nil {
 						return ev.Err

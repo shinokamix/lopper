@@ -9,7 +9,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/shinokamix/lopper/apps/lopper/internal/engine"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
 func testApp() *app {
@@ -67,4 +69,11 @@ func statusLine(lines []string) string {
 // with nothing uncommitted, unchecked or unpushed.
 func clean() lopper.Facts {
 	return lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)}
+}
+
+// inspected sends what the engine reports once it knows the facts of the
+// worktree with id: the facts and the verdict it draws from them.
+func inspected(a *app, id lopper.ID, f lopper.Facts) {
+	wt := a.store.byID[id].worktree
+	a.Update(eventMsg{ev: engine.FactsUpdated{ID: id, Facts: f, Verdict: verdict.Of(wt, f)}})
 }

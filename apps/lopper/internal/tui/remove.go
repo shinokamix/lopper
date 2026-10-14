@@ -16,7 +16,6 @@ import (
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/engine"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
-	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
 // removal is the screen that removes worktrees. It shows what goes and asks
@@ -96,7 +95,7 @@ func (it *item) section() int {
 	switch {
 	case !it.row.checked:
 		return checkingSection
-	case it.row.safe:
+	case it.row.verdict.Safe:
 		return safeSection
 	}
 	return workSection
@@ -134,7 +133,7 @@ func (rm *removal) confirm() {
 // force reports whether to remove the item whatever it holds, because the
 // user saw that it is not safe and confirmed. An item shown as safe is not
 // forced, so work that appears in it after the scan stops its removal.
-func (it *item) force() bool { return !it.row.safe }
+func (it *item) force() bool { return !it.row.verdict.Safe }
 
 // removed reports whether the worktree is gone from disk.
 func (it *item) removed() bool {
@@ -423,7 +422,7 @@ func repoLabel(repo lopper.Repo) string {
 func reason(err error) string {
 	if e, ok := errors.AsType[*engine.NotSafeError](err); ok {
 		var why []string
-		for _, n := range verdict.Notes(e.Worktree, e.Facts) {
+		for _, n := range e.Verdict.Notes {
 			why = append(why, n.Text)
 		}
 		return "not safe anymore: " + strings.Join(why, noteSep)

@@ -8,23 +8,22 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
-	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
 // facts is what a row shows about its worktree. "merged" keeps its color
 // whether or not the row is safe, as on GitHub. Work that would be lost
 // comes first, in its own color.
-func facts(r *row) []verdict.Note {
+func facts(r *row) []lopper.Note {
 	if !r.checked {
-		return []verdict.Note{{Text: "checking…"}}
+		return []lopper.Note{{Text: "checking…"}}
 	}
-	return verdict.Notes(r.worktree, r.facts)
+	return r.verdict.Notes
 }
 
 const noteSep = " · "
 
 // notesWidth is how many cells notes take in one line.
-func notesWidth(notes []verdict.Note) int {
+func notesWidth(notes []lopper.Note) int {
 	w := 0
 	for i, n := range notes {
 		if i > 0 {
@@ -39,7 +38,7 @@ func notesWidth(notes []verdict.Note) int {
 // left out, which the row counts as "+N" rather than drop silently. If not
 // even the first note fits whole, fitNotes cuts it short rather than leave a
 // bare count.
-func fitNotes(notes []verdict.Note, w int) (shown []verdict.Note, hidden int) {
+func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
 	for k := len(notes); k > 0; k-- {
 		need := notesWidth(notes[:k])
 		if k < len(notes) {
@@ -61,7 +60,7 @@ func fitNotes(notes []verdict.Note, w int) (shown []verdict.Note, hidden int) {
 		return nil, len(notes)
 	}
 	first.Text = ansi.Truncate(first.Text, room, "…")
-	return []verdict.Note{first}, rest
+	return []lopper.Note{first}, rest
 }
 
 // more is the count of notes left out, shown after the last one.

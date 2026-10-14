@@ -69,3 +69,30 @@ const (
 	MergedFF     MergeKind = "ancestor" // HEAD is an ancestor of base
 	MergedSquash MergeKind = "content"  // base has the changes after a squash, rebase or cherry-pick
 )
+
+// Verdict is what lopper concludes about a worktree from its facts.
+type Verdict struct {
+	Safe  bool
+	Notes []Note // most pressing first
+}
+
+// Note is one fact about a worktree, worded for the list and the CLI.
+type Note struct {
+	Text string
+	Kind NoteKind
+	// Blocks means the note is a reason not to delete the worktree.
+	Blocks bool
+	// Hint says how to clear what the note reports, when git has a command
+	// for it.
+	Hint string
+}
+
+// NoteKind says what a note is about, so a UI can color it.
+type NoteKind int
+
+// The kinds of note.
+const (
+	NotePlain  NoteKind = iota
+	NoteWork            // work or unchecked files that deletion puts at risk
+	NoteMerged          // the work is in the base branch
+)

@@ -174,7 +174,7 @@ func matches(r *row, terms []string) bool {
 }
 
 func matchesTerm(r *row, term string) bool {
-	if term == "safe" && r.safe {
+	if term == "safe" && r.verdict.Safe {
 		return true
 	}
 	for _, s := range []string{branchName(r.worktree), r.worktree.Path, r.worktree.Repo.Path} {

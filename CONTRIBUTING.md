@@ -24,8 +24,8 @@ go run ./cmd/lopper .tmp/fixture
 ```
 
 The first `moon` command installs a pre-commit hook into this checkout: it
-checks the formatting of staged Go files and tidiness of both go.mod files, in
-seconds.
+checks the formatting of Go files and tidiness of both go.mod files when a
+commit changes them, in seconds.
 CI runs what `moon check --all` does, skipping tasks no changed file affects;
 run it before pushing to catch the rest early.
 

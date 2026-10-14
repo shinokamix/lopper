@@ -44,12 +44,7 @@ const nav = [
     </header>
     <slot />
     <footer class="row dim">
-      <nav aria-label="Footer">
-        <a href={`${repo}/blob/main/LICENSE`}>MIT licensed</a>
-        {nav.map((n) => (
-          <a href={n.href}>{n.label}</a>
-        ))}
-      </nav>
+      <a href={`${repo}/blob/main/LICENSE`}>MIT licensed</a>
     </footer>
   </body>
 </html>
@@ -78,7 +73,8 @@ const nav = [
     color: var(--dim);
   }
 
-  nav a:hover {
+  nav a:hover,
+  footer a:hover {
     color: var(--fg);
   }
 

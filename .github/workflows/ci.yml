@@ -29,7 +29,6 @@ jobs:
       - uses: $/.github/actions/setup-ci
       # Only this job builds the site, so only it caches the pnpm store.
       - id: pnpm
-        working-directory: apps/site
         # The assignment fails the step when pnpm is missing, and echo would not.
         run: |
           store=$("$(moon bin pnpm)" store path --silent)
@@ -37,7 +36,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.pnpm.outputs.store }}
-          key: pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/site/pnpm-lock.yaml') }}
+          key: pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-${{ runner.arch }}-
       - run: moon ci --summary minimal
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0

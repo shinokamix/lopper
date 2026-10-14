@@ -2,7 +2,7 @@
 
 Clean up the Git worktrees you and your agents left behind.
 
-![lopper removes four merged worktrees and, after a warning, two with uncommitted work](apps/lopper/docs/demo.gif)
+![lopper removes four merged worktrees and, after a warning, two with uncommitted work](packages/demo/demo.gif)
 
 Worktrees end up all over the disk. You create some by hand, coding
 agents create one per task, and every tool keeps them in a different

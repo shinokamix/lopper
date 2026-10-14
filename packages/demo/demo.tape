@@ -1,7 +1,7 @@
 # This tape records the demo for the README and the site. Regenerate it with
-# `moon run demo`.
+# `moon run demo:record`.
 
-Output docs/demo.mp4
+Output demo.mp4
 
 Set Shell zsh
 Set FontSize 36
@@ -16,7 +16,7 @@ Hide
 Env NO_COLOR ""
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
-Type "source docs/demo-sandbox.sh"
+Type "source demo-sandbox.sh"
 Enter
 Sleep 15s
 Show

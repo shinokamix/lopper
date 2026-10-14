@@ -9,12 +9,14 @@ fileGroups:
     - public/**/*
     - astro.config.ts
     - tsconfig.json
-    - /apps/lopper/docs/demo.mp4
+    # The site ships this video from the demo package.
+    - /packages/demo/demo.mp4
   # Changing any of these can change what a check reports.
   tooling:
     - package.json
-    - pnpm-lock.yaml
-    - pnpm-workspace.yaml
+    - /package.json
+    - /pnpm-lock.yaml
+    - /pnpm-workspace.yaml
     - .prettierrc.json
     - .prettierignore
     - moon.yml
@@ -59,9 +61,9 @@ tasks:
     inputs:
       - src/**/*
       - astro.config.ts
-      - package.json
+        - package.json
       - tsconfig.json
-      - pnpm-lock.yaml
+      - /pnpm-lock.yaml
       - .prettierrc.json
       - .prettierignore
 

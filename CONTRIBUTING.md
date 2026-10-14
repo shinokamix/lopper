@@ -34,6 +34,13 @@ Applications live under `apps/` as separate Moon projects. The Go CLI is
 `apps/lopper`, with its own module, tools and build configuration. Moon runs its
 tasks from that directory; run Moon commands from the repository root.
 
+What more than one project uses lives under `packages/`, each a Moon project
+and a pnpm package. A project reaches another one only through its package,
+never by a path into its folder, and Moon rejects a dependency that breaks the
+project layers.
+The demo recording for the README and the site is `packages/demo`, and
+`moon run demo:record` records it again with ttyd and ffmpeg.
+
 Binary releases keep repository tags such as `v0.5.0`. The Go module path is
 `github.com/shinokamix/lopper/apps/lopper`, and `go install` finds its versions
 by tags such as `apps/lopper/v0.5.0`. The release workflow adds that tag for each

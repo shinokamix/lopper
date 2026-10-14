@@ -1,0 +1,7 @@
+{
+  "name": "@lopper/demo",
+  "private": true,
+  "exports": {
+    "./demo.mp4": "./demo.mp4"
+  }
+}

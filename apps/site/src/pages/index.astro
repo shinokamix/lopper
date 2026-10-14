@@ -53,37 +53,32 @@ const usage = [
       <h1>Clean up the Git worktrees you and your agents left behind.</h1>
       <p class="dim">
         Finds worktrees anywhere on the disk, shows how much space each takes
-        and removes the ones whose work is merged.
+        and removes only the ones whose work is merged. Branches stay.
       </p>
     </section>
 
     <section class="row wide demo">
-      <figure>
-        <div class="window">
-          <div class="bar" aria-hidden="true">
-            <span class="lights">
-              <i></i>
-              <i></i>
-              <i></i>
-            </span>
-            <span>~/code</span>
-          </div>
-          <video
-            src={demo}
-            poster="/poster.png"
-            width="1200"
-            height="672"
-            autoplay
-            muted
-            loop
-            playsinline
-          ></video>
+      <div class="window">
+        <div class="bar" aria-hidden="true">
+          <span class="lights">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+          <span>~/code</span>
         </div>
-        <figcaption class="dim">
-          lopper removes four merged worktrees and, after a warning, two with
-          uncommitted work.
-        </figcaption>
-      </figure>
+        <video
+          src={demo}
+          poster="/poster.png"
+          width="1200"
+          height="672"
+          autoplay
+          muted
+          loop
+          playsinline
+          aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
+        ></video>
+      </div>
     </section>
 
     <section class="row">
@@ -118,28 +113,45 @@ const usage = [
       <h2 class="label">faq</h2>
       <div class="faq">
         <details name="faq">
-          <summary>Which worktrees does lopper remove?</summary>
+          <summary>Does it delete my branches?</summary>
           <p>
-            Only those whose commits are in the base branch and that hold
-            nothing uncommitted. A worktree with uncommitted or unpushed work
-            goes only after a warning, or with <code>lopper rm --force</code>.
-            Locked and moved worktrees count as unsafe, since Git cannot check
-            them.
+            No. lopper removes a worktree with <code>git worktree remove</code>,
+            which deletes the folder and keeps the branch and its commits. You
+            can check the branch out again at any time.
           </p>
         </details>
         <details name="faq">
-          <summary>Does it notice squash merges?</summary>
+          <summary>Which worktrees does it remove?</summary>
           <p>
-            Yes. lopper counts work as merged when the base branch has its
-            changes, whether they arrived by a merge, a squash, a rebase or a
-            cherry-pick.
+            Only those whose changes are already in the base branch and that
+            hold nothing uncommitted. lopper sees the changes whether they
+            arrived by a merge, a squash, a rebase or a cherry-pick. A worktree
+            with uncommitted or unpushed work goes only after a warning, or with
+            <code>lopper rm --force</code>. Locked and moved worktrees count as
+            unsafe, since Git cannot check them.
           </p>
         </details>
         <details name="faq">
-          <summary>Where does it look?</summary>
+          <summary>What is the base branch?</summary>
           <p>
-            <code>lopper</code> scans your home and temporary directories.
-            <code>lopper ~/code</code> scans one directory instead.
+            The branch <code>origin/HEAD</code> points to. A repository without
+            it uses <code>main</code>, and then <code>master</code>.
+          </p>
+        </details>
+        <details name="faq">
+          <summary>Where does the space come from?</summary>
+          <p>
+            Each worktree has its own <code>node_modules</code>,
+            <code>.venv</code> or <code>target/</code>. Git deletes these
+            ignored files together with the worktree, so the space comes back.
+          </p>
+        </details>
+        <details name="faq">
+          <summary>Will it find the worktrees my agent created?</summary>
+          <p>
+            Yes. lopper walks your home and temporary directories, so it finds
+            worktrees wherever a tool put them. <code>lopper ~/code</code> scans
+            one directory instead.
           </p>
         </details>
         <details name="faq">
@@ -147,16 +159,6 @@ const usage = [
           <p>
             Only to check GitHub for a new release, in the background.
             <code>LOPPER_NO_UPDATE_CHECK=1</code> turns the check off.
-          </p>
-        </details>
-        <details name="faq">
-          <summary>Why is the second scan faster?</summary>
-          <p>
-            lopper remembers where it found repositories, in
-            <code>lopper/repos.json</code> under your user cache directory, and
-            lists their worktrees first. The cache changes only how soon
-            worktrees appear, never which. <code>LOPPER_NO_CACHE=1</code> scans
-            without it.
           </p>
         </details>
       </div>
@@ -297,10 +299,6 @@ const usage = [
     pointer-events: none;
   }
 
-  figure {
-    margin: 0;
-  }
-
   /* The window stays dark in both themes, since the recording is dark. */
   .window {
     overflow: hidden;
@@ -338,12 +336,6 @@ const usage = [
     display: block;
     width: 100%;
     height: auto;
-  }
-
-  figcaption {
-    margin-top: 1rem;
-    font-size: 0.875rem;
-    text-align: center;
   }
 
   .faq {

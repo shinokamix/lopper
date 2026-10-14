@@ -1,8 +1,8 @@
-package tui
+package lopper
 
 import "testing"
 
-func TestFormatBytes(t *testing.T) {
+func TestFormatSize(t *testing.T) {
 	cases := []struct {
 		n    int64
 		want string
@@ -16,8 +16,8 @@ func TestFormatBytes(t *testing.T) {
 		{2_000_000_000_000, "2.0 TB"},
 	}
 	for _, tc := range cases {
-		if got := formatBytes(tc.n); got != tc.want {
-			t.Errorf("formatBytes(%d) = %q, want %q", tc.n, got, tc.want)
+		if got := FormatSize(tc.n); got != tc.want {
+			t.Errorf("FormatSize(%d) = %q, want %q", tc.n, got, tc.want)
 		}
 	}
 }

@@ -2,6 +2,8 @@
 // import anything from this module.
 package lopper
 
+import "fmt"
+
 // ID identifies a worktree by its absolute, cleaned path.
 type ID string
 
@@ -57,7 +59,10 @@ type Facts struct {
 	Unpushed       *int       // commits neither on a remote nor in base
 	Merged         *MergeKind // how the work reached the base branch, if it did
 	SizeBytes      *int64
-	Errors         []string
+	// Ignored are the paths git ignores, a directory as one path ending in
+	// a slash. Deleting the worktree deletes them, and no check counts them.
+	Ignored []string
+	Errors  []string
 }
 
 // MergeKind says how a branch reached the base branch.
@@ -95,3 +100,30 @@ const (
 	NoteWork            // work or unchecked files that deletion puts at risk
 	NoteMerged          // the work is in the base branch
 )
+
+// FormatSize formats a size in SI units like "1.4 GB", as macOS Finder
+// does.
+func FormatSize(n int64) string {
+	const unit = 1000
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	prefixes := [...]string{"k", "M", "G", "T", "P", "E"}
+	return fmt.Sprintf("%.1f %sB", float64(n)/float64(div), prefixes[exp])
+}
+
+// Ref is the branch, or the short commit of a detached HEAD.
+func (wt Worktree) Ref() string {
+	if wt.Branch != "" {
+		return wt.Branch
+	}
+	if len(wt.Head) >= 7 {
+		return "detached @" + wt.Head[:7]
+	}
+	return "(detached)"
+}

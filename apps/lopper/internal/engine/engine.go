@@ -143,14 +143,9 @@ type NotSafeError struct{ Verdict lopper.Verdict }
 
 func (e *NotSafeError) Error() string {
 	var why []string
-	var hints []string
 	for _, n := range e.Verdict.Notes {
 		why = append(why, n.Text)
-		if n.Hint != "" {
-			hints = append(hints, n.Hint)
-		}
 	}
-	why = append(why, hints...)
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 
@@ -212,6 +207,14 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 		}
 	}
 	return gitx.RemoveWorktree(ctx, e.git, now.Repo.Path, now.Path, force)
+}
+
+// Inspect returns all lopper can tell about wt, including its size and
+// ignored files, which a scan leaves out, and the verdict on it.
+func (e *Engine) Inspect(ctx context.Context, wt lopper.Worktree) (lopper.Facts, lopper.Verdict) {
+	in := inspect.Inspector{Git: e.git}
+	f := in.Ignored(ctx, wt, in.Slow(ctx, wt, in.Quick(ctx, wt)))
+	return f, verdict.Of(wt, f)
 }
 
 // Measure returns the size of a worktree's directory as a scan measures it,

@@ -41,7 +41,7 @@ func NewRoot(releaseVersion string) *cobra.Command {
 			return tui.Run(cmd.Context(), eng, opts, updates)
 		},
 	}
-	root.AddCommand(newScanCmd(eng), newRmCmd(eng), newUpdateCmd(releaseVersion))
+	root.AddCommand(newScanCmd(eng), newExplainCmd(eng), newRmCmd(eng), newUpdateCmd(releaseVersion))
 	return root
 }
 

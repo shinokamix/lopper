@@ -20,7 +20,7 @@ stdout '"safe": false'
 stdout '"dirty": 0'
 stdout '"unchecked_files": 1'
 ! exec lopper rm wt-assumed
-stderr '1 unchecked.*index flags.*assume-unchanged.*skip-worktree'
+stderr '1 unchecked'
 cmp wt-assumed/tracked.txt edited.txt
 
 exec git -C repo worktree add -q -b skipped ../wt-skipped
@@ -34,7 +34,7 @@ stdout '"safe": false'
 stdout '"dirty": 0'
 stdout '"unchecked_files": 1'
 ! exec lopper rm wt-skipped
-stderr '1 unchecked.*index flags'
+stderr '1 unchecked'
 cmp wt-skipped/tracked.txt edited.txt
 
 exec git -C repo worktree add -q -b both ../wt-both
@@ -49,12 +49,15 @@ stdout '"safe": false'
 stdout '"dirty": 0'
 stdout '"unchecked_files": 1'
 ! exec lopper rm wt-both
-stderr '1 unchecked.*index flags'
+stderr '1 unchecked'
 cmp wt-both/tracked.txt edited.txt
 
-# The refusal's commands clear both flags, so status shows the edit again.
-stderr 'git -C .*wt-both''? update-index --no-assume-unchanged -- <file>'
-stderr 'git -C .*wt-both''? update-index --no-skip-worktree -- <file>'
+# The commands explain gives clear both flags, so status shows the edit
+# again.
+exec lopper explain wt-both
+stdout '1 unchecked: index flags hide their edits'
+stdout 'git -C .*wt-both''? update-index --no-assume-unchanged -- <file>'
+stdout 'git -C .*wt-both''? update-index --no-skip-worktree -- <file>'
 exec git -C wt-both update-index --no-assume-unchanged -- tracked.txt
 exec git -C wt-both update-index --no-skip-worktree -- tracked.txt
 exec git -C wt-both status --porcelain
@@ -94,7 +97,7 @@ stdout '"safe": false'
 stdout '"dirty": 0'
 stdout '"unchecked_files": 1'
 ! exec lopper rm wt-sparse-hidden
-stderr '1 unchecked.*index flags'
+stderr '1 unchecked'
 cmp wt-sparse-hidden/excluded/file.txt edited.txt
 exec lopper rm --force wt-sparse-hidden
 ! exists wt-sparse-hidden

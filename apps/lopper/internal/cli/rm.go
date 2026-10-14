@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/engine"
+	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
 func newRmCmd(eng *engine.Engine) *cobra.Command {
@@ -46,7 +47,8 @@ func newRmCmd(eng *engine.Engine) *cobra.Command {
 			}
 			switch {
 			case unsafe > 0:
-				return fmt.Errorf("%d of %d worktrees not removed; --force removes the ones not safe to delete", failed, len(args))
+				return fmt.Errorf("%d of %d worktrees not removed; `lopper explain <path>` shows what to do, "+
+					"and --force removes the ones not safe to delete anyway", failed, len(args))
 			case failed > 0:
 				return fmt.Errorf("%d of %d worktrees not removed", failed, len(args))
 			}
@@ -69,16 +71,21 @@ var errGone = errors.New("no such directory; if a repository lists a worktree th
 
 // remove removes the worktree at path, found as lopper scan would find it.
 func (r *remover) remove(ctx context.Context, path string) error {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
-		return errGone
-	}
-	wt, err := r.eng.Find(ctx, []string{abs}, abs)
+	wt, err := find(ctx, r.eng, path)
 	if err != nil {
 		return err
 	}
 	return r.eng.Remove(ctx, wt, r.force)
+}
+
+// find returns the worktree at path as lopper scan would find it.
+func find(ctx context.Context, eng *engine.Engine, path string) (lopper.Worktree, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return lopper.Worktree{}, err
+	}
+	if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
+		return lopper.Worktree{}, errGone
+	}
+	return eng.Find(ctx, []string{abs}, abs)
 }

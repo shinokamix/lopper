@@ -167,7 +167,7 @@ func sizeText(rows []*row, spin string) string {
 	if unknown {
 		return "?"
 	}
-	return formatBytes(total)
+	return lopper.FormatSize(total)
 }
 
 // totalSize sums the sizes of rows, or returns nil while any is unknown,

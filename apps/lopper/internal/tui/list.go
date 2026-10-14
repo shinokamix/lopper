@@ -177,7 +177,7 @@ func matchesTerm(r *row, term string) bool {
 	if term == "safe" && r.verdict.Safe {
 		return true
 	}
-	for _, s := range []string{branchName(r.worktree), r.worktree.Path, r.worktree.Repo.Path} {
+	for _, s := range []string{r.worktree.Ref(), r.worktree.Path, r.worktree.Repo.Path} {
 		if strings.Contains(strings.ToLower(s), term) {
 			return true
 		}
@@ -474,7 +474,7 @@ func (l *list) repoLine(t theme, g group, spin string, width int) string {
 // to their branch at any screen width, and all show when they fit.
 func columns(rows []*row) (names, notes int) {
 	for _, r := range rows {
-		names = max(names, ansi.StringWidth(branchName(r.worktree)))
+		names = max(names, ansi.StringWidth(r.worktree.Ref()))
 		notes = max(notes, notesWidth(facts(r)))
 	}
 	return names, notes
@@ -520,7 +520,7 @@ func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, spin strin
 	room := width - indent - 2 - ansi.StringWidth(size) - 1
 	labelW := max(min(notes, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
-	branch := fit(branchName(r.worktree), nameW)
+	branch := fit(r.worktree.Ref(), nameW)
 	gap := max(width-indent-nameW-2-labelW-ansi.StringWidth(size), 1)
 	var b strings.Builder
 	b.WriteString(lead + seg(name, branch) + seg(plain, "  "))

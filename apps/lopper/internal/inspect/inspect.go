@@ -160,6 +160,28 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 	return f
 }
 
+// Ignored adds the ignored paths of the worktree to f. The verdict does not
+// depend on them, so a scan does not list them.
+func (in Inspector) Ignored(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
+	switch wt.State {
+	case lopper.StateGone, lopper.StateOrphaned: // git cannot look inside
+		return f
+	case lopper.StateTracked, lopper.StateMoved, lopper.StateUnconfirmed:
+	}
+	out, err := in.Git.Run(ctx, wt.Path, "status", "--porcelain", "--ignored", "--untracked-files=normal", "-z")
+	if err != nil {
+		f.Errors = append(f.Errors, "could not list ignored files: "+firstLine(err.Error()))
+		return f
+	}
+	f.Ignored = []string{}
+	for record := range strings.SplitSeq(out, "\x00") {
+		if path, ok := strings.CutPrefix(record, "!! "); ok {
+			f.Ignored = append(f.Ignored, path)
+		}
+	}
+	return f
+}
+
 func (in Inspector) count(ctx context.Context, dir string, args ...string) (int, error) {
 	out, err := in.Git.Run(ctx, dir, args...)
 	if err != nil {

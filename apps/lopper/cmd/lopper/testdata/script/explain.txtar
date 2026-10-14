@@ -1,0 +1,47 @@
+# explain shows what lopper checked in a worktree, the verdict, what each
+# reason not to delete it takes to clear, and what lopper does not check.
+
+exec git init -q repo
+cp gitignore repo/.gitignore
+exec git -C repo add .gitignore
+exec git -C repo commit -q -m init
+
+# Safe, with an ignored file that removal would delete: the verdict stays
+# safe, but the file is named.
+exec git -C repo worktree add -q -b merged ../wt-merged
+cp secret.txt wt-merged/.env
+exec lopper explain wt-merged
+stdout '^base\s+main$'
+stdout '^uncommitted\s+0\s'
+stdout '^merged\s+yes, its commits are in main$'
+stdout '^ignored\s+\.env$'
+stdout '^safe to delete$'
+stdout 'the refs the last `git fetch` left'
+stdout '^removing the worktree keeps the branch merged$'
+
+# Not safe: each reason comes with what clears it.
+exec git -C repo worktree add -q -b wip ../wt-wip
+cp secret.txt wt-wip/notes.txt
+exec lopper explain wt-wip
+stdout '^uncommitted\s+1\s'
+stdout '^not safe to delete$'
+stdout '^  1 uncommitted: commit or stash'
+
+# Without a base branch nothing is compared, and the output says how to
+# set one.
+exec git init -q -b trunk other
+exec git -C other commit -q --allow-empty -m init
+exec git -C other worktree add -q -b topic ../wt-topic
+exec lopper explain wt-topic
+stdout '^base\s+none found$'
+stdout '^merged\s+\?$'
+stdout '^  no base branch: .*remote set-head origin --auto'
+
+! exec lopper explain missing
+stderr '(?i)missing: no such directory'
+stderr 'git worktree prune'
+
+-- gitignore --
+.env
+-- secret.txt --
+not in git

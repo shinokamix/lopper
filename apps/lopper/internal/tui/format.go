@@ -66,17 +66,6 @@ func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
 // more is the count of notes left out, shown after the last one.
 func more(n int) string { return fmt.Sprintf(" +%d", n) }
 
-// branchName is the branch, or the short commit of a detached HEAD.
-func branchName(wt lopper.Worktree) string {
-	if wt.Branch != "" {
-		return wt.Branch
-	}
-	if len(wt.Head) >= 7 {
-		return "detached @" + wt.Head[:7]
-	}
-	return "(detached)"
-}
-
 // alias is a short name for a directory that paths often start with.
 type alias struct{ dir, name string }
 
@@ -133,20 +122,4 @@ func fitPath(p string, w int) string {
 func fit(s string, w int) string {
 	s = ansi.Truncate(s, w, "…")
 	return s + strings.Repeat(" ", max(w-ansi.StringWidth(s), 0))
-}
-
-// formatBytes formats a size in SI units like "1.4 GB", as macOS Finder
-// does.
-func formatBytes(n int64) string {
-	const unit = 1000
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for v := n / unit; v >= unit; v /= unit {
-		div *= unit
-		exp++
-	}
-	prefixes := [...]string{"k", "M", "G", "T", "P", "E"}
-	return fmt.Sprintf("%.1f %sB", float64(n)/float64(div), prefixes[exp])
 }

@@ -340,8 +340,8 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	case size != nil:
 		// Pad to the width of the total, so the line stays put as the counter
 		// passes through the units.
-		total := formatBytes(*size)
-		now := fmt.Sprintf("%*s", len(total), formatBytes(rm.counted(*size)))
+		total := lopper.FormatSize(*size)
+		now := fmt.Sprintf("%*s", len(total), lopper.FormatSize(rm.counted(*size)))
 		lines = append(lines, t.title.Render(now+" freed"), t.subtle.Render(count))
 	default: // some sizes were still being measured
 		lines = append(lines, t.title.Render(count))
@@ -352,7 +352,7 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	// the screen, so centering keeps them aligned.
 	branchW := 0
 	for _, it := range append(failed, left...) {
-		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
+		branchW = max(branchW, ansi.StringWidth(it.row.worktree.Ref()))
 	}
 	branchW = min(branchW, width/3)
 	var tbl listing
@@ -368,7 +368,7 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		titles = append(titles, title)
 		tbl.text, tbl.item, tbl.head = append(tbl.text, title), append(tbl.item, -1), append(tbl.head, head)
 		for i, it := range items {
-			row := fit(branchName(it.row.worktree), branchW) + "  " + t.subtle.Render(reason(it.err))
+			row := fit(it.row.worktree.Ref(), branchW) + "  " + t.subtle.Render(reason(it.err))
 			tbl.text, tbl.item, tbl.head = append(tbl.text, row), append(tbl.item, i), append(tbl.head, head)
 		}
 	}

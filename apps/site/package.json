@@ -7,8 +7,11 @@
     "astro": "^7"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9",
+    "@types/node": "^24",
     "prettier": "^3",
-    "prettier-plugin-astro": "^1"
+    "prettier-plugin-astro": "^1",
+    "typescript": "^6"
   },
   "packageManager": "pnpm@12.9.1"
 }

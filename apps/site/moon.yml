@@ -42,6 +42,11 @@ tasks:
     outputs:
       - dist
 
+  typecheck:
+    description: Type-check the pages and scripts
+    command: astro check
+    inputs: *checked
+
   format:
     description: Fail if files need formatting
     command: prettier --check .

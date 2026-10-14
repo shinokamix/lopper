@@ -55,7 +55,7 @@ const usage = commands
         ones you no longer need.
       </p>
       <h2>install</h2>
-      <div class="install">
+      <form class="install" autocomplete="off">
         <fieldset aria-label="Install with">
           {ways.map((w, i) => (
             <label>
@@ -64,6 +64,14 @@ const usage = commands
             </label>
           ))}
         </fieldset>
+        {/* This script runs right after the radios, so Windows visitors never
+             see the curl command. With autocomplete off, the browser does not
+             restore an older choice over the one the script makes. */}
+        <script is:inline>
+          if (navigator.userAgent.includes("Windows")) {
+            document.querySelector('[value="windows"]').checked = true;
+          }
+        </script>
         <div class="command">
           {ways.map((w) => <pre
             data-way={w.id}
@@ -76,7 +84,7 @@ const usage = commands
         <p class="copy-status dim" role="status" hidden>
           Command selected. Copy it with your keyboard or context menu.
         </p>
-      </div>
+      </form>
     </section>
 
     <section class="demo">
@@ -173,11 +181,6 @@ const usage = commands
 </Layout>
 
 <script>
-  if (navigator.userAgent.includes("Windows")) {
-    document.querySelector<HTMLInputElement>('[value="windows"]')!.checked =
-      true;
-  }
-
   const button = document.querySelector<HTMLButtonElement>(".install button")!;
   const copyStatus =
     document.querySelector<HTMLParagraphElement>(".copy-status")!;

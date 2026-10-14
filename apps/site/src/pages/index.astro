@@ -3,7 +3,7 @@ import Layout from "../components/Layout.astro";
 import demo from "../../../lopper/docs/demo.mp4";
 
 const description =
-  "lopper finds Git worktrees anywhere on the disk, shows how much space each takes and removes only the ones whose work is merged.";
+  "lopper shows every Git worktree on your disk in one list, with its size and whether its work is merged, and asks before it removes uncommitted or unpushed work.";
 
 const ways = [
   {
@@ -29,19 +29,50 @@ const ways = [
   },
 ];
 
-const usage = [
+const commands = [
   ["lopper", "interactive UI, scans home and temporary directories"],
   ["lopper ~/code", "scan a specific directory"],
   ["lopper scan --json", "JSON output"],
   ["lopper rm ../wt", "remove if safe, --force otherwise"],
   ["lopper update", "update to the latest release"],
-]
-  // Built as one string, since Astro keeps template line breaks inside pre.
+];
+
+// Built as one string, since Astro keeps template line breaks inside pre.
+const usage = commands
   .map(
     ([command, note]) =>
       `${command.padEnd(20)}<span class="dim"># ${note}</span>`,
   )
   .join("\n");
+
+// Answers are HTML strings, so that a formatter cannot change the spacing
+// around their code.
+const faq = [
+  [
+    "Does it delete my branches?",
+    "No. lopper runs <code>git worktree remove</code>, which deletes the folder and leaves the branch and its commits alone. You can check the branch out again whenever you like.",
+  ],
+  [
+    "Which worktrees does it remove?",
+    "A worktree is safe to remove when its changes are already in the base branch and nothing in it is uncommitted. lopper notices merged work even after a squash, a rebase or a cherry-pick. A worktree with uncommitted or unpushed work goes only after you confirm a warning, or with <code>lopper rm --force</code>. Git cannot check locked or moved worktrees, so lopper treats them as unsafe.",
+  ],
+  [
+    "What is the base branch?",
+    "The branch <code>origin/HEAD</code> points to. A repository without it uses <code>main</code>, and then <code>master</code>.",
+  ],
+  [
+    "Where does the space come from?",
+    "Each worktree has its own <code>node_modules</code>, <code>.venv</code> or <code>target/</code>. Git ignores these files but deletes them with the worktree, so you get the space back.",
+  ],
+  [
+    "Will it find the worktrees my agent created?",
+    "Yes. lopper walks your home and temporary directories, so it finds worktrees wherever a tool put them. To scan one directory, run <code>lopper ~/code</code>.",
+  ],
+  [
+    "Does it use the network?",
+    "Only to check GitHub for a new release, in the background. Set <code>LOPPER_NO_UPDATE_CHECK=1</code> to turn that off.",
+  ],
+];
 ---
 
 <Layout
@@ -49,40 +80,13 @@ const usage = [
   description={description}
 >
   <main>
-    <section class="row wide hero">
-      <h1>Clean up the Git worktrees you and your agents left behind.</h1>
-      <p class="dim">
-        Finds worktrees anywhere on the disk, shows how much space each takes
-        and removes only the ones whose work is merged. Branches stay.
+    <section>
+      <h1>A cleaner for Git worktrees.</h1>
+      <p class="lede dim">
+        Coding agents leave Git worktrees all over your disk. lopper finds them
+        and cleans up the ones you're done with.
       </p>
-    </section>
-
-    <section class="row wide demo">
-      <div class="window">
-        <div class="bar" aria-hidden="true">
-          <span class="lights">
-            <i></i>
-            <i></i>
-            <i></i>
-          </span>
-          <span>~/code</span>
-        </div>
-        <video
-          src={demo}
-          poster="/poster.png"
-          width="1200"
-          height="672"
-          autoplay
-          muted
-          loop
-          playsinline
-          aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
-        ></video>
-      </div>
-    </section>
-
-    <section class="row">
-      <h2 class="label">install</h2>
+      <h2>install</h2>
       <div class="install">
         <fieldset aria-label="Install with">
           {ways.map((w, i) => (
@@ -92,7 +96,7 @@ const usage = [
             </label>
           ))}
         </fieldset>
-        <div class="code">
+        <div class="command">
           {ways.map((w) => <pre
             data-way={w.id}
             data-prompt={w.prompt}
@@ -104,64 +108,53 @@ const usage = [
       </div>
     </section>
 
-    <section class="row">
-      <h2 class="label">usage</h2>
+    <section class="demo">
+      <video
+        src={demo}
+        poster="/poster.png"
+        width="1200"
+        height="672"
+        autoplay
+        muted
+        loop
+        playsinline
+        aria-label="lopper removes four merged worktrees and, after a warning, two with uncommitted work"
+      ></video>
+    </section>
+
+    <section>
+      <h2>about</h2>
+      <p>
+        Worktrees pile up. You make some by hand, a coding agent makes one for
+        every task, and each tool puts them in its own folder. Every worktree is
+        a full copy of the project with its own <code>node_modules</code>,
+        <code>.venv</code> or Rust <code>target/</code>, so a few of them can
+        take gigabytes.
+      </p>
+      <p>
+        Git lists worktrees one repository at a time. Nothing tells you how many
+        you have, which repository each belongs to or how much space they take.
+      </p>
+      <p>
+        lopper walks your home and temporary directories, finds them all and
+        groups them by repository. Worktrees whose work is merged are marked in
+        purple, so you can tell which ones are safe to remove.
+      </p>
+    </section>
+
+    <section>
+      <h2>usage</h2>
       <pre><code set:html={usage} /></pre>
     </section>
 
-    <section class="row">
-      <h2 class="label">faq</h2>
-      <div class="faq">
+    <section>
+      <h2>faq</h2>
+      {faq.map(([question, answer]) => (
         <details name="faq">
-          <summary>Does it delete my branches?</summary>
-          <p>
-            No. lopper removes a worktree with <code>git worktree remove</code>,
-            which deletes the folder and keeps the branch and its commits. You
-            can check the branch out again at any time.
-          </p>
+          <summary>{question}</summary>
+          <p set:html={answer} />
         </details>
-        <details name="faq">
-          <summary>Which worktrees does it remove?</summary>
-          <p>
-            Only those whose changes are already in the base branch and that
-            hold nothing uncommitted. lopper sees the changes whether they
-            arrived by a merge, a squash, a rebase or a cherry-pick. A worktree
-            with uncommitted or unpushed work goes only after a warning, or with
-            <code>lopper rm --force</code>. Locked and moved worktrees count as
-            unsafe, since Git cannot check them.
-          </p>
-        </details>
-        <details name="faq">
-          <summary>What is the base branch?</summary>
-          <p>
-            The branch <code>origin/HEAD</code> points to. A repository without
-            it uses <code>main</code>, and then <code>master</code>.
-          </p>
-        </details>
-        <details name="faq">
-          <summary>Where does the space come from?</summary>
-          <p>
-            Each worktree has its own <code>node_modules</code>,
-            <code>.venv</code> or <code>target/</code>. Git deletes these
-            ignored files together with the worktree, so the space comes back.
-          </p>
-        </details>
-        <details name="faq">
-          <summary>Will it find the worktrees my agent created?</summary>
-          <p>
-            Yes. lopper walks your home and temporary directories, so it finds
-            worktrees wherever a tool put them. <code>lopper ~/code</code> scans
-            one directory instead.
-          </p>
-        </details>
-        <details name="faq">
-          <summary>Does it use the network?</summary>
-          <p>
-            Only to check GitHub for a new release, in the background.
-            <code>LOPPER_NO_UPDATE_CHECK=1</code> turns the check off.
-          </p>
-        </details>
-      </div>
+      ))}
     </section>
   </main>
 </Layout>
@@ -196,18 +189,35 @@ const usage = [
 </script>
 
 <style>
-  .hero p {
-    margin-top: 1rem;
-    max-width: 34rem;
+  .lede {
+    margin-top: 1lh;
+  }
+
+  h2 {
+    margin-bottom: 1lh;
+  }
+
+  .lede + h2 {
+    margin-top: 2lh;
+  }
+
+  p + p {
+    margin-top: 1lh;
+  }
+
+  .install {
+    background: var(--band);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
   }
 
   fieldset {
-    border: 0;
-    padding: 0;
-    margin: 0;
     display: flex;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0.75rem 1.25rem;
+    border: 0;
+    border-bottom: 1px solid var(--line);
     font-size: 0.875rem;
   }
 
@@ -226,7 +236,7 @@ const usage = [
     text-decoration: underline;
     text-decoration-color: var(--accent);
     text-decoration-thickness: 2px;
-    text-underline-offset: 0.35em;
+    text-underline-offset: 0.5em;
     cursor: default;
   }
 
@@ -246,25 +256,25 @@ const usage = [
     pointer-events: none;
   }
 
-  .code {
-    position: relative;
+  .command {
+    display: flex;
+    align-items: baseline;
   }
 
-  .install pre {
+  .command pre {
     display: none;
+    flex: 1;
+    min-width: 0;
     position: relative;
-    padding-left: 2.25rem;
-    /* Keeps the end of a long command clear of the button. */
-    padding-right: 4.5rem;
-    /* A command wraps rather than scrolls, and Copy takes it whole. */
-    white-space: pre-wrap;
-    word-break: break-all;
+    padding-left: 2.5rem;
+    background: none;
+    border: 0;
   }
 
-  .install pre::before {
+  .command pre::before {
     content: attr(data-prompt);
     position: absolute;
-    left: 1rem;
+    left: 1.25rem;
     color: var(--accent);
     user-select: none;
   }
@@ -276,17 +286,12 @@ const usage = [
   }
 
   button {
-    position: absolute;
-    /* Lines up with the command inside the border and padding of pre. */
-    top: calc(1rem + 1px);
-    right: calc(1rem + 1px);
+    padding: 0 1.25rem;
     border: 0;
-    padding: 0;
     background: none;
     color: var(--dim);
     font: inherit;
     font-size: 0.875rem;
-    line-height: 1.6;
     cursor: pointer;
   }
 
@@ -294,55 +299,11 @@ const usage = [
     color: var(--fg);
   }
 
+  /* The recording fills the frame on its own background, so it needs no
+     window around it. */
   .demo {
-    position: relative;
-  }
-
-  /* A faint light behind the window, in the purple of merged worktrees. */
-  .demo::before {
-    content: "";
-    position: absolute;
-    inset: -15% -10% 5%;
-    z-index: -1;
-    background: radial-gradient(
-      closest-side,
-      color-mix(in srgb, var(--accent) 14%, transparent),
-      transparent
-    );
-    pointer-events: none;
-  }
-
-  /* The window stays dark in both themes, since the recording is dark. */
-  .window {
-    overflow: hidden;
-    border: 1px solid light-dark(#0000001f, #ffffff1a);
-    border-radius: 12px;
-    background: #0f1115;
-    box-shadow:
-      0 1px 2px #0000000f,
-      0 24px 48px -24px light-dark(#00000059, #000000b3);
-  }
-
-  .bar {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    padding: 0.625rem 0.875rem;
-    border-bottom: 1px solid #ffffff12;
-    color: #8b8b94;
-    font: 0.75rem/1 var(--mono);
-  }
-
-  .lights {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .lights i {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 50%;
-    background: #ffffff1f;
+    padding: 0;
+    background: #0f1014;
   }
 
   video {
@@ -351,12 +312,7 @@ const usage = [
     height: auto;
   }
 
-  .faq {
-    border-top: 1px solid var(--line);
-  }
-
   details {
-    border-bottom: 1px solid var(--line);
     /* Lets the panel animate to its natural height where supported. */
     interpolate-size: allow-keywords;
   }
@@ -373,36 +329,52 @@ const usage = [
     block-size: auto;
   }
 
+  /* A row under the pointer gets the band the lopper list draws under its
+     cursor, across the whole frame. An open question is bold, like a
+     selected row. */
   summary {
     display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    padding-block: 1rem;
+    gap: 1.5ch;
+    margin-inline: calc(-1 * var(--pad));
+    padding: 0.25lh var(--pad);
     cursor: pointer;
     list-style: none;
+  }
+
+  summary:hover,
+  summary:focus-visible {
+    background: var(--cursor);
+    outline: 0;
+  }
+
+  details[open] summary {
+    font-weight: 700;
   }
 
   summary::-webkit-details-marker {
     display: none;
   }
 
-  summary::after {
+  summary::before {
     content: "+";
-    font-family: var(--mono);
     color: var(--dim);
   }
 
-  details[open] summary::after {
+  summary:hover::before,
+  details[open] summary::before {
+    color: var(--fg);
+  }
+
+  details[open] summary::before {
     content: "−";
   }
 
   details p {
-    padding-bottom: 1rem;
+    padding: 0.5lh 0 1lh 2.5ch;
     color: var(--dim);
   }
 
   details code {
-    font-size: 0.875em;
     color: var(--fg);
     white-space: nowrap;
   }

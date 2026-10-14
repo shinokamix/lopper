@@ -1,24 +1,31 @@
+/* Monaspace is a typeface of GitHub, whose Primer palette the lopper list
+   uses. */
+@import "@fontsource/monaspace-neon/400.css";
+@import "@fontsource/monaspace-neon/700.css";
+
 :root {
-  color-scheme: light dark;
-  --bg: light-dark(#fbfbfa, #0b0b0e);
-  --fg: light-dark(#1a1a19, #ececee);
-  --dim: light-dark(#6f6f6b, #8b8b94);
-  --band: light-dark(#f3f3f1, #131318);
-  --line: color-mix(in srgb, var(--fg) 10%, transparent);
-  /* lopper marks merged worktrees in this purple. */
-  --accent: light-dark(#8250df, #a371f7);
+  /* One dark palette, since the demo recording is dark. The neutrals lean
+     toward the purple that lopper marks merged worktrees in. */
+  color-scheme: dark;
+  --bg: #050507;
+  --fg: #f1eff6;
+  --dim: #8d8a98;
+  --band: #0e0d12;
+  --line: #ffffff17;
+  --accent: #a371f7;
+  /* The band under the cursor row of the lopper list. */
+  --cursor: #2a2a2e;
 
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-
-  --gutter: 8rem;
-  --gap: 2.5rem;
-  --measure: 40rem;
-  --section: 6rem;
+  --mono: "Monaspace Neon", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 4px;
+  /* Sizes count character cells and lines, as a terminal does. */
+  --pad: 8ch;
+  --measure: 72ch;
 }
 
 @media (width < 44rem) {
   :root {
-    --section: 4rem;
+    --pad: 2ch;
   }
 }
 
@@ -31,36 +38,45 @@
 html {
   background: var(--bg);
   color: var(--fg);
-  /* Keeps the glow behind the demo from widening the page. */
-  overflow-x: clip;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
-  font-size: 16px;
-  line-height: 1.6;
-  font-variant-numeric: tabular-nums;
+  font: 0.9375rem/1.7 var(--mono);
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
+/* The page is one framed column, and every section spans it. */
 body {
-  max-width: calc(var(--gutter) + var(--gap) + var(--measure) + 2.5rem);
+  max-width: 116ch;
+  min-height: 100vh;
   margin: 0 auto;
-  padding: 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  border-inline: 1px solid var(--line);
+}
+
+/* Keeps the footer at the bottom of a short page. */
+main {
+  flex: 1;
+}
+
+section {
+  padding: 3lh var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The footer draws the line under the last section. */
+main > section:last-child {
+  border-bottom: 0;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 a {
   color: inherit;
-  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
-  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.25em;
 }
 
 a:hover {
@@ -75,18 +91,23 @@ a:hover {
 h1,
 h2 {
   margin: 0;
+  font-weight: 700;
 }
 
 h1 {
-  font-size: clamp(2rem, 5.5vw, 2.75rem);
-  font-weight: 600;
-  line-height: 1.1;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  line-height: 1.2;
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
+h2 {
+  font-size: 1em;
+}
+
 p {
   margin: 0;
+  max-width: var(--measure);
   text-wrap: pretty;
 }
 
@@ -96,50 +117,16 @@ pre {
 }
 
 pre {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.7;
   margin: 0;
-  padding: 1rem;
+  padding: 1rem 1.25rem;
   background: var(--band);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   overflow-x: auto;
 }
 
 .dim {
   color: var(--dim);
-}
-
-/* A small mono label in the margin and the content in the text column. */
-.row {
-  display: grid;
-  grid-template-columns: var(--gutter) minmax(0, var(--measure));
-  column-gap: var(--gap);
-  align-items: baseline;
-  margin-top: var(--section);
-}
-
-.row > .label {
-  font: 0.8125rem/1.6 var(--mono);
-  color: var(--dim);
-}
-
-.row > :not(.label) {
-  grid-column: 2;
-}
-
-.row.wide > :not(.label) {
-  grid-column: 1 / -1;
-}
-
-@media (width < 44rem) {
-  .row {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 0.5rem;
-  }
-
-  .row > :not(.label),
-  .row.wide > :not(.label) {
-    grid-column: 1;
-  }
 }

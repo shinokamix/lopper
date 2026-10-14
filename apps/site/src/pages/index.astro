@@ -37,7 +37,8 @@ const commands: [string, string][] = [
   ["lopper update", "update to the latest release"],
 ];
 
-// Built as one string, since Astro keeps template line breaks inside pre.
+// Astro keeps the line breaks of a template inside pre, so the rows join
+// into one string here.
 const usage = commands
   .map(
     ([command, note]) =>

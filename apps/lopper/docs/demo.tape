@@ -1,4 +1,5 @@
-# The README and site animation. Regenerate with `moon run demo`.
+# This tape records the demo for the README and the site. Regenerate it with
+# `moon run demo`.
 
 Output docs/demo.mp4
 

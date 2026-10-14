@@ -81,9 +81,7 @@ const usage = commands
             Copy
           </button>
         </div>
-        <p class="copy-status dim" role="status" hidden>
-          Command selected. Copy it with your keyboard or context menu.
-        </p>
+        <p class="copy-status dim" role="status"></p>
       </form>
     </section>
 
@@ -187,10 +185,10 @@ const usage = commands
   document
     .querySelector(".install fieldset")!
     .addEventListener("change", () => {
-      copyStatus.hidden = true;
+      copyStatus.textContent = "";
     });
   button.addEventListener("click", async () => {
-    copyStatus.hidden = true;
+    copyStatus.textContent = "";
     const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
     const code = document.querySelector(`[data-way="${way.value}"] code`)!;
     try {
@@ -199,7 +197,8 @@ const usage = commands
       setTimeout(() => (button.textContent = "Copy"), 1500);
     } catch {
       getSelection()!.selectAllChildren(code);
-      copyStatus.hidden = false;
+      copyStatus.textContent =
+        "Command selected. Copy it with your keyboard or context menu.";
     }
   });
 </script>
@@ -228,8 +227,11 @@ const usage = commands
   }
 
   .copy-status {
-    padding: 0 1.25rem 0.75rem;
     font-size: 0.875rem;
+  }
+
+  .copy-status:not(:empty) {
+    padding: 0 1.25rem 0.75rem;
   }
 
   fieldset {

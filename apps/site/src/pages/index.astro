@@ -36,15 +36,6 @@ const commands: [string, string][] = [
   ["lopper rm ../wt", "remove a worktree if safe"],
   ["lopper update", "update to the latest release"],
 ];
-
-// Astro keeps the line breaks of a template inside pre, so the rows join
-// into one string here.
-const usage = commands
-  .map(
-    ([command, note]) =>
-      `${command.padEnd(20)}<span class="dim"># ${note}</span>`,
-  )
-  .join("\n");
 ---
 
 <Layout title="lopper: a cleaner for Git worktrees" description={description}>
@@ -119,7 +110,7 @@ const usage = commands
 
     <section>
       <h2>commands</h2>
-      <pre><code set:html={usage} /></pre>
+      <pre><code>{commands.map(([command, note], i) => <>{i > 0 && "\n"}{command.padEnd(20)}<span class="dim"># {note}</span></>)}</code></pre>
     </section>
 
     <section>

@@ -25,6 +25,9 @@ jobs:
         with:
           # Release artifacts must not come from a cache PRs could have written.
           cache: false
+          # moon check lopper installs Go when it runs, and the job needs no
+          # Node or pnpm.
+          setup: false
       # A tag on a commit CI never passed would still be released: check again.
       # It checks only lopper, so no npm package from the site runs in a job
       # that can publish and sign a release.

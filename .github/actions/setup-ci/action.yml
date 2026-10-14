@@ -4,6 +4,9 @@ inputs:
   cache:
     description: Restore and save the toolchain and Go caches
     default: 'true'
+  setup:
+    description: Install every toolchain with `moon setup`. Without it, Moon installs only the ones its tasks need, so turn it off only with the cache off.
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -13,7 +16,7 @@ runs:
     - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
       with:
         auto-install: true
-        auto-setup: true
+        auto-setup: ${{ inputs.setup }}
         cache: ${{ inputs.cache }}
         # Only main saves the toolchain cache; PRs restore it.
         cache-base: main

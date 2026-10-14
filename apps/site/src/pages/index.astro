@@ -174,21 +174,24 @@ const commands: [string, string][] = [
   const button = document.querySelector<HTMLButtonElement>(".install button")!;
   const copyStatus =
     document.querySelector<HTMLParagraphElement>(".copy-status")!;
+  let reset: ReturnType<typeof setTimeout> | undefined;
+  function resetCopy() {
+    clearTimeout(reset);
+    button.textContent = "Copy";
+    copyStatus.textContent = "";
+  }
+
   document
     .querySelector(".install fieldset")!
-    .addEventListener("change", () => {
-      copyStatus.textContent = "";
-    });
-  let reset: ReturnType<typeof setTimeout> | undefined;
+    .addEventListener("change", resetCopy);
   button.addEventListener("click", async () => {
-    copyStatus.textContent = "";
+    resetCopy();
     const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
     const code = document.querySelector(`[data-way="${way.value}"] code`)!;
     try {
       await navigator.clipboard.writeText(code.textContent!);
       button.textContent = "Copied";
-      clearTimeout(reset);
-      reset = setTimeout(() => (button.textContent = "Copy"), 1500);
+      reset = setTimeout(resetCopy, 1500);
     } catch {
       getSelection()!.selectAllChildren(code);
       copyStatus.textContent =

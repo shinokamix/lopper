@@ -23,7 +23,7 @@ cp notes.txt wt-unpushed/notes.txt
 exec git -C repo worktree lock $WORK/wt-unpushed
 ! exec lopper rm wt-unpushed
 stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged · '
-stderr 'unlock it with `git worktree unlock '
+stderr 'unlock it with `git -C .*repo worktree unlock .*wt-unpushed`'
 stderr '--force'
 exists wt-unpushed/notes.txt
 

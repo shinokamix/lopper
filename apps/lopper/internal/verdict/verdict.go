@@ -47,13 +47,6 @@ func safe(wt lopper.Worktree, f lopper.Facts) bool {
 	return false
 }
 
-// uncheckedHint is how to list files whose index flags hide edits and how to
-// clear the flags so `git status` sees the edits again. One update-index call
-// clears only one of the two flags, so the hint needs two calls.
-const uncheckedHint = "index flags hide their edits from git: `git ls-files -v | grep '^[a-zS]'` lists them, " +
-	"`git update-index --no-assume-unchanged -- <file>` and `git update-index --no-skip-worktree -- <file>` " +
-	"clear them for `git status`"
-
 // notes describes a worktree by its facts, most pressing first: work that
 // deleting it would lose, what git cannot tell about it, then how far the
 // work got. A note that blocks says in its hint what to do about it.
@@ -62,22 +55,30 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 	add := func(kind lopper.NoteKind, blocks bool, hint, format string, a ...any) {
 		out = append(out, lopper.Note{Text: fmt.Sprintf(format, a...), Kind: kind, Blocks: blocks, Hint: hint})
 	}
+	// git worktree commands run in the repository, since git may not work
+	// inside a worktree it lost track of.
+	repo, path := wt.Repo.Path, wt.Path
 	base := wt.Repo.DefaultBranch
 	detached := wt.Branch == ""
 	merged := f.Merged != nil && *f.Merged != lopper.NotMerged
 	if wt.Locked {
-		add(lopper.NoteWork, true, "unlock it with `git worktree unlock "+quote(wt.Path)+"`", "locked")
+		add(lopper.NoteWork, true, "unlock it with "+git(repo, "worktree unlock", quote(path)), "locked")
 	}
 	if f.Dirty != nil && *f.Dirty > 0 {
 		add(lopper.NoteWork, true, "commit or stash them", "%d uncommitted", *f.Dirty)
 	}
 	if f.UncheckedFiles != nil && *f.UncheckedFiles > 0 {
-		add(lopper.NoteWork, true, uncheckedHint, "%d unchecked", *f.UncheckedFiles)
+		add(lopper.NoteWork, true, "index flags hide their edits from git: "+
+			git(path, "ls-files -v | grep '^[a-zS]'")+" lists them, "+
+			// One update-index call clears only one of the two flags.
+			git(path, "update-index --no-assume-unchanged -- <file>")+" and "+
+			git(path, "update-index --no-skip-worktree -- <file>")+" clear them for `git status`",
+			"%d unchecked", *f.UncheckedFiles)
 	}
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
-		hint := "push them with `git push`"
+		hint := "push them with " + git(path, "push")
 		if detached {
-			hint = "keep them on a branch with `git switch -c <branch>` inside it"
+			hint = "keep them on a branch with " + git(path, "switch -c <branch>")
 		}
 		add(lopper.NoteWork, true, hint, "%d unpushed", *f.Unpushed)
 	}
@@ -88,28 +89,36 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 		add(lopper.NotePlain, false, "", "folder gone")
 		inspected = false
 	case lopper.StateOrphaned:
-		add(lopper.NotePlain, true, "copy out what you need, then delete it with `lopper rm --force`", "not tracked by git")
+		add(lopper.NotePlain, true, "copy out what you need, then delete it with `lopper rm --force "+quote(path)+"`",
+			"not tracked by git")
 		inspected = false
 	case lopper.StateMoved:
-		add(lopper.NotePlain, true, "relink it with `git worktree repair` inside it", "moved by hand")
+		add(lopper.NotePlain, true, "relink it with "+git(repo, "worktree repair", quote(path)), "moved by hand")
 	case lopper.StateUnconfirmed:
-		add(lopper.NotePlain, true, "try `git worktree repair` inside it", "not confirmed by git")
+		add(lopper.NotePlain, true, "try "+git(repo, "worktree repair", quote(path)), "not confirmed by git")
 	}
 	noBase := f.Merged == nil && base == ""
 	if inspected && (f.Dirty == nil || f.UncheckedFiles == nil || f.Unpushed == nil || f.Merged == nil && !noBase) {
 		add(lopper.NotePlain, true, "fix what git reported and try again", "couldn't check")
 	}
+	fetch := "run " + git(path, "fetch") + " if it was merged on the remote"
 	switch {
 	case merged:
 		add(lopper.NoteMerged, false, "", "merged")
 	case f.Merged != nil && detached:
-		add(lopper.NotePlain, true, "run `git fetch` if it was merged on the remote", "not merged")
+		add(lopper.NotePlain, true, fetch, "not merged")
 	case f.Merged != nil:
-		add(lopper.NotePlain, true, "merge it into "+base+", or run `git fetch` if it was merged on the remote", "not merged")
+		add(lopper.NotePlain, true, "merge it into "+base+", or "+fetch, "not merged")
 	case inspected && noBase:
-		add(lopper.NotePlain, true, "set one with `git remote set-head origin --auto`", "no base branch")
+		add(lopper.NotePlain, true, "set one with "+git(repo, "remote set-head origin --auto"), "no base branch")
 	}
 	return out
+}
+
+// git words a git command that runs in dir, since lopper runs from anywhere
+// and a pasted command must not act on the repository the shell is in.
+func git(dir string, args ...string) string {
+	return "`git -C " + quote(dir) + " " + strings.Join(args, " ") + "`"
 }
 
 // quote quotes a path for a POSIX shell when it needs it, so a hint's

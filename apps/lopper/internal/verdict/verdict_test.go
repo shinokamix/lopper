@@ -128,33 +128,40 @@ func TestNotesShowMergedLastInItsKind(t *testing.T) {
 	}
 }
 
-// A hint's command must work as pasted and fit the worktree: a detached
-// HEAD has no branch to push or merge into the base.
+// A hint's command must work as pasted from any directory and fit the
+// worktree: a detached HEAD has no branch to push or merge into the base.
 func TestHints(t *testing.T) {
-	wt := lopper.Worktree{Path: "/tmp/my wt", Branch: "topic", Locked: true, Repo: lopper.Repo{DefaultBranch: "main"}}
+	repo := lopper.Repo{Path: "/src/repo", DefaultBranch: "main"}
+	wt := lopper.Worktree{Path: "/tmp/my wt", Branch: "topic", Locked: true, Repo: repo}
 	detached := wt
 	detached.Branch = ""
+	moved := lopper.Worktree{Path: "/tmp/wt", Branch: "topic", State: lopper.StateMoved, Repo: repo}
+	orphaned := lopper.Worktree{Path: "/tmp/my wt", State: lopper.StateOrphaned}
 	f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)}
+	clean := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)}
 	cases := []struct {
-		name string
-		wt   lopper.Worktree
-		want []string
+		name  string
+		wt    lopper.Worktree
+		facts lopper.Facts
+		want  []string
 	}{
-		{"branch", wt, []string{
-			"unlock it with `git worktree unlock '/tmp/my wt'`",
-			"push them with `git push`",
-			"merge it into main, or run `git fetch` if it was merged on the remote",
+		{"branch", wt, f, []string{
+			"unlock it with `git -C /src/repo worktree unlock '/tmp/my wt'`",
+			"push them with `git -C '/tmp/my wt' push`",
+			"merge it into main, or run `git -C '/tmp/my wt' fetch` if it was merged on the remote",
 		}},
-		{"detached", detached, []string{
-			"unlock it with `git worktree unlock '/tmp/my wt'`",
-			"keep them on a branch with `git switch -c <branch>` inside it",
-			"run `git fetch` if it was merged on the remote",
+		{"detached", detached, f, []string{
+			"unlock it with `git -C /src/repo worktree unlock '/tmp/my wt'`",
+			"keep them on a branch with `git -C '/tmp/my wt' switch -c <branch>`",
+			"run `git -C '/tmp/my wt' fetch` if it was merged on the remote",
 		}},
+		{"moved", moved, clean, []string{"relink it with `git -C /src/repo worktree repair /tmp/wt`", ""}},
+		{"orphaned", orphaned, lopper.Facts{}, []string{"copy out what you need, then delete it with `lopper rm --force '/tmp/my wt'`"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string
-			for _, n := range Of(tc.wt, f).Notes {
+			for _, n := range Of(tc.wt, tc.facts).Notes {
 				got = append(got, n.Hint)
 			}
 			if !slices.Equal(got, tc.want) {

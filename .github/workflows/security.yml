@@ -27,8 +27,9 @@ jobs:
           allow-licenses: >-
             MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0,
             LicenseRef-scancode-google-patent-license-golang
-          # Dev tools from apps/lopper/tools/go.mod. They never reach the lopper binary.
+          # Monaspace uses OFL-1.1. These Go dev tools never reach the lopper binary.
           allow-dependencies-licenses: >-
+            pkg:npm/%40fontsource/monaspace-neon,
             pkg:golang/github.com/golangci/golangci-lint/v2,
             pkg:golang/github.com/OpenPeeDeeP/depguard/v2,
             pkg:golang/github.com/alecthomas/chroma/v2,

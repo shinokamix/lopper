@@ -54,6 +54,11 @@ func TestSafe(t *testing.T) {
 			if !v.Safe && !slices.ContainsFunc(v.Notes, func(n lopper.Note) bool { return n.Blocks }) {
 				t.Errorf("not safe, but no note says why: %v", v.Notes)
 			}
+			for _, n := range v.Notes {
+				if n.Blocks && n.Hint == "" {
+					t.Errorf("%q blocks removal but does not say what to do about it", n.Text)
+				}
+			}
 		})
 	}
 }
@@ -70,7 +75,7 @@ func TestNotesCountUnpushedOnlyUntilMerged(t *testing.T) {
 		{lopper.NotMerged, []lopper.Note{{Text: "3 unpushed", Kind: lopper.NoteWork, Blocks: true}, {Text: "not merged", Kind: lopper.NotePlain, Blocks: true}}},
 	} {
 		f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(3), Merged: new(tc.merged)}
-		if got := Of(repo, f).Notes; !slices.Equal(got, tc.want) {
+		if got := withoutHints(Of(repo, f).Notes); !slices.Equal(got, tc.want) {
 			t.Errorf("Notes with 3 local commits, merged %s = %v, want %v", tc.merged, got, tc.want)
 		}
 	}
@@ -82,7 +87,7 @@ func TestNotesCountUnpushedOnlyUntilMerged(t *testing.T) {
 func TestNoBaseBranchIsNotAFailedCheck(t *testing.T) {
 	f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0)}
 	want := []lopper.Note{{Text: "no base branch", Kind: lopper.NotePlain, Blocks: true}}
-	if got := Of(lopper.Worktree{}, f).Notes; !slices.Equal(got, want) {
+	if got := withoutHints(Of(lopper.Worktree{}, f).Notes); !slices.Equal(got, want) {
 		t.Errorf("Notes without a base branch = %v, want %v", got, want)
 	}
 }
@@ -121,4 +126,64 @@ func TestNotesShowMergedLastInItsKind(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A hint's command must work as pasted and fit the worktree: a detached
+// HEAD has no branch to push or merge into the base.
+func TestHints(t *testing.T) {
+	wt := lopper.Worktree{Path: "/tmp/my wt", Branch: "topic", Locked: true, Repo: lopper.Repo{DefaultBranch: "main"}}
+	detached := wt
+	detached.Branch = ""
+	f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(2), Merged: new(lopper.NotMerged)}
+	cases := []struct {
+		name string
+		wt   lopper.Worktree
+		want []string
+	}{
+		{"branch", wt, []string{
+			"unlock it with `git worktree unlock '/tmp/my wt'`",
+			"push them with `git push`",
+			"merge it into main, or run `git fetch` if it was merged on the remote",
+		}},
+		{"detached", detached, []string{
+			"unlock it with `git worktree unlock '/tmp/my wt'`",
+			"keep them on a branch with `git switch -c <branch>` inside it",
+			"run `git fetch` if it was merged on the remote",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []string
+			for _, n := range Of(tc.wt, f).Notes {
+				got = append(got, n.Hint)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("hints = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestQuote(t *testing.T) {
+	for path, want := range map[string]string{
+		"/tmp/wt-a_1.2": "/tmp/wt-a_1.2",
+		"/tmp/my wt":    "'/tmp/my wt'",
+		"/tmp/it's":     `'/tmp/it'\''s'`,
+		"/tmp/$HOME":    "'/tmp/$HOME'",
+		"":              "''",
+	} {
+		if got := quote(path); got != want {
+			t.Errorf("quote(%q) = %s, want %s", path, got, want)
+		}
+	}
+}
+
+// withoutHints lets a test pin a note's text, kind and whether it blocks,
+// while TestHints pins the hints.
+func withoutHints(notes []lopper.Note) []lopper.Note {
+	out := slices.Clone(notes)
+	for i := range out {
+		out[i].Hint = ""
+	}
+	return out
 }

@@ -82,8 +82,7 @@ type Note struct {
 	Kind NoteKind
 	// Blocks means the note is a reason not to delete the worktree.
 	Blocks bool
-	// Hint says how to clear what the note reports, when git has a command
-	// for it.
+	// Hint says what to do about the note. Every note that blocks has one.
 	Hint string
 }
 

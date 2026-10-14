@@ -15,13 +15,15 @@ exec git -C repo worktree list --porcelain
 exec git -C repo rev-parse --verify -q refs/heads/merged
 
 # locked, unpushed and dirty: without --force the worktree and its work
-# stay, and the error says why and how to remove it anyway.
+# stay, and the error says why, what to do about each reason and how to
+# remove it anyway.
 exec git -C repo worktree add -q -b unpushed ../wt-unpushed
 exec git -C wt-unpushed commit -q --allow-empty -m work
 cp notes.txt wt-unpushed/notes.txt
 exec git -C repo worktree lock $WORK/wt-unpushed
 ! exec lopper rm wt-unpushed
-stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged$'
+stderr '^wt-unpushed: not removed: not safe to delete: locked · 1 uncommitted · 1 unpushed · not merged · '
+stderr 'unlock it with `git worktree unlock '
 stderr '--force'
 exists wt-unpushed/notes.txt
 

@@ -5,6 +5,8 @@ package verdict
 
 import (
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
@@ -46,58 +48,77 @@ func safe(wt lopper.Worktree, f lopper.Facts) bool {
 }
 
 // uncheckedHint is how to list files whose index flags hide edits and how to
-// clear the flags so `git status` sees the edits again.
+// clear the flags so `git status` sees the edits again. One update-index call
+// clears only one of the two flags, so the hint needs two calls.
 const uncheckedHint = "index flags hide their edits from git: `git ls-files -v | grep '^[a-zS]'` lists them, " +
 	"`git update-index --no-assume-unchanged -- <file>` and `git update-index --no-skip-worktree -- <file>` " +
 	"clear them for `git status`"
 
 // notes describes a worktree by its facts, most pressing first: work that
 // deleting it would lose, what git cannot tell about it, then how far the
-// work got.
+// work got. A note that blocks says in its hint what to do about it.
 func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 	var out []lopper.Note
-	add := func(kind lopper.NoteKind, blocks bool, format string, a ...any) *lopper.Note {
-		out = append(out, lopper.Note{Text: fmt.Sprintf(format, a...), Kind: kind, Blocks: blocks})
-		return &out[len(out)-1]
+	add := func(kind lopper.NoteKind, blocks bool, hint, format string, a ...any) {
+		out = append(out, lopper.Note{Text: fmt.Sprintf(format, a...), Kind: kind, Blocks: blocks, Hint: hint})
 	}
+	base := wt.Repo.DefaultBranch
+	detached := wt.Branch == ""
 	merged := f.Merged != nil && *f.Merged != lopper.NotMerged
 	if wt.Locked {
-		add(lopper.NoteWork, true, "locked")
+		add(lopper.NoteWork, true, "unlock it with `git worktree unlock "+quote(wt.Path)+"`", "locked")
 	}
 	if f.Dirty != nil && *f.Dirty > 0 {
-		add(lopper.NoteWork, true, "%d uncommitted", *f.Dirty)
+		add(lopper.NoteWork, true, "commit or stash them", "%d uncommitted", *f.Dirty)
 	}
 	if f.UncheckedFiles != nil && *f.UncheckedFiles > 0 {
-		add(lopper.NoteWork, true, "%d unchecked", *f.UncheckedFiles).Hint = uncheckedHint
+		add(lopper.NoteWork, true, uncheckedHint, "%d unchecked", *f.UncheckedFiles)
 	}
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
-		add(lopper.NoteWork, true, "%d unpushed", *f.Unpushed)
+		hint := "push them with `git push`"
+		if detached {
+			hint = "keep them on a branch with `git switch -c <branch>` inside it"
+		}
+		add(lopper.NoteWork, true, hint, "%d unpushed", *f.Unpushed)
 	}
 	inspected := true // whether inspect asks git about it
 	switch wt.State {
 	case lopper.StateTracked:
 	case lopper.StateGone:
-		add(lopper.NotePlain, false, "folder gone")
+		add(lopper.NotePlain, false, "", "folder gone")
 		inspected = false
 	case lopper.StateOrphaned:
-		add(lopper.NotePlain, true, "not tracked by git")
+		add(lopper.NotePlain, true, "copy out what you need, then delete it with `lopper rm --force`", "not tracked by git")
 		inspected = false
 	case lopper.StateMoved:
-		add(lopper.NotePlain, true, "moved by hand")
+		add(lopper.NotePlain, true, "relink it with `git worktree repair` inside it", "moved by hand")
 	case lopper.StateUnconfirmed:
-		add(lopper.NotePlain, true, "not confirmed by git")
+		add(lopper.NotePlain, true, "try `git worktree repair` inside it", "not confirmed by git")
 	}
-	noBase := f.Merged == nil && wt.Repo.DefaultBranch == ""
+	noBase := f.Merged == nil && base == ""
 	if inspected && (f.Dirty == nil || f.UncheckedFiles == nil || f.Unpushed == nil || f.Merged == nil && !noBase) {
-		add(lopper.NotePlain, true, "couldn't check")
+		add(lopper.NotePlain, true, "fix what git reported and try again", "couldn't check")
 	}
 	switch {
 	case merged:
-		add(lopper.NoteMerged, false, "merged")
+		add(lopper.NoteMerged, false, "", "merged")
+	case f.Merged != nil && detached:
+		add(lopper.NotePlain, true, "run `git fetch` if it was merged on the remote", "not merged")
 	case f.Merged != nil:
-		add(lopper.NotePlain, true, "not merged")
+		add(lopper.NotePlain, true, "merge it into "+base+", or run `git fetch` if it was merged on the remote", "not merged")
 	case inspected && noBase:
-		add(lopper.NotePlain, true, "no base branch")
+		add(lopper.NotePlain, true, "set one with `git remote set-head origin --auto`", "no base branch")
 	}
 	return out
+}
+
+// quote quotes a path for a POSIX shell when it needs it, so a hint's
+// command still works when pasted.
+func quote(path string) string {
+	if path != "" && !strings.ContainsFunc(path, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("/._-+:@,~", r)
+	}) {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }

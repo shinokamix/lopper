@@ -188,6 +188,7 @@ const usage = commands
     .addEventListener("change", () => {
       copyStatus.textContent = "";
     });
+  let reset: ReturnType<typeof setTimeout> | undefined;
   button.addEventListener("click", async () => {
     copyStatus.textContent = "";
     const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
@@ -195,7 +196,8 @@ const usage = commands
     try {
       await navigator.clipboard.writeText(code.textContent!);
       button.textContent = "Copied";
-      setTimeout(() => (button.textContent = "Copy"), 1500);
+      clearTimeout(reset);
+      reset = setTimeout(() => (button.textContent = "Copy"), 1500);
     } catch {
       getSelection()!.selectAllChildren(code);
       copyStatus.textContent =

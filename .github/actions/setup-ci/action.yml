@@ -7,8 +7,8 @@ inputs:
 runs:
   using: composite
   steps:
-    # Installs proto (.moon/toolchains.yml) and Moon (.prototools), then
-    # `moon setup` installs Go, Node and pnpm (.moon/toolchains.yml), so the
+    # Installs proto from .moon/toolchains.yml and Moon from .prototools, then
+    # `moon setup` installs Go, Node and pnpm from .moon/toolchains.yml, so the
     # toolchain cache always holds them.
     - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
       with:

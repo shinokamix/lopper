@@ -1,4 +1,4 @@
-# Skip releases younger than a week: most compromised versions are yanked by
+# Skip releases younger than a week. Most compromised versions are yanked by
 # then. Dependabot waits as long for Go modules and actions.
 minimumReleaseAge: 10080
 

@@ -34,7 +34,7 @@ jobs:
             chore
             style
             revert
-          # Package names and the site, plus deps (Dependabot) and deps-dev.
+          # Package names, the site, and deps and deps-dev for Dependabot.
           scopes: |
             cli
             config

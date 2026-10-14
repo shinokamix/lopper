@@ -16,7 +16,7 @@ concurrency:
 # full history, without file contents (blob:none). Each job puts a table of what
 # ran into its summary.
 jobs:
-  # Lint (for every target OS), tidiness, tests, govulncheck and the site.
+  # Lint for every target OS, tidiness, tests, govulncheck and the site.
   check:
     runs-on: ubuntu-latest
     steps:

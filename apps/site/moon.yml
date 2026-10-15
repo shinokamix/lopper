@@ -9,7 +9,8 @@ fileGroups:
     - public/**/*
     - astro.config.ts
     - tsconfig.json
-    # The site ships files from the demo package.
+    # The site ships files from the demo package. vercel.json deploys the
+    # site when the same paths outside it change.
     - /packages/demo/**/*
   # Changing any of these can change what a check reports.
   tooling:
@@ -68,6 +69,7 @@ tasks:
       - src/**/*
       - astro.config.ts
       - eslint.config.js
+      - vercel.json
       - package.json
       - tsconfig.json
       - /pnpm-lock.yaml

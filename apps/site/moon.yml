@@ -9,8 +9,9 @@ fileGroups:
     - public/**/*
     - astro.config.ts
     - tsconfig.json
-    # The site ships this video from the demo package.
+    # The site ships this video, and the exports of the demo package pick it.
     - /packages/demo/demo.mp4
+    - /packages/demo/package.json
   # Changing any of these can change what a check reports.
   tooling:
     - package.json

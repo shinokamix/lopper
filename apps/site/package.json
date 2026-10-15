@@ -5,6 +5,7 @@
   "dependencies": {
     "@fontsource/monaspace-neon": "^5",
     "@lopper/demo": "workspace:*",
+    "@vercel/analytics": "^2",
     "astro": "^7"
   },
   "devDependencies": {

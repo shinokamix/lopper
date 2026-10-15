@@ -421,11 +421,7 @@ func repoLabel(repo lopper.Repo) string {
 // what is left to do when git still lists it.
 func reason(err error) string {
 	if e, ok := errors.AsType[*engine.NotSafeError](err); ok {
-		var why []string
-		for _, n := range e.Verdict.Notes {
-			why = append(why, n.Text)
-		}
-		return "not safe anymore: " + strings.Join(why, noteSep)
+		return "not safe anymore: " + strings.Join(e.Verdict.Reasons(), noteSep)
 	}
 	if e, ok := errors.AsType[*engine.RecordLeftError](err); ok {
 		return "run git worktree prune in " + repoLabel(lopper.Repo{Path: e.Repo})

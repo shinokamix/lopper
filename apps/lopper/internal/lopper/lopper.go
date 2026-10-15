@@ -96,3 +96,14 @@ const (
 	NoteWork            // work or unchecked files that deletion puts at risk
 	NoteMerged          // the work is in the base branch
 )
+
+// Reasons are the texts of the notes that block removal.
+func (v Verdict) Reasons() []string {
+	var out []string
+	for _, n := range v.Notes {
+		if n.Blocks {
+			out = append(out, n.Text)
+		}
+	}
+	return out
+}

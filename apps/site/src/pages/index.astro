@@ -188,11 +188,16 @@ const commands: [string, string][] = [
     resetCopy();
     const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
     const code = document.querySelector(`[data-way="${way.value}"] code`)!;
-    try {
-      await navigator.clipboard.writeText(code.textContent!);
+    const copied = await navigator.clipboard.writeText(code.textContent!).then(
+      () => true,
+      () => false,
+    );
+    // The visitor may pick another command while the copy is pending.
+    if (!way.checked) return;
+    if (copied) {
       button.textContent = "Copied";
       reset = setTimeout(resetCopy, 1500);
-    } catch {
+    } else {
       getSelection()!.selectAllChildren(code);
       copyStatus.textContent =
         "Command selected. Copy it with your keyboard or context menu.";

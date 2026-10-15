@@ -13,4 +13,3 @@ node_modules/
 /packages/demo/.tmp/
 /apps/site/dist/
 /apps/site/.astro/
-/apps/site/.vercel/

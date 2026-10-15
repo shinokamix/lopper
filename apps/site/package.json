@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@astrojs/vercel": "^11.0.12",
     "@fontsource/monaspace-neon": "^5",
     "@lopper/demo": "workspace:*",
     "@vercel/analytics": "^2.0.1",

@@ -1,0 +1,28 @@
+exec git init -q 'repo with space'
+exec git -C 'repo with space' commit -q --allow-empty -m init
+mkdir '~'
+exec git -C 'repo with space' worktree add -q -b literal '../~/wt''s'
+exec git -C 'repo with space' worktree lock '../~/wt''s'
+
+! exec lopper rm '~/wt''s'
+stderr '^hint: run `lopper explain -- <path>` to see what to do$'
+stderr '^hint: run `lopper rm --force -- <path>\.\.\.` to delete unsafe worktrees anyway$'
+stderr '^hint: Commands are templates\. Replace placeholders and quote values for your shell\.$'
+exists '~/wt''s/.git'
+
+exec lopper explain '~/wt''s'
+stdout '^worktree\s+.*[/\\]~[/\\]wt''s$'
+stdout '^repository\s+.*[/\\]repo with space$'
+stdout '^Commands are templates\. Replace placeholders and quote values for your shell\.$'
+stdout '^  locked: unlock it with `git -C <repository> worktree unlock <worktree>`$'
+
+exec git -C 'repo with space' worktree add -q -b dash ../-topic
+exec git -C 'repo with space' worktree lock $WORK/-topic
+! exec lopper rm -- -topic
+stderr '^hint: run `lopper explain -- <path>` to see what to do$'
+stderr '^hint: run `lopper rm --force -- <path>\.\.\.` to delete unsafe worktrees anyway$'
+exists -topic/.git
+
+exec lopper explain -- -topic
+stdout '^worktree\s+.*[/\\]-topic$'
+stdout '^  locked: unlock it with `git -C <repository> worktree unlock <worktree>`$'

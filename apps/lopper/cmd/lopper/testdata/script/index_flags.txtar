@@ -56,8 +56,10 @@ cmp wt-both/tracked.txt edited.txt
 # again.
 exec lopper explain wt-both
 stdout '1 unchecked: index flags hide their edits'
-stdout 'git -C .*wt-both''? update-index --no-assume-unchanged -- <file>'
-stdout 'git -C .*wt-both''? update-index --no-skip-worktree -- <file>'
+stdout 'git -C <worktree> ls-files -v'
+! stdout 'grep'
+stdout 'git -C <worktree> update-index --no-assume-unchanged -- <file>'
+stdout 'git -C <worktree> update-index --no-skip-worktree -- <file>'
 exec git -C wt-both update-index --no-assume-unchanged -- tracked.txt
 exec git -C wt-both update-index --no-skip-worktree -- tracked.txt
 exec git -C wt-both status --porcelain

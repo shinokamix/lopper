@@ -18,6 +18,8 @@ import (
 // rest.
 const shownIgnored = 10
 
+const commandTemplates = "Commands are templates. Replace placeholders and quote values for your shell."
+
 func newExplainCmd(eng *engine.Engine) *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain path",
@@ -83,6 +85,7 @@ func explain(w io.Writer, wt lopper.Worktree, f lopper.Facts, v lopper.Verdict) 
 		fmt.Fprintln(w, "safe to delete")
 	} else {
 		fmt.Fprintln(w, "not safe to delete")
+		fmt.Fprintln(w, commandTemplates)
 		for _, n := range v.Notes {
 			if n.Blocks {
 				fmt.Fprintf(w, "  %s: %s\n", n.Text, n.Hint)

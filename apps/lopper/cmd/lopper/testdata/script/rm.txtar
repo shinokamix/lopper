@@ -24,10 +24,11 @@ exec git -C repo worktree lock $WORK/wt-unpushed
 ! exec lopper rm wt-unpushed
 stderr '^not removed:$'
 stderr '^  wt-unpushed  locked, 1 uncommitted, 1 unpushed, not merged$'
-stderr '^hint: run `lopper explain wt-unpushed` to see what to do$'
-stderr '^hint: run `lopper rm --force wt-unpushed` to delete it anyway$'
+stderr '^hint: run `lopper explain -- <path>` to see what to do$'
+stderr '^hint: run `lopper rm --force -- <path>\.\.\.` to delete unsafe worktrees anyway$'
+stderr '^hint: Commands are templates\. Replace placeholders and quote values for your shell\.$'
 exec lopper explain wt-unpushed
-stdout '^  locked: unlock it with `git -C .*repo''? worktree unlock .*wt-unpushed''?`'
+stdout '^  locked: unlock it with `git -C <repository> worktree unlock <worktree>`$'
 exists wt-unpushed/notes.txt
 
 # --force removes it with the uncommitted file, lock or not. The commit is
@@ -70,7 +71,7 @@ exec git -C repo worktree add -q -b next ../wt-next
 ! exec lopper rm --force missing wt-gone wt-next
 stderr '^  missing  no such directory$'
 stderr '^  wt-gone  no such directory$'
-stderr '^hint: run `lopper explain <path>` to see what to do$'
+stderr '^hint: run `lopper explain -- <path>` to see what to do$'
 ! stderr '--force'
 stdout '^removed wt-next$'
 stderr '(?i)2 of 3 worktrees not removed'
@@ -96,7 +97,7 @@ exec git -C repo worktree add -q -b unlinked ../wt-unlinked
 rm repo/.git/worktrees/wt-unlinked/gitdir
 exec lopper rm --force wt-unlinked
 stdout '^removed wt-unlinked$'
-stderr '^hint: run `git -C .*repo''? worktree prune` to remove git''s record of wt-unlinked$'
+stderr '^hint: run `git -C <repository> worktree prune` to remove git''s record of wt-unlinked in .*repo$'
 ! exists wt-unlinked
 
 # Moved by hand: relinked, then removed with its record.

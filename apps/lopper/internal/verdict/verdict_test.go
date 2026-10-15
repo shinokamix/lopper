@@ -128,8 +128,6 @@ func TestNotesShowMergedLastInItsKind(t *testing.T) {
 	}
 }
 
-// A hint's command must work as pasted from any directory and fit the
-// worktree: a detached HEAD has no branch to push or merge into the base.
 func TestHints(t *testing.T) {
 	repo := lopper.Repo{Path: "/src/repo", DefaultBranch: "main"}
 	wt := lopper.Worktree{Path: "/tmp/my wt", Branch: "topic", Locked: true, Repo: repo}
@@ -146,17 +144,17 @@ func TestHints(t *testing.T) {
 		want  []string
 	}{
 		{"branch", wt, f, []string{
-			"unlock it with `git -C /src/repo worktree unlock '/tmp/my wt'`",
-			"push them with `git -C '/tmp/my wt' push`, or `git -C '/tmp/my wt' push -u origin topic` if the branch was never pushed",
-			"merge it into main, or run `git -C '/tmp/my wt' fetch` if it was merged on the remote",
+			"unlock it with `git -C <repository> worktree unlock <worktree>`",
+			"push them with `git -C <worktree> push`, or `git -C <worktree> push -u <remote> <branch>` if the branch was never pushed",
+			"merge it into main, or run `git -C <worktree> fetch` if it was merged on the remote",
 		}},
 		{"detached", detached, f, []string{
-			"unlock it with `git -C /src/repo worktree unlock '/tmp/my wt'`",
-			"keep them on a branch with `git -C '/tmp/my wt' switch -c <branch>`",
-			"run `git -C '/tmp/my wt' fetch` if it was merged on the remote",
+			"unlock it with `git -C <repository> worktree unlock <worktree>`",
+			"keep them on a branch with `git -C <worktree> switch -c <branch>`",
+			"run `git -C <worktree> fetch` if it was merged on the remote",
 		}},
-		{"moved", moved, clean, []string{"relink it with `git -C /src/repo worktree repair /tmp/wt`", ""}},
-		{"orphaned", orphaned, lopper.Facts{}, []string{"copy out what you need, then delete it with `lopper rm --force '/tmp/my wt'`"}},
+		{"moved", moved, clean, []string{"relink it with `git -C <repository> worktree repair <worktree>`", ""}},
+		{"orphaned", orphaned, lopper.Facts{}, []string{"copy out what you need, then delete it with `lopper rm --force -- <worktree>`"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

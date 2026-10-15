@@ -108,7 +108,7 @@ type refusal struct {
 type recordLeft struct{ path, repo string }
 
 func (r report) print(w io.Writer) {
-	var explain, unsafe []string
+	var explain, unsafe bool
 	if len(r.refused) > 0 {
 		if r.removed {
 			fmt.Fprintln(w)
@@ -117,37 +117,28 @@ func (r report) print(w io.Writer) {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, f := range r.refused {
 			fmt.Fprintf(tw, "  %s\t%s\n", f.path, f.why)
-			if f.unsafe || f.gone {
-				explain = append(explain, lopper.Quote(f.path))
-			}
-			if f.unsafe {
-				unsafe = append(unsafe, lopper.Quote(f.path))
-			}
+			explain = explain || f.unsafe || f.gone
+			unsafe = unsafe || f.unsafe
 		}
 		_ = tw.Flush()
 	}
 	var hints []string
-	switch len(explain) {
-	case 0:
-	case 1:
-		hints = append(hints, "run `lopper explain "+explain[0]+"` to see what to do")
-	default:
-		hints = append(hints, "run `lopper explain <path>` to see what to do")
+	if explain {
+		hints = append(hints, "run `lopper explain -- <path>` to see what to do")
 	}
-	switch len(unsafe) {
-	case 0:
-	case 1:
-		hints = append(hints, "run `lopper rm --force "+unsafe[0]+"` to delete it anyway")
-	default:
-		hints = append(hints, "run `lopper rm --force "+strings.Join(unsafe, " ")+"` to delete them anyway")
+	if unsafe {
+		hints = append(hints, "run `lopper rm --force -- <path>...` to delete unsafe worktrees anyway")
 	}
 	for _, l := range r.left {
-		hints = append(hints, "run `git -C "+lopper.Quote(l.repo)+" worktree prune` to remove git's record of "+l.path)
+		hints = append(hints, "run `git -C <repository> worktree prune` to remove git's record of "+l.path+" in "+l.repo)
 	}
 	if len(hints) > 0 && (r.removed || len(r.refused) > 0) {
 		fmt.Fprintln(w)
 	}
 	for _, h := range hints {
 		fmt.Fprintln(w, "hint:", h)
+	}
+	if len(hints) > 0 {
+		fmt.Fprintln(w, "hint:", commandTemplates)
 	}
 }

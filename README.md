@@ -40,12 +40,18 @@ Binaries are also on the [releases page](https://github.com/shinokamix/lopper/re
 ## Usage
 
 ```sh
-lopper              # interactive UI, scans home and temporary directories
-lopper ~/code       # scan a specific directory
-lopper scan --json  # JSON output
-lopper rm ../wt     # remove if safe, --force otherwise
-lopper update       # update to the latest release
+lopper               # interactive UI, scans home and temporary directories
+lopper ~/code        # scan a specific directory
+lopper scan --json   # JSON output
+lopper explain ../wt # show checks and reasons to keep a worktree
+lopper rm ../wt      # remove if safe, --force otherwise
+lopper update        # update to the latest release
 ```
+
+Commands in diagnostic hints are templates. Replace placeholders such as
+`<worktree>` and `<repository>` with the paths shown in the output, and quote
+values for your shell. `<path>...` means one or more paths. Do not run the
+templates unchanged.
 
 lopper checks GitHub for updates in the background.
 Set `LOPPER_NO_UPDATE_CHECK=1` to disable the check.

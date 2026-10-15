@@ -2,11 +2,7 @@
 // import anything from this module.
 package lopper
 
-import (
-	"fmt"
-	"strings"
-	"unicode"
-)
+import "fmt"
 
 // ID identifies a worktree by its absolute, cleaned path.
 type ID string
@@ -141,15 +137,4 @@ func (v Verdict) Reasons() []string {
 		}
 	}
 	return out
-}
-
-// Quote quotes a path for a POSIX shell when it needs it, so a command
-// lopper prints still works when pasted.
-func Quote(path string) string {
-	if path != "" && !strings.ContainsFunc(path, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("/._-+:@,~", r)
-	}) {
-		return path
-	}
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }

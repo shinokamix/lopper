@@ -10,5 +10,6 @@ coverage.out
 /.vscode/
 /.idea/
 node_modules/
+/packages/demo/.tmp/
 /apps/site/dist/
 /apps/site/.astro/

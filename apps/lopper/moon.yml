@@ -131,14 +131,3 @@ tasks:
       GIT_CONFIG_KEY_0: core.hooksPath
       GIT_CONFIG_VALUE_0: /dev/null
     preset: utility
-
-  # A README cannot play a video file from the repository, so it gets a GIF
-  # made from the mp4 that the site plays.
-  demo:
-    description: Record the demo into the demo package (needs ttyd and ffmpeg)
-    script: go run github.com/charmbracelet/vhs@v0.12.1 demo/demo.tape -o "$DEMO/demo.mp4" && ffmpeg -v error -y -i "$DEMO/demo.mp4" -vf "scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" "$DEMO/demo.gif"
-    deps:
-      - ~:build
-    env:
-      DEMO: $workspaceRoot/packages/demo
-    preset: utility

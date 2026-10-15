@@ -142,15 +142,12 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 type NotSafeError struct{ Verdict lopper.Verdict }
 
 func (e *NotSafeError) Error() string {
-	var why []string
-	var hints []string
+	why := e.Verdict.Reasons()
 	for _, n := range e.Verdict.Notes {
-		why = append(why, n.Text)
 		if n.Hint != "" {
-			hints = append(hints, n.Hint)
+			why = append(why, n.Hint)
 		}
 	}
-	why = append(why, hints...)
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 

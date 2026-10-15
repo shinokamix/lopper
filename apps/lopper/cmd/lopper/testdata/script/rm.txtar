@@ -14,6 +14,14 @@ exec git -C repo worktree list --porcelain
 ! stdout 'wt-merged'
 exec git -C repo rev-parse --verify -q refs/heads/merged
 
+# A merged worktree with an uncommitted file is refused for the file alone,
+# and the refusal does not list the merge as a reason.
+exec git -C repo worktree add -q -b dirty ../wt-dirty
+cp notes.txt wt-dirty/notes.txt
+! exec lopper rm wt-dirty
+stderr '^wt-dirty: not removed: not safe to delete: 1 uncommitted$'
+exec lopper rm --force wt-dirty
+
 # locked, unpushed and dirty: without --force the worktree and its work
 # stay, and the error says why and how to remove it anyway.
 exec git -C repo worktree add -q -b unpushed ../wt-unpushed

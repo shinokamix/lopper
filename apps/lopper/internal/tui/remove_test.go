@@ -393,3 +393,15 @@ func TestScanAgainDropsOldScan(t *testing.T) {
 		t.Errorf("list does not show the new scan:\n%s", v)
 	}
 }
+
+// A note that does not block removal, such as "merged", is no reason the
+// worktree was kept.
+func TestReasonNamesOnlyBlockingNotes(t *testing.T) {
+	err := &engine.NotSafeError{Verdict: lopper.Verdict{Notes: []lopper.Note{
+		{Text: "1 uncommitted", Kind: lopper.NoteWork, Blocks: true},
+		{Text: "merged", Kind: lopper.NoteMerged},
+	}}}
+	if got, want := reason(err), "not safe anymore: 1 uncommitted"; got != want {
+		t.Errorf("reason = %q, want %q", got, want)
+	}
+}

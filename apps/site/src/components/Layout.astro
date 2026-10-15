@@ -1,0 +1,75 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  /**
+   * Vercel serves the 404 page at every missing URL, so it has no address of
+   * its own.
+   */
+  canonical?: boolean;
+}
+
+const { title, description, canonical = true } = Astro.props;
+const url = canonical ? new URL(Astro.url.pathname, Astro.site) : undefined;
+const image = new URL("/og.png", Astro.site);
+const repo = "https://github.com/shinokamix/lopper";
+const links = [
+  { href: repo, label: "github" },
+  { href: `${repo}/releases`, label: "changelog" },
+  { href: `${repo}/issues`, label: "issues" },
+  { href: `${repo}/blob/main/LICENSE`, label: "license" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {url && <link rel="canonical" href={url} />}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    {url && <meta property="og:url" content={url} />}
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={image} />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <slot />
+    <footer>
+      <nav aria-label="Project links">
+        {links.map((link) => (
+          <a href={link.href}>{link.label}</a>
+        ))}
+      </nav>
+    </footer>
+  </body>
+</html>
+
+<style>
+  footer a {
+    text-decoration: none;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5lh 3ch;
+  }
+
+  footer a:hover {
+    color: var(--fg);
+  }
+
+  footer {
+    padding: 1lh var(--pad);
+    border-top: 1px solid var(--line);
+    color: var(--dim);
+  }
+</style>

@@ -1,13 +1,12 @@
-# Sourced by demo.tape: builds lopper and a throwaway home in .tmp/demo with a
-# few repositories and the worktrees agents leave behind, so the recording
-# never shows the real disk.
+# demo.tape sources this script. It puts the lopper that demo:record installs
+# on PATH and builds a throwaway home in .tmp/demo with a few repositories and
+# the worktrees agents leave behind, so the recording never shows the real disk.
 
 set -e
 root=$PWD
-go build -o "$root/bin/lopper" ./cmd/lopper
 rm -rf "$root/.tmp/demo" && mkdir -p "$root/.tmp/demo/code"
 
-export HOME=$root/.tmp/demo PATH=$root/bin:$PATH LOPPER_NO_UPDATE_CHECK=1
+export HOME=$root/.tmp/demo PATH=$root/.tmp/bin:$PATH LOPPER_NO_UPDATE_CHECK=1
 export GIT_AUTHOR_NAME=demo GIT_AUTHOR_EMAIL=demo@example.com
 export GIT_COMMITTER_NAME=demo GIT_COMMITTER_EMAIL=demo@example.com
 

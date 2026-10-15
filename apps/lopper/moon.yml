@@ -131,8 +131,3 @@ tasks:
       GIT_CONFIG_KEY_0: core.hooksPath
       GIT_CONFIG_VALUE_0: /dev/null
     preset: utility
-
-  demo:
-    description: Record the README animation into docs/demo.gif (needs ttyd and ffmpeg)
-    command: go run github.com/charmbracelet/vhs@v0.12.1 docs/demo.tape
-    preset: utility

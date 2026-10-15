@@ -1,0 +1,123 @@
+@import "@fontsource/monaspace-neon/400.css";
+@import "@fontsource/monaspace-neon/700.css";
+
+:root {
+  color-scheme: dark;
+  --bg: #050507;
+  --fg: #f1eff6;
+  --dim: #8d8a98;
+  --band: #0e0d12;
+  --line: #ffffff17;
+  --accent: #a371f7;
+  --cursor: #2a2a2e;
+
+  --mono: "Monaspace Neon", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 4px;
+  --pad: 8ch;
+  --measure: 72ch;
+}
+
+@media (width < 44rem) {
+  :root {
+    --pad: 2ch;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  font: 0.9375rem/1.7 var(--mono);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  max-width: 116ch;
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-inline: 1px solid var(--line);
+}
+
+main {
+  flex: 1;
+}
+
+section {
+  padding: 3lh var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+
+main > section:last-child {
+  border-bottom: 0;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+a {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.25em;
+}
+
+a:hover {
+  text-decoration-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 700;
+}
+
+h1 {
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: 1em;
+}
+
+p {
+  margin: 0;
+  max-width: var(--measure);
+  text-wrap: pretty;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+pre {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background: var(--band);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.dim {
+  color: var(--dim);
+}

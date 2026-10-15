@@ -2,6 +2,8 @@ $schema: ./cache/schemas/workspace.json
 
 projects:
   lopper: apps/lopper
+  site: apps/site
+  demo: packages/demo
 
 defaultProject: lopper
 

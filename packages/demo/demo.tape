@@ -1,14 +1,14 @@
-# The README animation. Regenerate with `moon run demo`.
+# This tape records the demo for the README and the site. Regenerate it with
+# `moon run demo:record`.
 
-Output docs/demo.gif
+Output demo.mp4
 
 Set Shell zsh
-Set FontSize 18
-Set Width 1200
-Set Height 720
-Set Padding 24
+Set FontSize 36
+Set Width 2400
+Set Height 1440
+Set Padding 48
 Set Theme "GitHub Dark"
-Set WindowBar Colorful
 Set TypingSpeed 80ms
 
 Hide
@@ -16,12 +16,12 @@ Hide
 Env NO_COLOR ""
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
-Type "source docs/demo-sandbox.sh"
+Type "source sandbox.sh"
 Enter
 Sleep 15s
 Show
 
-Sleep 800ms
+Sleep 200ms
 Type "lopper ~/code"
 Sleep 600ms
 Enter

@@ -9,29 +9,38 @@ Security issues go through [SECURITY.md](SECURITY.md), not issues or PRs.
 
 You need [proto](https://moonrepo.dev/proto): `proto install` fetches the
 [Moon](https://moonrepo.dev/moon) version pinned in [`.prototools`](.prototools),
-and Moon runs every task with the Go pinned in
-[`.moon/toolchains.yml`](.moon/toolchains.yml), installing it on first use. Go
+and Moon runs every task with the Go, Node and pnpm pinned in
+[`.moon/toolchains.yml`](.moon/toolchains.yml), installing them on first use. Go
 dev tools are pinned in
 [`apps/lopper/tools/go.mod`](apps/lopper/tools/go.mod) and run via `go tool`.
 
 ```sh
 moon tasks          # list tasks
-moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck
-moon run fix        # tidy, format and autofix what the hooks reject
+moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck, site
+moon run :fix       # tidy, format and autofix what the hooks reject
+moon run site:dev   # serve the Astro site in apps/site on localhost:4321
 moon run fixture    # sandbox in apps/lopper/.tmp/fixture
 cd apps/lopper
 go run ./cmd/lopper .tmp/fixture
 ```
 
 The first `moon` command installs a pre-commit hook into this checkout: it
-checks the formatting of Go files and tidiness of both go.mod files when a
-commit changes them, in seconds.
+checks the formatting of Go files and of the site, and tidiness of both go.mod
+files, when a commit changes them, in seconds.
 CI runs what `moon check --all` does, skipping tasks no changed file affects;
 run it before pushing to catch the rest early.
 
 Applications live under `apps/` as separate Moon projects. The Go CLI is
 `apps/lopper`, with its own module, tools and build configuration. Moon runs its
 tasks from that directory; run Moon commands from the repository root.
+
+What more than one project uses lives under `packages/`, each a Moon project
+and a pnpm package. A project reaches another one only through its package,
+never by a path into its folder. Moon rejects a dependency that breaks the
+project layers, and `moon run site:lint` rejects such an import in the site.
+The demo recording for the README and the site is `packages/demo`, and
+`moon run demo:record` records it again from the latest lopper release with
+ttyd and ffmpeg.
 
 Binary releases keep repository tags such as `v0.5.0`. The Go module path is
 `github.com/shinokamix/lopper/apps/lopper`, and `go install` finds its versions

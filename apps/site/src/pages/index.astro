@@ -1,0 +1,384 @@
+---
+import Layout from "../components/Layout.astro";
+import demo from "@lopper/demo/demo.mp4";
+
+const description =
+  "Find Git worktrees on your computer with lopper. Check their status, see how much space they use, and remove the ones you no longer need.";
+
+const ways = [
+  {
+    id: "unix",
+    label: "macOS, Linux",
+    prompt: "$",
+    command:
+      "curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh",
+  },
+  {
+    id: "windows",
+    label: "Windows",
+    prompt: ">",
+    command:
+      "irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex",
+  },
+  {
+    id: "go",
+    label: "Go",
+    prompt: "$",
+    command:
+      "go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest",
+  },
+];
+
+const commands: [string, string][] = [
+  ["lopper", "open the interactive UI"],
+  ["lopper ~/code", "scan a specific directory"],
+  ["lopper scan --json", "print scan results as JSON"],
+  ["lopper rm ../wt", "remove a worktree if safe"],
+  ["lopper update", "update to the latest release"],
+];
+---
+
+<Layout title="lopper: a cleaner for Git worktrees" description={description}>
+  <main>
+    <section>
+      <h1>lopper</h1>
+      <p class="lede dim">
+        Find Git worktrees, check their status and disk usage, and remove the
+        ones you no longer need.
+      </p>
+      <h2>install</h2>
+      <form class="install" autocomplete="off">
+        <fieldset aria-label="Install with">
+          {ways.map((w, i) => (
+            <label>
+              <input type="radio" name="way" value={w.id} checked={i === 0} />
+              {w.label}
+            </label>
+          ))}
+        </fieldset>
+        {/* This script runs right after the radios, so Windows visitors never
+             see the curl command. With autocomplete off, the browser does not
+             restore an older choice over the one the script makes. */}
+        <script is:inline>
+          if (navigator.userAgent.includes("Windows")) {
+            document.querySelector('[value="windows"]').checked = true;
+          }
+        </script>
+        <div class="command">
+          {ways.map((w) => <pre
+            data-way={w.id}
+            data-prompt={w.prompt}
+          ><code>{w.command}</code></pre>)}
+          <button type="button" aria-live="polite">
+            Copy
+          </button>
+        </div>
+        <p class="copy-status dim" role="status"></p>
+      </form>
+    </section>
+
+    <section class="demo">
+      <video
+        src={demo}
+        width="2400"
+        height="1440"
+        autoplay
+        muted
+        loop
+        playsinline
+        aria-label="Demo of lopper removing merged worktrees and warning before removing uncommitted work"
+      ></video>
+    </section>
+
+    <section>
+      <h2>why lopper</h2>
+      <p>
+        A task ends, but its worktree stays on disk. Dependencies and build
+        output, such as <code>node_modules</code>, <code>.venv</code>, and
+        <code>target/</code>, can take up gigabytes across unused worktrees.
+      </p>
+      <p>
+        Git lists worktrees one repository at a time. Checking each repository
+        leaves you to work out which worktrees you still need.
+      </p>
+      <p>
+        lopper brings worktrees into one list, grouped by repository. You can
+        compare their sizes, check their status, and select the ones to remove.
+        Purple marks worktrees whose changes are merged.
+      </p>
+    </section>
+
+    <section>
+      <h2>commands</h2>
+      <pre><code>{commands.map(([command, note], i) => <>{i > 0 && "\n"}{command.padEnd(20)}<span class="dim"># {note}</span></>)}</code></pre>
+    </section>
+
+    <section>
+      <h2>faq</h2>
+      <details name="faq">
+        <summary>Does it delete my branches?</summary>
+        <p>
+          No. lopper removes the worktree directory, but keeps the branch and
+          its commits. You can check out the branch again later.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>How does it decide what's safe to remove?</summary>
+        <p>
+          lopper checks for merged changes and uncommitted work. It recognizes
+          merged changes even after a squash merge, rebase, or cherry-pick. In
+          the interactive UI, you must confirm a warning before removing an
+          unsafe worktree. With <code>lopper rm</code>, you must use
+          <code>--force</code>. lopper treats locked worktrees and worktrees
+          that Git cannot check as unsafe.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>What is the base branch?</summary>
+        <p>
+          The base branch is the branch that lopper checks your changes against.
+          lopper uses the branch that <code>origin/HEAD</code> points to. If{" "}
+          <code>origin/HEAD</code> is missing, lopper looks for
+          <code>main</code>, then <code>master</code>.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Why do worktrees take up so much space?</summary>
+        <p>
+          A worktree can contain dependencies and build output, such as
+          <code>node_modules</code>, <code>.venv</code>, or
+          <code>target/</code>. These files take up space even if Git ignores
+          them. Removing the worktree directory frees that space.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Does it find worktrees created by coding agents?</summary>
+        <p>
+          Yes. lopper scans your home and temporary directories, including
+          worktrees created by coding agents. To scan a specific directory, run{" "}
+          <code>lopper ~/code</code>.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>Does it use the network?</summary>
+        <p>
+          lopper checks GitHub for new releases in the background. To disable
+          the check, set <code>LOPPER_NO_UPDATE_CHECK=1</code>.
+        </p>
+      </details>
+    </section>
+  </main>
+</Layout>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>(".install button")!;
+  const copyStatus =
+    document.querySelector<HTMLParagraphElement>(".copy-status")!;
+  let reset: ReturnType<typeof setTimeout> | undefined;
+  function resetCopy() {
+    clearTimeout(reset);
+    button.textContent = "Copy";
+    copyStatus.textContent = "";
+  }
+
+  document
+    .querySelector(".install fieldset")!
+    .addEventListener("change", resetCopy);
+  button.addEventListener("click", async () => {
+    const way = document.querySelector<HTMLInputElement>("[name=way]:checked")!;
+    const code = document.querySelector(`[data-way="${way.value}"] code`)!;
+    const copied = await navigator.clipboard.writeText(code.textContent!).then(
+      () => true,
+      () => false,
+    );
+    // The visitor may pick another command while the copy is pending.
+    if (!way.checked) return;
+    resetCopy();
+    if (copied) {
+      button.textContent = "Copied";
+      reset = setTimeout(resetCopy, 1500);
+    } else {
+      getSelection()!.selectAllChildren(code);
+      copyStatus.textContent =
+        "Command selected. Copy it with your keyboard or context menu.";
+    }
+  });
+</script>
+
+<style>
+  .lede {
+    margin-top: 1lh;
+  }
+
+  h2 {
+    margin-bottom: 1lh;
+  }
+
+  .lede + h2 {
+    margin-top: 2lh;
+  }
+
+  p + p {
+    margin-top: 1lh;
+  }
+
+  .install {
+    background: var(--band);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+
+  .copy-status {
+    font-size: 0.875rem;
+  }
+
+  .copy-status:not(:empty) {
+    padding: 0 1.25rem 0.75rem;
+  }
+
+  fieldset {
+    display: flex;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0.75rem 1.25rem;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.875rem;
+  }
+
+  label {
+    color: var(--dim);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  label:hover {
+    color: var(--fg);
+  }
+
+  label:has(:checked) {
+    color: var(--fg);
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.5em;
+    cursor: default;
+  }
+
+  label:has(:focus-visible) {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  /* The radio stays focusable but covers none of the label, so the whole
+     label shows the hand cursor. */
+  input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .command {
+    display: flex;
+    align-items: baseline;
+  }
+
+  .command pre {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    padding-left: 2.5rem;
+    background: none;
+    border: 0;
+  }
+
+  .command pre::before {
+    content: attr(data-prompt);
+    position: absolute;
+    left: 1.25rem;
+    color: var(--accent);
+    user-select: none;
+  }
+
+  .install:has([value="unix"]:checked) [data-way="unix"],
+  .install:has([value="windows"]:checked) [data-way="windows"],
+  .install:has([value="go"]:checked) [data-way="go"] {
+    display: block;
+  }
+
+  button {
+    padding: 0 1.25rem;
+    border: 0;
+    background: none;
+    color: var(--dim);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  button:hover {
+    color: var(--fg);
+  }
+
+  .demo {
+    padding: 0;
+    background: #0f1014;
+  }
+
+  video {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  summary {
+    display: flex;
+    gap: 1.5ch;
+    margin-inline: calc(-1 * var(--pad));
+    padding: 0.25lh var(--pad);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  summary:hover,
+  summary:focus-visible {
+    background: var(--cursor);
+    outline: 0;
+  }
+
+  details[open] summary {
+    font-weight: 700;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  summary::before {
+    content: "+";
+    color: var(--dim);
+  }
+
+  summary:hover::before,
+  details[open] summary::before {
+    color: var(--fg);
+  }
+
+  details[open] summary::before {
+    content: "−";
+  }
+
+  details p {
+    padding: 0.5lh 0 1lh 2.5ch;
+    color: var(--dim);
+  }
+
+  details code {
+    color: var(--fg);
+    white-space: nowrap;
+  }
+</style>

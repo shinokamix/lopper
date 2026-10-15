@@ -8,3 +8,15 @@ proto:
 # step with apps/lopper/tools/go.mod, which setup-go reads for GoReleaser.
 go:
   version: '1.27.2'
+
+# Node and pnpm build apps/site. Moon installs both through proto, like Go.
+# Keep Node in step with engines in apps/site/package.json, and pnpm with
+# packageManager in the root package.json, which pnpm switches to on its own.
+javascript:
+  packageManager: pnpm
+
+node:
+  version: '24.21.0'
+
+pnpm:
+  version: '12.9.1'

@@ -1,19 +1,22 @@
 name: Set up Moon
-description: Install proto, Moon and Go, and cache the toolchain and Go downloads and builds
+description: Install proto, Moon, Go, Node and pnpm, and cache the toolchain and Go downloads and builds
 inputs:
   cache:
     description: Restore and save the toolchain and Go caches
     default: 'true'
+  setup:
+    description: Install every toolchain with `moon setup`. Without it, Moon installs only the ones its tasks need, so turn it off only with the cache off.
+    default: 'true'
 runs:
   using: composite
   steps:
-    # Installs proto (.moon/toolchains.yml) and Moon (.prototools), then
-    # `moon setup` installs Go (.moon/toolchains.yml), so the toolchain cache
-    # always holds it.
+    # setup-toolchain installs proto from .moon/toolchains.yml and Moon from
+    # .prototools. `moon setup` then installs Go, Node and pnpm, so the toolchain
+    # cache always holds them.
     - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
       with:
         auto-install: true
-        auto-setup: true
+        auto-setup: ${{ inputs.setup }}
         cache: ${{ inputs.cache }}
         # Only main saves the toolchain cache; PRs restore it.
         cache-base: main

@@ -1,16 +1,3 @@
 $schema: ../../.moon/cache/schemas/project.json
 
 layer: library
-
-tasks:
-  # A README cannot play a video file from the repository, so it gets a GIF
-  # made from the mp4 that the site plays.
-  record:
-    description: Record the demo into demo.mp4 and demo.gif (needs ttyd and ffmpeg)
-    script: go run github.com/charmbracelet/vhs@v0.12.1 demo.tape && ffmpeg -v error -y -i demo.mp4 -vf "scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" demo.gif
-    deps:
-      - lopper:build
-    toolchains: [go]
-    env:
-      LOPPER_BIN: $workspaceRoot/apps/lopper/bin
-    preset: utility

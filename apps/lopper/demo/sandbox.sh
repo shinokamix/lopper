@@ -4,9 +4,11 @@
 
 set -e
 root=$PWD
+# With no lopper in bin, the tape would run an installed one on the real home.
+[ -x "$root/bin/lopper" ] || exit 1
 rm -rf "$root/.tmp/demo" && mkdir -p "$root/.tmp/demo/code"
 
-export HOME=$root/.tmp/demo PATH=$LOPPER_BIN:$PATH LOPPER_NO_UPDATE_CHECK=1
+export HOME=$root/.tmp/demo PATH=$root/bin:$PATH LOPPER_NO_UPDATE_CHECK=1
 export GIT_AUTHOR_NAME=demo GIT_AUTHOR_EMAIL=demo@example.com
 export GIT_COMMITTER_NAME=demo GIT_COMMITTER_EMAIL=demo@example.com
 

@@ -26,7 +26,6 @@ stderr '^not removed:$'
 stderr '^  wt-unpushed  locked, 1 uncommitted, 1 unpushed, not merged$'
 stderr '^hint: run `lopper explain -- <path>` to see what to do$'
 stderr '^hint: run `lopper rm --force -- <path>\.\.\.` to delete unsafe worktrees anyway$'
-stderr '^hint: Commands are templates\. Replace placeholders and quote values for your shell\.$'
 exec lopper explain wt-unpushed
 stdout '^  locked: unlock it with `git -C <repository> worktree unlock <worktree>`$'
 exists wt-unpushed/notes.txt

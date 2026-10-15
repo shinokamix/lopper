@@ -138,7 +138,4 @@ func (r report) print(w io.Writer) {
 	for _, h := range hints {
 		fmt.Fprintln(w, "hint:", h)
 	}
-	if len(hints) > 0 {
-		fmt.Fprintln(w, "hint:", commandTemplates)
-	}
 }

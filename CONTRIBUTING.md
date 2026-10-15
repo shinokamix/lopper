@@ -46,6 +46,14 @@ goreleaser release --config apps/lopper/.goreleaser.yaml --snapshot --clean
 
 GoReleaser builds from `apps/lopper` and writes archives to the root `dist/`.
 
+## Who lopper is for
+
+People use the TUI to see every worktree and remove what they no longer need.
+It shows why a worktree is not safe to delete.
+
+Scripts and coding agents use the CLI. They rely on its output and exit codes,
+so keep both stable and structured. Text for a person goes to stderr.
+
 ## Architecture
 
 Paths below are relative to `apps/lopper`.

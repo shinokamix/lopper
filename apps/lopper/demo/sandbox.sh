@@ -1,11 +1,9 @@
-# Sourced by demo.tape: puts the lopper from lopper:build on PATH and builds a
-# throwaway home in .tmp/demo with a few repositories and the worktrees agents
-# leave behind, so the recording never shows the real disk.
+# demo.tape sources this script. It puts the lopper from lopper:build on PATH
+# and builds a throwaway home in .tmp/demo with a few repositories and the
+# worktrees agents leave behind, so the recording never shows the real disk.
 
 set -e
 root=$PWD
-# With no lopper in bin, the tape would run an installed one on the real home.
-[ -x "$root/bin/lopper" ] || exit 1
 rm -rf "$root/.tmp/demo" && mkdir -p "$root/.tmp/demo/code"
 
 export HOME=$root/.tmp/demo PATH=$root/bin:$PATH LOPPER_NO_UPDATE_CHECK=1

@@ -44,6 +44,7 @@ tasks:
       - '@group(tooling)'
       # astro.config.ts builds the canonical and og:image links from this domain.
       - $VERCEL_PROJECT_PRODUCTION_URL
+      - $VERCEL_ENV
     outputs:
       - dist
 

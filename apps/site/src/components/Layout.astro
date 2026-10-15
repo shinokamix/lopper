@@ -10,9 +10,10 @@ interface Props {
    * its own.
    */
   canonical?: boolean;
+  analytics?: boolean;
 }
 
-const { title, description, canonical = true } = Astro.props;
+const { title, description, canonical = true, analytics = true } = Astro.props;
 const url = canonical ? new URL(Astro.url.pathname, Astro.site) : undefined;
 const image = new URL("/og.png", Astro.site);
 const repo = "https://github.com/shinokamix/lopper";
@@ -50,7 +51,7 @@ const links = [
         ))}
       </nav>
     </footer>
-    <Analytics />
+    {analytics && process.env["VERCEL_ENV"] === "production" && <Analytics />}
   </body>
 </html>
 

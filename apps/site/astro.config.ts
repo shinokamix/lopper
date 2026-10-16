@@ -1,6 +1,5 @@
 import sitemap from "@astrojs/sitemap";
 import { defineConfig } from "astro/config";
-import { sitemapBase } from "./src/sitemap.ts";
 
 // Vercel sets the production domain on its builds. Canonical and og:image
 // links need an absolute URL, and local builds have no domain to use.
@@ -16,5 +15,5 @@ export default defineConfig({
   // Compression drops the line break that Prettier puts between a word and an
   // inline tag, which glues them together.
   compressHTML: false,
-  integrations: [sitemap({ filenameBase: sitemapBase })],
+  integrations: [sitemap()],
 });

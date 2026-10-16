@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the latest lopper release for macOS or Linux:
 #
-#   curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
+#   curl -fsSL https://lopper.dev/install.sh | sh
 #
 # LOPPER_VERSION=v0.1.0 installs that release instead; LOPPER_INSTALL_DIR
 # (default ~/.local/bin) is where the binary goes. The archive is checked

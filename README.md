@@ -20,13 +20,13 @@ there and remove what you no longer need.
 macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
+curl -fsSL https://lopper.dev/install.sh | sh
 ```
 
 Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
+irm https://lopper.dev/install.ps1 | iex
 ```
 
 With Go:

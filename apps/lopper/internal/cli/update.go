@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -20,8 +21,8 @@ func newUpdateCmd(version string) *cobra.Command {
 		PersistentPreRunE: func(*cobra.Command, []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !update.Released(version) {
-				return fmt.Errorf("this lopper was built from source, not installed from a release; "+
-					"install one with install.sh from %s", update.Repo)
+				return errors.New("this lopper was built from source, not installed from a release; " +
+					"install one as https://lopper.dev shows")
 			}
 			u, err := update.New()
 			if err != nil {

@@ -35,6 +35,7 @@ go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest
 ```
 
 Binaries are also on the [releases page](https://github.com/shinokamix/lopper/releases/latest).
+
 ## Usage
 
 ```sh

@@ -3,7 +3,7 @@ import Layout from "../components/Layout.astro";
 import demo from "@lopper/demo/demo.mp4";
 
 const description =
-  "Find Git worktrees on your computer with lopper. Check their status, see how much space they use, and remove the ones you no longer need.";
+  "Find Git worktrees, check their status and disk usage, and remove the ones you no longer need. Works with Claude Code, Codex and Cursor worktrees.";
 
 const ways = [
   {
@@ -28,7 +28,7 @@ const ways = [
 ];
 
 const commands: [string, string][] = [
-  ["lopper", "open the interactive UI"],
+  ["lopper", "open the terminal UI"],
   ["lopper ~/code", "scan a specific directory"],
   ["lopper scan --json", "print scan results as JSON"],
   ["lopper rm ../wt", "remove a worktree if safe"],
@@ -36,7 +36,10 @@ const commands: [string, string][] = [
 ];
 ---
 
-<Layout title="lopper: a cleaner for Git worktrees" description={description}>
+<Layout
+  title="lopper: find and clean up Git worktrees across repositories"
+  description={description}
+>
   <main>
     <section>
       <h1>lopper</h1>
@@ -91,18 +94,15 @@ const commands: [string, string][] = [
     <section>
       <h2>why lopper</h2>
       <p>
-        A task ends, but its worktree stays on disk. Dependencies and build
-        output, such as <code>node_modules</code>, <code>.venv</code>, and
-        <code>target/</code>, can take up gigabytes across unused worktrees.
+        Worktrees pile up all over the disk. You make some by hand, and coding
+        agents make one per task, each tool in its own folder. Every worktree
+        has its own <code>node_modules</code>, <code>.venv</code> or{" "}
+        <code>target/</code>, and can take up gigabytes.
       </p>
       <p>
-        Git lists worktrees one repository at a time. Checking each repository
-        leaves you to work out which worktrees you still need.
-      </p>
-      <p>
-        lopper brings worktrees into one list, grouped by repository. You can
-        compare their sizes, check their status, and select the ones to remove.
-        Purple marks worktrees whose changes are merged.
+        Git lists them one repository at a time, and you have to check each one
+        yourself before deleting it. lopper finds them all and shows each one's
+        size and status, so you know what's safe to delete.
       </p>
     </section>
 
@@ -114,54 +114,34 @@ const commands: [string, string][] = [
     <section>
       <h2>faq</h2>
       <details name="faq">
-        <summary>Does it delete my branches?</summary>
+        <summary>Can it delete unfinished work?</summary>
         <p>
-          No. lopper removes the worktree directory, but keeps the branch and
-          its commits. You can check out the branch again later.
+          Not without asking. lopper warns you about uncommitted or unmerged
+          work, and <code>lopper rm</code> needs <code>--force</code> for it.
         </p>
       </details>
       <details name="faq">
-        <summary>How does it decide what's safe to remove?</summary>
+        <summary>How does removal work?</summary>
         <p>
-          lopper checks for merged changes and uncommitted work. It recognizes
-          merged changes even after a squash merge, rebase, or cherry-pick. In
-          the interactive UI, you must confirm a warning before removing an
-          unsafe worktree. With <code>lopper rm</code>, you must use
-          <code>--force</code>. lopper treats locked worktrees and worktrees
-          that Git cannot check as unsafe.
+          lopper checks the worktree again right before removing it, in case it
+          changed since the scan. Then it runs <code>git worktree remove</code>,
+          which deletes the folder and Git's record of it but keeps the branch.
+          There is no trash, so the folder is gone for good.
         </p>
       </details>
       <details name="faq">
-        <summary>What is the base branch?</summary>
+        <summary>Where does it look?</summary>
         <p>
-          The base branch is the branch that lopper checks your changes against.
-          lopper uses the branch that <code>origin/HEAD</code> points to. If{" "}
-          <code>origin/HEAD</code> is missing, lopper looks for
-          <code>main</code>, then <code>master</code>.
+          Everywhere under your home and temp folders, hidden ones too. lopper
+          doesn't look for specific tools, so it finds worktrees from Claude
+          Code, Codex, Cursor, T3 Code, Orca, Paseo or whatever comes next.
         </p>
       </details>
       <details name="faq">
-        <summary>Why do worktrees take up so much space?</summary>
+        <summary>Does it go online?</summary>
         <p>
-          A worktree can contain dependencies and build output, such as
-          <code>node_modules</code>, <code>.venv</code>, or
-          <code>target/</code>. These files take up space even if Git ignores
-          them. Removing the worktree directory frees that space.
-        </p>
-      </details>
-      <details name="faq">
-        <summary>Does it find worktrees created by coding agents?</summary>
-        <p>
-          Yes. lopper scans your home and temporary directories, including
-          worktrees created by coding agents. To scan a specific directory, run{" "}
-          <code>lopper ~/code</code>.
-        </p>
-      </details>
-      <details name="faq">
-        <summary>Does it use the network?</summary>
-        <p>
-          lopper checks GitHub for new releases in the background. To disable
-          the check, set <code>LOPPER_NO_UPDATE_CHECK=1</code>.
+          Only to check GitHub for updates.{" "}
+          <code>LOPPER_NO_UPDATE_CHECK=1</code> turns that off.
         </p>
       </details>
     </section>

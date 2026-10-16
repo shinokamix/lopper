@@ -35,13 +35,6 @@ go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest
 ```
 
 Binaries are also on the [releases page](https://github.com/shinokamix/lopper/releases/latest).
-Each release attests that its archives and installers were built by this
-repository's release workflow. To check a file you downloaded:
-
-```sh
-gh attestation verify lopper_darwin_arm64.tar.gz -R shinokamix/lopper
-```
-
 ## Usage
 
 ```sh

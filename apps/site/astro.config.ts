@@ -1,3 +1,4 @@
+import sitemap from "@astrojs/sitemap";
 import { defineConfig } from "astro/config";
 
 // Vercel sets the production domain on its builds. Canonical and og:image
@@ -9,4 +10,5 @@ export default defineConfig({
   // Compression drops the line break that Prettier puts between a word and an
   // inline tag, which glues them together.
   compressHTML: false,
+  integrations: [sitemap()],
 });

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@astrojs/sitemap": "^3",
     "@fontsource/monaspace-neon": "^5",
     "@lopper/demo": "workspace:*",
     "@vercel/analytics": "^2",

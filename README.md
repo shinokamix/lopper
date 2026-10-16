@@ -1,19 +1,18 @@
 # lopper
 
-Clean up the Git worktrees you and your agents left behind.
+Find Git worktrees, check their status and disk usage, and remove the
+ones you no longer need.
 
 ![lopper removes four merged worktrees and, after a warning, two with uncommitted work](packages/demo/demo.gif)
 
-Worktrees end up all over the disk. You create some by hand, coding
-agents create one per task, and every tool keeps them in a different
-place. Each one is a copy of the project with its own `node_modules`,
-`.venv` or Rust `target/`, and can take up gigabytes.
+Worktrees pile up all over the disk. You make some by hand, and coding
+agents make one per task, each tool in its own folder. Every worktree
+has its own `node_modules`, `.venv` or `target/`, and can take up
+gigabytes.
 
-Git lists worktrees one repository at a time. Nothing shows you all of
-them, which repository each one belongs to, or how much space it takes.
-
-lopper finds them and puts them in one list, so you can see what is
-there and remove what you no longer need.
+Git lists them one repository at a time, and you have to check each one
+yourself before deleting it. lopper finds them all and shows each one's
+size and status, so you know what's safe to delete.
 
 ## Install
 
@@ -46,21 +45,43 @@ gh attestation verify lopper_darwin_arm64.tar.gz -R shinokamix/lopper
 ## Usage
 
 ```sh
-lopper              # interactive UI, scans home and temporary directories
+lopper              # terminal UI, scans home and temporary directories
 lopper ~/code       # scan a specific directory
 lopper scan --json  # JSON output
 lopper rm ../wt     # remove if safe, --force otherwise
 lopper update       # update to the latest release
 ```
 
-lopper checks GitHub for updates in the background.
-Set `LOPPER_NO_UPDATE_CHECK=1` to disable the check.
-
 lopper remembers where it found repositories, in `lopper/repos.json`
 under your user cache directory, so that the next scan lists their
 worktrees first and finds the rest while you work. The cache only
 changes how soon worktrees appear, never which, and nothing is removed
 without being checked again. Set `LOPPER_NO_CACHE=1` to scan without it.
+
+## FAQ
+
+### Can it delete unfinished work?
+
+Not without asking. lopper warns you about uncommitted or unmerged work,
+and `lopper rm` needs `--force` for it.
+
+### How does removal work?
+
+lopper checks the worktree again right before removing it, in case it
+changed since the scan. Then it runs `git worktree remove`, which
+deletes the folder and Git's record of it but keeps the branch. There is
+no trash, so the folder is gone for good.
+
+### Where does it look?
+
+Everywhere under your home and temp folders, hidden ones too. lopper
+doesn't look for specific tools, so it finds worktrees from Claude Code,
+Codex, Cursor, T3 Code, Orca, Paseo or whatever comes next.
+
+### Does it go online?
+
+Only to check GitHub for updates. `LOPPER_NO_UPDATE_CHECK=1` turns that
+off.
 
 ## Contributing
 

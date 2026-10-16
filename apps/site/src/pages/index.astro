@@ -3,7 +3,7 @@ import Layout from "../components/Layout.astro";
 import demo from "@lopper/demo/demo.mp4";
 
 const description =
-  "Find Git worktrees, check their status and disk usage, and remove the ones you no longer need. Works with any tool, including Claude Code, Codex and Cursor.";
+  "Find stale Git worktrees across all your repositories, see their disk usage and status, and clean up the ones you no longer need. Works with any coding agent or worktree tool, including Claude Code, Codex and Cursor.";
 
 const ways = [
   {
@@ -37,15 +37,15 @@ const commands: [string, string][] = [
 ---
 
 <Layout
-  title="lopper: find and clean up Git worktrees across repositories"
+  title="lopper: clean up stale Git worktrees across your repositories"
   description={description}
 >
   <main>
     <section>
       <h1>lopper</h1>
       <p class="lede dim">
-        Find Git worktrees, check their status and disk usage, and remove the
-        ones you no longer need.
+        Find stale Git worktrees across all your repositories, see their disk
+        usage and status, and clean up the ones you no longer need.
       </p>
       <h2>install</h2>
       <form class="install" autocomplete="off">

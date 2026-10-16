@@ -3,8 +3,7 @@ import { defineConfig } from "astro/config";
 import { sitemapBase } from "./src/sitemap.ts";
 
 // Vercel sets the production domain on its builds. Canonical and og:image
-// links, the sitemap and robots.txt need an absolute URL, and local builds have
-// no domain to use.
+// links need an absolute URL, and local builds have no domain to use.
 const domain = process.env["VERCEL_PROJECT_PRODUCTION_URL"];
 if (!domain && process.env["VERCEL_ENV"] === "production") {
   throw new Error(

@@ -1,4 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/:file(install\\.sh|install\\.ps1)",
+      "destination": "https://github.com/shinokamix/lopper/releases/latest/download/:file",
+      "permanent": false
+    }
+  ],
   "ignoreCommand": "git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../../packages/demo ../../package.json ../../pnpm-lock.yaml ../../pnpm-workspace.yaml || exit 1"
 }

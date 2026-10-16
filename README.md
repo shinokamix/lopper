@@ -20,13 +20,13 @@ there and remove what you no longer need.
 macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh
+curl -fsSL https://lopper.dev/install.sh | sh
 ```
 
 Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
+irm https://lopper.dev/install.ps1 | iex
 ```
 
 With Go:
@@ -36,6 +36,12 @@ go install github.com/shinokamix/lopper/apps/lopper/cmd/lopper@latest
 ```
 
 Binaries are also on the [releases page](https://github.com/shinokamix/lopper/releases/latest).
+Each release attests that its archives and installers were built by this
+repository's release workflow. To check a file you downloaded:
+
+```sh
+gh attestation verify lopper_darwin_arm64.tar.gz -R shinokamix/lopper
+```
 
 ## Usage
 

@@ -10,15 +10,13 @@ const ways = [
     id: "unix",
     label: "macOS, Linux",
     prompt: "$",
-    command:
-      "curl -fsSL https://raw.githubusercontent.com/shinokamix/lopper/main/install.sh | sh",
+    command: "curl -fsSL https://lopper.dev/install.sh | sh",
   },
   {
     id: "windows",
     label: "Windows",
     prompt: ">",
-    command:
-      "irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex",
+    command: "irm https://lopper.dev/install.ps1 | iex",
   },
   {
     id: "go",

@@ -1,6 +1,6 @@
 # Installs the latest lopper release for Windows:
 #
-#   irm https://raw.githubusercontent.com/shinokamix/lopper/main/install.ps1 | iex
+#   irm https://lopper.dev/install.ps1 | iex
 #
 # $env:LOPPER_VERSION = 'v0.1.0' installs that release instead, and
 # $env:LOPPER_INSTALL_DIR (default %LOCALAPPDATA%\Programs\lopper) is where

@@ -20,8 +20,17 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+  # Listed in checksums.txt, the installers are covered by the attestation too.
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./install.ps1
 release:
   prerelease: auto # v1.2.0-rc.1 is a pre-release, never the latest
+  # lopper.dev serves the installers of the latest release, so a change to
+  # them reaches users only with a release.
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./install.ps1
 # Release notes from Conventional Commit titles (see CONTRIBUTING.md).
 changelog:
   sort: asc

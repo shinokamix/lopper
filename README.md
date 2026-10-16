@@ -1,7 +1,7 @@
 # lopper
 
-Find Git worktrees, check their status and disk usage, and remove the
-ones you no longer need.
+Find stale Git worktrees across all your repositories, see their disk
+usage and status, and clean up the ones you no longer need.
 
 ![lopper removes four merged worktrees and, after a warning, two with uncommitted work](packages/demo/demo.gif)
 

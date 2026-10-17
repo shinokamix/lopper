@@ -61,8 +61,9 @@ jobs:
           skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
-  # A job of its own, because tasks running alongside would skew the times.
-  # The checkout is the merge commit, so HEAD^1 is the base branch.
+  # A job of its own, and outside moon ci, because tasks running alongside
+  # would skew the times. The checkout is the merge commit, so HEAD^1 is the
+  # base branch.
   bench:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -72,11 +73,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          filter: blob:none
+          fetch-depth: 2
           persist-credentials: false
-      - uses: $/.github/actions/setup-ci
-      - run: moon run lopper:bench -- HEAD^1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/lopper/tools/go.mod
+          cache-dependency-path: |
+            apps/lopper/go.sum
+            apps/lopper/tools/go.sum
+      - run: sh .github/scripts/bench.sh HEAD^1
         env:
           BENCH_REPORT: ${{ runner.temp }}/bench.md
       # The token of a pull request from a fork cannot comment. Each run

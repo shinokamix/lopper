@@ -61,6 +61,33 @@ jobs:
           skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
+  # A job of its own, because tasks running alongside would skew the times.
+  # The checkout is the merge commit, so HEAD^1 is the base branch.
+  bench:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: $/.github/actions/setup-ci
+      - run: moon run lopper:bench -- HEAD^1
+        env:
+          BENCH_REPORT: ${{ runner.temp }}/bench.md
+      # The token of a pull request from a fork cannot comment. Each run
+      # edits the comment of the run before.
+      - if: (success() || failure()) && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          [ -f "$RUNNER_TEMP/bench.md" ] || exit 0
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/bench.md"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+
   release-snapshot:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

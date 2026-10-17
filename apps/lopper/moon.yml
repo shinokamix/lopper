@@ -94,6 +94,11 @@ tasks:
     command: go test ./internal/gitx -run '^$' -fuzz FuzzParseWorktreeList -fuzztime 30s
     preset: utility
 
+  bench:
+    description: Compare scan speed with main on generated repositories (pass another base after --)
+    command: sh $workspaceRoot/.github/scripts/bench.sh
+    preset: utility
+
   tidy-check:
     description: Fail if either go.mod needs tidying
     script: go mod tidy -diff && cd tools && go mod tidy -diff

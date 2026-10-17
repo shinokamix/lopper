@@ -9,13 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/rogpeppe/go-internal/lockedfile"
+
+	"github.com/shinokamix/lopper/apps/lopper/internal/pathx"
 )
 
-// version changes whenever the meaning of a place does. Known ignores a
-// file of another version.
 const version = 1
 
 type file struct {
@@ -55,9 +54,7 @@ func (c Catalog) Known() []string {
 }
 
 // Remember replaces the places kept below roots with places, which a
-// complete scan of roots met. That scan would have met the old ones again if
-// they still led to a repository. Places outside roots stay for scans of
-// other roots.
+// complete scan of roots met. Places outside roots stay.
 func (c Catalog) Remember(roots, places []string) error {
 	if c.path == "" {
 		return nil
@@ -71,7 +68,7 @@ func (c Catalog) Remember(roots, places []string) error {
 	}
 	defer unlock()
 
-	kept := slices.DeleteFunc(c.Known(), func(place string) bool { return below(roots, place) })
+	kept := slices.DeleteFunc(c.Known(), func(place string) bool { return pathx.Below(roots, place) })
 	kept = slices.Compact(slices.Sorted(slices.Values(append(kept, places...))))
 	data, err := json.Marshal(file{Version: version, Places: kept})
 	if err != nil {
@@ -80,8 +77,6 @@ func (c Catalog) Remember(roots, places []string) error {
 	return writeFile(c.path, data)
 }
 
-// writeFile replaces path atomically, so a concurrent reader or writer never
-// sees half a file.
 func writeFile(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".repos-*.json")
 	if err != nil {
@@ -98,14 +93,4 @@ func writeFile(path string, data []byte) error {
 		return errors.Join(err, os.Remove(tmp.Name()))
 	}
 	return nil
-}
-
-// below reports whether a walk of roots reaches path by name, without
-// resolving symlinks. It must agree with discovery's below, because a Known
-// place that a scan skips must stay in the catalog.
-func below(roots []string, path string) bool {
-	return slices.ContainsFunc(roots, func(root string) bool {
-		rel, err := filepath.Rel(filepath.Clean(root), path)
-		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-	})
 }

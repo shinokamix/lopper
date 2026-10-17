@@ -1,6 +1,4 @@
 // Package archtest enforces the layering described in CONTRIBUTING.md.
-// Every package must be listed in [layers]: adding a package without
-// deciding where it belongs fails the build.
 package archtest
 
 import (
@@ -18,28 +16,25 @@ import (
 
 const module = "github.com/shinokamix/lopper/apps/lopper"
 
-// layers lists, for every package, the module packages it may import
-// directly. Packages are named relative to the module.
 var layers = map[string][]string{
 	"cmd/lopper": {"internal/cli"},
 
 	"internal/lopper":   {},
 	"internal/gitx":     {},
 	"internal/archtest": {},
+	"internal/pathx":    {},
 	"internal/update":   {},
-	"internal/catalog":  {},
+	"internal/catalog":  {"internal/pathx"},
 
 	"internal/verdict":   {"internal/lopper"},
 	"internal/inspect":   {"internal/lopper", "internal/gitx"},
-	"internal/discovery": {"internal/lopper", "internal/gitx"},
-	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/discovery", "internal/inspect", "internal/verdict"},
+	"internal/discovery": {"internal/lopper", "internal/gitx", "internal/pathx"},
+	"internal/engine":    {"internal/lopper", "internal/gitx", "internal/pathx", "internal/discovery", "internal/inspect", "internal/verdict"},
 
 	"internal/cli": {"internal/lopper", "internal/engine", "internal/catalog", "internal/tui", "internal/update"},
 	"internal/tui": {"internal/lopper", "internal/engine"},
 }
 
-// restricted limits sensitive imports, matched by prefix, to specific packages.
-// A trailing "/..." matches a package and everything below it.
 var restricted = map[string][]string{
 	"os/exec":                   {"internal/gitx"},
 	"net/http":                  {"internal/update"},
@@ -86,8 +81,6 @@ func TestLayers(t *testing.T) {
 	}
 }
 
-// relative returns path relative to the module and whether path belongs
-// to the module at all.
 func relative(path string) (string, bool) {
 	return strings.CutPrefix(path, module+"/")
 }
@@ -125,10 +118,8 @@ func listPackages(t *testing.T) []pkg {
 	return pkgs
 }
 
-// trackSources opens every directory and .go file of the module. The go
-// test cache only notices files the test process itself touches, not those
-// the `go list` child process reads. Without this, a cached PASS could hide
-// a new violation.
+// trackSources opens every source because the go test cache only notices
+// files the test process touches, not those the `go list` child reads.
 func trackSources(t *testing.T) {
 	t.Helper()
 	root := filepath.Join("..", "..")

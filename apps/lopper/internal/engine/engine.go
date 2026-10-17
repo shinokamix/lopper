@@ -1,7 +1,4 @@
-// Package engine runs the scan pipeline. Discovery finds worktrees, a pool
-// of inspect workers gathers their quick and then slow facts, and both turn
-// into events. The TUI and the CLI read the events and never call the
-// stages. They remove worktrees through [Engine.Remove].
+// Package engine scans for worktrees and removes them.
 package engine
 
 import (
@@ -18,10 +15,11 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/apps/lopper/internal/inspect"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
+	"github.com/shinokamix/lopper/apps/lopper/internal/pathx"
 	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
-// Event is a sealed sum type; gochecksumtype verifies type switches over it.
+// Event is a sealed sum type.
 //
 //sumtype:decl
 type Event interface{ isEvent() }
@@ -34,7 +32,7 @@ type FactsUpdated struct {
 	ID      lopper.ID
 	Facts   lopper.Facts
 	Verdict lopper.Verdict
-	Final   bool // the last update for this worktree
+	Final   bool
 }
 
 // ScanDone is the last event of a scan.
@@ -47,22 +45,17 @@ func (ScanDone) isEvent()      {}
 // Options control a scan.
 type Options struct {
 	Roots []string
-	// Concurrency caps the git processes a scan runs at once;
-	// 0 means runtime.GOMAXPROCS(0). See [budget].
+	// Concurrency caps the git processes a scan runs at once. Less than 1
+	// means runtime.GOMAXPROCS.
 	Concurrency int
-	// Known are places where an earlier scan met repositories. The scan finds
-	// their worktrees first, and finds the same ones without them.
+	// Known are places where an earlier scan met repositories. The scan
+	// visits them first and finds the same worktrees without them.
 	Known []string
 	// Remember, if set, receives the places where a complete scan met
 	// repositories, for a later scan's Known.
 	Remember func(places []string)
 }
 
-// budget splits the git process limit n between discovery listers and
-// inspect workers. git is CPU- and disk-bound, so more processes than CPUs
-// only add contention. Inspection does more work per repository than
-// listing, so it gets the larger share. Both get at least one, so the total
-// is max(n, 2).
 func budget(n int) (listers, workers int) {
 	if n <= 0 {
 		n = runtime.GOMAXPROCS(0)
@@ -117,8 +110,6 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 			Met:     opts.Remember,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
-			// Inspect only what the consumer was told about, or it would
-			// receive facts for an unknown worktree.
 			if send[Event](ctx, events, WorktreeFound{Worktree: wt}) {
 				send(ctx, found, wt)
 			}
@@ -127,7 +118,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		workers.Wait()
 		done := ScanDone{Err: err}
 		select {
-		case events <- done: // deliver while there is room, even if cancelled
+		case events <- done:
 		default:
 			send[Event](ctx, events, done)
 		}
@@ -151,9 +142,8 @@ func (e *NotSafeError) Error() string {
 	return "not safe to delete: " + strings.Join(why, " · ")
 }
 
-// RecordLeftError is returned by Remove when a worktree's directory is gone
-// but git could not remove its record, because git cannot tell which record
-// is the worktree's.
+// RecordLeftError is returned by Remove when it deleted a worktree's
+// directory but git kept its record.
 type RecordLeftError struct{ Repo string }
 
 func (e *RecordLeftError) Error() string {
@@ -190,12 +180,8 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 	switch now.State {
 	case lopper.StateTracked, lopper.StateGone:
 	case lopper.StateOrphaned:
-		// No repository tracks it. Its record is gone or belongs to another
-		// worktree now.
 		return os.RemoveAll(now.Path)
 	case lopper.StateUnconfirmed:
-		// git cannot work in it, but once it is gone, git can remove a
-		// record that still names it.
 		if err := os.RemoveAll(now.Path); err != nil {
 			return err
 		}
@@ -211,15 +197,11 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 	return gitx.RemoveWorktree(ctx, e.git, now.Repo.Path, now.Path, force)
 }
 
-// Measure returns the size of a worktree's directory as a scan measures it,
-// or nil if it cannot. A removal uses it to report the space freed when the
-// scan has not measured the worktree yet.
+// Measure returns the size of a worktree's directory, or nil if it cannot.
 func (e *Engine) Measure(ctx context.Context, wt lopper.Worktree) *int64 {
 	return inspect.Inspector{Git: e.git}.Slow(ctx, wt, lopper.Facts{}).SizeBytes
 }
 
-// current looks wt up again, by a walk of its directory or, if that is
-// gone, in its repository.
 func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktree, error) {
 	if _, err := os.Lstat(wt.Path); errors.Is(err, fs.ErrNotExist) {
 		if wt.Repo.Path == "" {
@@ -230,9 +212,7 @@ func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktr
 	return e.Find(ctx, []string{wt.Path}, wt.Path)
 }
 
-// inside reports whether the current directory is dir or below it.
-// Removing dir would delete the directory under the process, which Windows
-// does not allow.
+// Windows does not allow removing the directory a process runs in.
 func inside(dir string) bool {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -244,12 +224,10 @@ func inside(dir string) bool {
 		}
 		return p
 	}
-	rel, err := filepath.Rel(resolve(dir), resolve(cwd))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	_, ok := pathx.Within(resolve(dir), resolve(cwd))
+	return ok
 }
 
-// send delivers v unless ctx is cancelled, so an abandoned consumer never
-// leaves pipeline goroutines blocked. It reports whether v was delivered.
 func send[T any](ctx context.Context, ch chan<- T, v T) bool {
 	select {
 	case ch <- v:

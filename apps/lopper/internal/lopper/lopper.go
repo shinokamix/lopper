@@ -1,5 +1,4 @@
-// Package lopper holds the types every other package shares. It must not
-// import anything from this module.
+// Package lopper holds the types every other package shares.
 package lopper
 
 // ID identifies a worktree by its absolute, cleaned path.
@@ -37,22 +36,20 @@ const (
 	// left.
 	StateGone
 	// StateOrphaned means the directory exists but its repository no longer
-	// tracks it, because the repository was deleted or the worktree pruned.
-	// git cannot inspect it. Repo.Path is where the repository was.
+	// tracks it. Repo.Path is where the repository was.
 	StateOrphaned
 	// StateMoved means someone moved the directory here from MovedFrom, where
-	// git still expects it. `git worktree repair` run inside it relinks them.
+	// git still expects it.
 	StateMoved
 	// StateUnconfirmed means the .git file names Repo, but the repository
 	// could not confirm that it tracks the directory here. Reason says why.
-	// git may still work inside it.
 	StateUnconfirmed
 )
 
 // Facts are what inspect observed about a worktree, in stages. A nil field
 // is unknown, and Errors says why when an observation failed.
 type Facts struct {
-	Dirty          *int       // status entries; an untracked directory counts as one
+	Dirty          *int       // status entries, where an untracked directory counts as one
 	UncheckedFiles *int       // files whose index flags hide edits from status
 	Unpushed       *int       // commits neither on a remote nor in base
 	Merged         *MergeKind // how the work reached the base branch, if it did

@@ -1,6 +1,4 @@
-// Package tui is the interactive front end, built on The Elm Architecture.
-// Engine events and key presses become messages, Update changes the state
-// and View renders it.
+// Package tui is the interactive front end of lopper.
 package tui
 
 import (
@@ -22,34 +20,27 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// eventMsg carries an event of scan number gen. Update drops the events of
-// a scan that a new one replaced.
 type eventMsg struct {
 	gen int
 	ev  engine.Event
 }
 
-// rankMsg re-ranks a list shown largest first while a scan goes on, once a
-// second rather than on every size. seq names the ticking it comes from,
-// and a newer ticking replaces it.
 type rankMsg struct{ seq int }
 
 const rankEvery = time.Second
 
 type app struct {
-	ctx     context.Context
-	scan    func(context.Context) <-chan engine.Event
-	remove  func(ctx context.Context, wt lopper.Worktree, force bool) error
-	measure func(context.Context, lopper.Worktree) *int64
-	updates Updates
-	// offer is the update screen, shown before the scan while not nil.
-	// restart makes Run start the installed release once the TUI quits.
+	ctx      context.Context
+	scan     func(context.Context) <-chan engine.Event
+	remove   func(ctx context.Context, wt lopper.Worktree, force bool) error
+	measure  func(context.Context, lopper.Worktree) *int64
+	updates  Updates
 	offer    *offer
 	installs installs
 	restart  bool
-	gen      int                // counts scans
-	ranking  int                // counts the tickings that re-rank the list
-	stop     context.CancelFunc // stops the current scan
+	gen      int
+	ranking  int
+	stop     context.CancelFunc
 	events   <-chan engine.Event
 	store    *store
 	keys     keyMap
@@ -57,10 +48,9 @@ type app struct {
 	help     help.Model
 	spin     spinner.Model
 	list     list
-	// removal is the removal screen, shown over the list while not nil.
-	removal *removal
-	width   int
-	height  int
+	removal  *removal
+	width    int
+	height   int
 }
 
 // Engine is what the TUI needs of [engine.Engine].
@@ -70,8 +60,7 @@ type Engine interface {
 	Measure(ctx context.Context, wt lopper.Worktree) *int64
 }
 
-// Run starts the TUI and a scan feeding it, after offering any newer
-// release.
+// Run offers any newer release, then scans and shows the results.
 func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -100,9 +89,6 @@ func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) 
 	return updates.Restart()
 }
 
-// run runs the TUI until it ends in any way, then cancels a.ctx and waits
-// for an install that started. A cancelled install waits only for the
-// binary to be put in place, not for the download.
 func (a *app) run(cancel context.CancelFunc, opts ...tea.ProgramOption) error {
 	_, err := tea.NewProgram(a, append(opts, tea.WithContext(a.ctx))...).Run()
 	cancel()
@@ -118,14 +104,12 @@ func (a *app) Init() tea.Cmd {
 	return tea.Batch(next, tea.RequestBackgroundColor, a.spin.Tick)
 }
 
-// startScanning leaves the update screen for the list and scans.
 func (a *app) startScanning() tea.Cmd {
 	a.offer = nil
 	a.startScan(a.ctx)
 	return tea.Batch(a.waitEvent(), a.startRanking(), a.spin.Tick)
 }
 
-// startScan starts a scan into an empty list, stopping the one before.
 func (a *app) startScan(ctx context.Context) {
 	if a.stop != nil {
 		a.stop()
@@ -134,13 +118,11 @@ func (a *app) startScan(ctx context.Context) {
 	a.gen++
 	a.events = a.scan(ctx)
 	a.store = newStore()
-	bySize := a.list.bySize // the chosen order outlasts the scan
+	bySize := a.list.bySize
 	a.list = newList(a.list.aliases)
 	a.list.bySize = bySize
 }
 
-// waitEvent turns the next engine event into a Bubble Tea message.
-// TODO: coalesce bursts of events into one message per frame.
 func (a *app) waitEvent() tea.Cmd {
 	events, gen := a.events, a.gen
 	return func() tea.Msg {
@@ -152,8 +134,6 @@ func (a *app) waitEvent() tea.Cmd {
 	}
 }
 
-// startRanking starts re-ranking the list now and then, when it is shown
-// largest first and a scan goes on.
 func (a *app) startRanking() tea.Cmd {
 	if !a.list.bySize || !a.store.scanning {
 		return nil
@@ -167,8 +147,6 @@ func (a *app) nextRank() tea.Cmd {
 	return tea.Tick(rankEvery, func(time.Time) tea.Msg { return rankMsg{seq} })
 }
 
-// removeNext removes the next item of the removal screen. It first
-// measures an item the scan has not measured yet, to report the space freed.
 func (a *app) removeNext() tea.Cmd {
 	ctx, remove, measure, i := a.ctx, a.remove, a.measure, a.removal.next
 	it := a.removal.items[i]
@@ -185,17 +163,17 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case eventMsg:
 		if msg.gen != a.gen {
-			return a, nil // from a scan replaced by a new one
+			return a, nil
 		}
 		a.store.apply(msg.ev)
 		if _, done := msg.ev.(engine.ScanDone); done {
-			a.list.rank(a.store) // rank the final order at once
+			a.list.rank(a.store)
 		}
 		next := a.waitEvent()
 		return a, next
 	case rankMsg:
 		if msg.seq != a.ranking || !a.list.bySize || !a.store.scanning {
-			return a, nil // replaced, or ScanDone already ranked it last
+			return a, nil
 		}
 		a.list.rank(a.store)
 		next := a.nextRank()
@@ -210,7 +188,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case installedMsg:
 		a.offer.phase, a.offer.err = installed, msg.err
 		if msg.err != nil {
-			a.offer.phase = offered // to try again, put it off or skip it
+			a.offer.phase = offered
 		}
 	case frameMsg:
 		if rm := msg.rm; rm == a.removal && rm.frame < frames {
@@ -221,7 +199,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		busy := (a.offer != nil && a.offer.phase == installing) ||
 			(a.offer == nil && a.store.scanning) || (a.removal != nil && a.removal.phase == removing)
 		if !busy {
-			return a, nil // stop ticking
+			return a, nil
 		}
 		var cmd tea.Cmd
 		a.spin, cmd = a.spin.Update(msg)
@@ -275,8 +253,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// keysKey handles a key while every key is shown. The arrows scroll, and ?
-// or esc goes back to the list.
 func (a *app) keysKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, a.keys.quit):
@@ -284,7 +260,7 @@ func (a *app) keysKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, a.keys.help), key.Matches(msg, a.keys.back):
 		a.list.allKeys, a.list.keysOffset = false, 0
 	case key.Matches(msg, a.keys.up):
-		a.list.keysOffset-- // View keeps it in range
+		a.list.keysOffset--
 	case key.Matches(msg, a.keys.down):
 		a.list.keysOffset++
 	}
@@ -304,13 +280,12 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			rm.confirm()
 			return tea.Batch(a.removeNext(), a.spin.Tick)
 		case key.Matches(msg, a.keys.up):
-			rm.offset-- // View keeps it in range
+			rm.offset--
 		case key.Matches(msg, a.keys.down):
 			rm.offset++
 		}
 	case removing:
-		// Stopping git midway could leave a worktree half deleted, so quitting
-		// waits for the one being removed.
+		// Killing git midway can leave a worktree half deleted.
 		if key.Matches(msg, a.keys.stop) {
 			rm.quitting = true
 		}
@@ -324,7 +299,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.removal = nil
 			return a.startScanning()
 		case key.Matches(msg, a.keys.up):
-			rm.offset-- // View keeps it in range
+			rm.offset--
 		case key.Matches(msg, a.keys.down):
 			rm.offset++
 		}
@@ -332,7 +307,6 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// removed records how removing an item went, and goes on to the next.
 func (a *app) removed(msg removedMsg) tea.Cmd {
 	rm := a.removal
 	it := rm.items[msg.i]
@@ -345,15 +319,12 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 	case rm.quitting:
 		return tea.Quit
 	case rm.next == len(rm.items):
-		rm.phase, rm.offset = finished, 0 // the summary scrolls on its own
+		rm.phase, rm.offset = finished, 0
 		return rm.nextFrame()
 	}
 	return a.removeNext()
 }
 
-// The screen sits inside a margin. chromeLines counts the lines around the
-// list: a blank line, the header, a blank line, and below the list a blank
-// line, the status line and the key help.
 const (
 	chromeLines = 6
 	margin      = 2
@@ -381,8 +352,6 @@ func (a *app) View() tea.View {
 		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" +
 			a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)
 	}
-	// Scrolling assumes one screen line per line. A wider line would wrap and
-	// push the list down, so cut every line to the screen width.
 	lines := strings.Split(screen, "\n")
 	for i, l := range lines {
 		lines[i] = strings.Repeat(" ", margin) + ansi.Truncate(l, w, "…")
@@ -392,8 +361,6 @@ func (a *app) View() tea.View {
 	return v
 }
 
-// pathAliases shortens paths under the home directory to ~ and under the
-// temporary directories, where agents often put worktrees, to tmp.
 func pathAliases() []alias {
 	var out []alias
 	add := func(dir, name string) {
@@ -401,8 +368,9 @@ func pathAliases() []alias {
 			return
 		}
 		out = append(out, alias{dir, name})
+		// On macOS /tmp is a symlink to /private/tmp.
 		if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != dir {
-			out = append(out, alias{resolved, name}) // on macOS /tmp is /private/tmp
+			out = append(out, alias{resolved, name})
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {

@@ -2,8 +2,6 @@ packages:
   - apps/site
   - packages/*
 
-# Skip releases younger than a week. Most compromised versions are yanked by
-# then. Dependabot waits as long for Go modules and actions.
 minimumReleaseAge: 10080
 
 # These install scripts only check the binary that an optional per-platform

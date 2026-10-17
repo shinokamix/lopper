@@ -10,8 +10,8 @@ import (
 
 func TestDefaultRoots(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)        // Unix
-	t.Setenv("USERPROFILE", home) // Windows
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	roots, err := defaultRoots()
 	if err != nil {
@@ -30,13 +30,10 @@ func TestDefaultRootsWithoutHome(t *testing.T) {
 	}
 }
 
-// TestTempDirs checks that the temporary directory the environment names is
-// a candidate. TestTempRoots decides whether it becomes a root. Under /tmp,
-// where t.TempDir is on Linux, it does not.
 func TestTempDirs(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "tmp")
-	t.Setenv("TMPDIR", dir) // Unix
-	t.Setenv("TMP", dir)    // Windows
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir)
 	t.Setenv("TEMP", dir)
 	if got := tempDirs(); !slices.Contains(got, dir) {
 		t.Errorf("tempDirs() = %v, want it to contain %s", got, dir)
@@ -46,7 +43,7 @@ func TestTempDirs(t *testing.T) {
 func TestTempRoots(t *testing.T) {
 	home := realDir(t, t.TempDir())
 	out := realDir(t, t.TempDir())
-	appTemp := filepath.Join(home, "AppData", "Local", "Temp") // Windows' %TEMP%
+	appTemp := filepath.Join(home, "AppData", "Local", "Temp")
 	inHome := filepath.Join(home, "tmp")
 	nested := filepath.Join(out, "sub")
 	for _, dir := range []string{appTemp, inHome, nested} {
@@ -58,11 +55,12 @@ func TestTempRoots(t *testing.T) {
 	if err := os.Mkdir(locked, 0); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) }) // or t.TempDir cannot remove it
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 	// Windows ignores the mode bits, and root reads everything.
 	unreadable := runtime.GOOS != "windows" && os.Geteuid() != 0
 	link := filepath.Join(t.TempDir(), "link")
-	linked := os.Symlink(out, link) == nil // needs a privilege on Windows
+	// Symlinks need a privilege on Windows.
+	linked := os.Symlink(out, link) == nil
 
 	cases := []struct {
 		name  string
@@ -98,8 +96,8 @@ func TestTempRoots(t *testing.T) {
 	}
 }
 
-// realDir resolves symlinks in a test directory. On macOS the temporary
-// directory lies under /var, a link to /private/var.
+// realDir resolves symlinks, since on macOS the temporary directory lies
+// under /var, a link to /private/var.
 func realDir(t *testing.T, dir string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(dir)

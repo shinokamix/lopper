@@ -73,6 +73,7 @@ internal/
   lopper          core types: Worktree and its State, Facts, Verdict (no dependencies)
   gitx            thin wrapper over the git CLI
   discovery       where worktrees are
+  pathx           compares paths by name, for discovery, catalog and engine
   inspect         facts about a worktree (dirty, unpushed, merged, size…)
   verdict         what lopper concludes: whether a worktree is safe to delete, and why
   engine          scan pipeline, emits events

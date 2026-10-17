@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// A scan of some roots replaces what was kept below them, met again or
-// gone, and keeps what other scans met elsewhere.
 func TestRememberReplacesOnlyBelowRoots(t *testing.T) {
 	dir := t.TempDir()
 	c := Catalog{filepath.Join(dir, "cache", "repos.json")}
@@ -34,8 +32,6 @@ func TestRememberReplacesOnlyBelowRoots(t *testing.T) {
 	}
 }
 
-// A file lopper cannot use is no reason to fail. The scan walks as if
-// nothing were known and replaces the file.
 func TestKnownIgnoresUnusableFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "repos.json")
 	c := Catalog{path}
@@ -60,8 +56,6 @@ func TestKnownIgnoresUnusableFile(t *testing.T) {
 	}
 }
 
-// Concurrent scans update one catalog without losing places found by the
-// other scan. Both callers use the same path, as separate lopper processes do.
 func TestRememberConcurrentWritersKeepBothPlaces(t *testing.T) {
 	c := Catalog{filepath.Join(t.TempDir(), "cache", "repos.json")}
 	const n = 32

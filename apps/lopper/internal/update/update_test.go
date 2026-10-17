@@ -20,7 +20,6 @@ import (
 	"time"
 )
 
-// release serves fixed responses by URL path, as GitHub serves a release.
 type release map[string]reply
 
 type reply struct {
@@ -140,7 +139,7 @@ func TestInstallReplacesBinaryWithTheOneForThisPlatform(t *testing.T) {
 			if got := readExe(t, u); got != "new binary" {
 				t.Errorf("binary after update = %q, want the release's", got)
 			}
-			if runtime.GOOS != "windows" { // no permission bits there
+			if runtime.GOOS != "windows" {
 				if info, err := os.Stat(u.Exe); err != nil || info.Mode().Perm()&0o111 == 0 {
 					t.Errorf("updated binary is not executable: %v %v", info.Mode(), err)
 				}
@@ -155,11 +154,8 @@ func TestInstallReplacesBinaryWithTheOneForThisPlatform(t *testing.T) {
 	}
 }
 
-// On Windows, an update renames the running lopper.exe away. The next
-// update must succeed while that one still runs, when its file can be
-// neither deleted nor replaced. Holding it open stands in for running it
-// on Windows. Elsewhere nothing stops either, and the test only shows that
-// repeated updates work.
+// On Windows, the running lopper.exe can be neither deleted nor replaced.
+// Holding it open stands in for running it there.
 func TestWindowsUpdatesAgainWhileTheReplacedOneRuns(t *testing.T) {
 	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
 	archive := zipfile(t, "lopper.exe", "new binary")
@@ -213,8 +209,6 @@ func TestInstallKeepsBinaryWhenDownloadIsNotTheReleased(t *testing.T) {
 	}
 }
 
-// cancelAfter cancels the install once path has been downloaded, as
-// quitting lopper does.
 type cancelAfter struct {
 	release
 	path   string
@@ -229,8 +223,6 @@ func (c cancelAfter) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// An install cancelled while it downloads does not replace the binary, so
-// quitting lopper then leaves the running version.
 func TestInstallCancelledWhileDownloadingKeepsBinary(t *testing.T) {
 	const dl = "/shinokamix/lopper/releases/download/v0.2.0/"
 	archive := tarball(t, "new binary")
@@ -270,9 +262,9 @@ func TestNewer(t *testing.T) {
 		current, release string
 		want             bool
 	}{
-		{"0.1.0", "v0.2.0", true}, // goreleaser sets the version without v
+		{"0.1.0", "v0.2.0", true},
 		{"0.2.0", "v0.2.0", false},
-		{"v0.9.0", "v0.10.0", true}, // compared as numbers, not strings
+		{"v0.9.0", "v0.10.0", true},
 		{"v0.2.0", "v0.1.0", false},
 	} {
 		if got := Newer(tc.current, tc.release); got != tc.want {
@@ -281,8 +273,6 @@ func TestNewer(t *testing.T) {
 	}
 }
 
-// A binary built from source must never be offered a release in its place,
-// since that would silently throw away the build.
 func TestReleased(t *testing.T) {
 	for v, want := range map[string]bool{
 		"0.1.0":                                true, // set by goreleaser
@@ -298,7 +288,6 @@ func TestReleased(t *testing.T) {
 	}
 }
 
-// cache keeps tag as what Refresh found age ago.
 func cache(t *testing.T, u *Updater, tag string, age time.Duration) {
 	t.Helper()
 	u.write(latestFile, tag)
@@ -308,17 +297,14 @@ func cache(t *testing.T, u *Updater, tag string, age time.Duration) {
 	}
 }
 
-// Starting lopper offers what the last Refresh found, so Refresh must
-// ask GitHub often enough to learn of a new release, yet not on every
-// start, and after failing, not again right away.
 func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 	latest := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
 	later := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.9.0")}
 	offline := release{}
 	for _, tc := range []struct {
 		name   string
-		cached string        // what the last Refresh found
-		age    time.Duration // since it did
+		cached string
+		age    time.Duration
 		r      release
 		want   string
 	}{
@@ -335,7 +321,6 @@ func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 			if got := u.Available("0.1.0"); got != tc.want {
 				t.Errorf("Available after Refresh = %q, want %q", got, tc.want)
 			}
-			// What it found is what the next start trusts, without asking.
 			u.Client.Transport = later
 			u.Refresh(t.Context())
 			if got := u.Available("0.1.0"); got != tc.want {
@@ -345,8 +330,6 @@ func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
 	}
 }
 
-// Quitting lopper while Refresh waits for GitHub is not a failure to find a
-// release. The next start asks again, as if it never asked.
 func TestRefreshCutShortKeepsNothing(t *testing.T) {
 	u := updater(t, "darwin", release{})
 	ctx, cancel := context.WithCancel(t.Context())
@@ -359,7 +342,6 @@ func TestRefreshCutShortKeepsNothing(t *testing.T) {
 	}
 }
 
-// A skipped release is not offered again, but a later one is.
 func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {
 	u := updater(t, "darwin", release{})
 	cache(t, u, "v0.4.0", time.Hour)
@@ -379,8 +361,6 @@ func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {
 	}
 }
 
-// A postponed release is offered again a day later, and a later one at
-// once.
 func TestAvailableOffersPostponedReleaseADayLater(t *testing.T) {
 	u := updater(t, "darwin", release{})
 	cache(t, u, "v0.4.0", time.Hour)
@@ -402,8 +382,6 @@ func TestAvailableOffersPostponedReleaseADayLater(t *testing.T) {
 	}
 }
 
-// Where lopper cannot write, retrying is no use, and the error says how to
-// update instead.
 func TestInstallWhereNotWritableSaysHow(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("a read-only directory stays writable on Windows")

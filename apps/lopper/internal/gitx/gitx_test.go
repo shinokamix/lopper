@@ -40,7 +40,6 @@ func FuzzParseWorktreeList(f *testing.F) {
 	f.Add("worktree /a\nb\x00\x00worktree\x00\x00")
 	f.Add("HEAD without worktree\x00\x00")
 	f.Fuzz(func(_ *testing.T, out string) {
-		// Malformed input must not panic. The fixture test checks parsed values.
 		parseWorktreeList(out)
 	})
 }
@@ -95,10 +94,8 @@ func TestBlankFiltersKeepsUserOverrides(t *testing.T) {
 	}
 }
 
-// commandRepo creates the repository work/repo with a.txt committed, with git
-// isolated from the developer's config. It returns work and a plain git that
-// runs there. Commands from config run through sh in the worktree root, so
-// ../marker lands in work.
+// commandRepo creates work/repo. git runs commands from config in the
+// worktree root, so ../marker lands in work.
 func commandRepo(t *testing.T) (work string, git func(args ...string)) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -135,8 +132,6 @@ func staleStat(t *testing.T, file string, ts time.Time) {
 	}
 }
 
-// TestExecIgnoresRepoCommands checks that repository-local config cannot
-// make Exec spawn programs, while plain git does run them.
 func TestExecIgnoresRepoCommands(t *testing.T) {
 	work, git := commandRepo(t)
 	repo, marker := filepath.Join(work, "repo"), filepath.Join(work, "marker")
@@ -210,9 +205,6 @@ func TestRemoveWorktreeIgnoresRepoCommands(t *testing.T) {
 	}
 }
 
-// TestExecIgnoresCallerRepo checks that git runs in the directory it is
-// given even when the caller points git elsewhere, as git does for hooks.
-// Otherwise status would describe the wrong repository.
 func TestExecIgnoresCallerRepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -262,8 +254,6 @@ func TestWithoutRepoVars(t *testing.T) {
 	}
 }
 
-// TestRepoVarsCoverGit fails when the installed git knows a repository
-// variable that repoVars misses.
 func TestRepoVarsCoverGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -289,7 +279,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// A failed removal tells the user git's reason, not the command it ran.
 func TestErrorMessageIsGitsReason(t *testing.T) {
 	cases := []struct{ stderr, want string }{
 		{"error: failed to delete '/w': Permission denied", "failed to delete '/w': Permission denied"},

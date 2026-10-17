@@ -9,10 +9,6 @@ import (
 	"strings"
 )
 
-// defaultRoots are what lopper scans when no path is given: the home
-// directory and the temporary directories a walk of it would miss. The walk
-// skips nothing below them, since caches, Library, AppData and node_modules
-// can hold worktrees too.
 func defaultRoots() ([]string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -21,23 +17,17 @@ func defaultRoots() ([]string, error) {
 	return withTemps([]string{home}, tempDirs()), nil
 }
 
-// tempDirs are where programs put throwaway directories, such as the
-// checkouts coding agents make for a task and their test fixtures. On Unix
-// they lie outside the home directory, and on Windows inside it.
 func tempDirs() []string {
 	if runtime.GOOS == "windows" {
-		// os.TempDir is the first set of TMP, TEMP and USERPROFILE.
 		return []string{os.Getenv("TMP"), os.Getenv("TEMP"), os.TempDir()}
 	}
-	// $TMPDIR is per user on macOS; /tmp and /var/tmp are shared, and
-	// stay in use when a sandbox points $TMPDIR elsewhere.
+	// macOS gives each user its own $TMPDIR. /tmp and /var/tmp are shared,
+	// and stay in use when a sandbox points $TMPDIR elsewhere.
 	return []string{os.Getenv("TMPDIR"), "/tmp", "/var/tmp"}
 }
 
-// withTemps adds to roots each existing temporary directory that a walk of
-// roots or of another temporary directory would miss. It resolves the
-// temporary directories first, since on macOS /tmp is /private/tmp, and
-// keeps roots as given.
+// withTemps resolves the temporary directories, since on macOS /tmp is
+// /private/tmp.
 func withTemps(roots, temps []string) []string {
 	var added []string
 	for _, dir := range temps {
@@ -46,7 +36,7 @@ func withTemps(roots, temps []string) []string {
 		}
 		resolved, err := filepath.EvalSymlinks(dir)
 		if err != nil {
-			continue // missing or unreadable, so nothing to find
+			continue
 		}
 		if !readableDir(resolved) {
 			continue
@@ -61,8 +51,6 @@ func withTemps(roots, temps []string) []string {
 	return append(roots, added...)
 }
 
-// readableDir reports whether the walk can list dir. An unlistable root is a
-// fatal error, which only a path the user chose deserves.
 func readableDir(dir string) bool {
 	// Stat first, because opening a FIFO blocks until something writes to it.
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -75,8 +63,6 @@ func readableDir(dir string) bool {
 	return f.Close() == nil
 }
 
-// walkReaches reports whether dir, a resolved path, lies below root, so a
-// walk of root reaches it.
 func walkReaches(root, dir string) bool {
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {

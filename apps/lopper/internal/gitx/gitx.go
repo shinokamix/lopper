@@ -1,5 +1,4 @@
-// Package gitx wraps the git CLI. Running git itself keeps worktree
-// semantics, config and safe.directory handling exactly as git has them.
+// Package gitx wraps the git CLI.
 package gitx
 
 import (
@@ -23,7 +22,7 @@ var ErrGitNotFound = errors.New("git not found in PATH: lopper needs git to insp
 // 2.36, and older git ignores GIT_CONFIG_COUNT, which [Exec] relies on.
 var minVersion = [2]int{2, 36}
 
-// Check verifies that PATH has a git of at least minVersion.
+// Check reports an error unless PATH has a git of at least minVersion.
 func Check(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "git", "version").Output()
 	if errors.Is(err, exec.ErrNotFound) {
@@ -53,7 +52,7 @@ func checkVersion(out string) error {
 	return nil
 }
 
-// Runner runs git in a directory. Tests substitute a fake.
+// Runner runs git in a directory.
 type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
 	RunRaw(ctx context.Context, dir, stdin string, args ...string) (string, error)
@@ -178,7 +177,7 @@ func (o OwnWorkTree) RunRaw(ctx context.Context, dir, stdin string, args ...stri
 // whose own config applies there with extensions.worktreeConfig.
 func filterConfigs(dir string, args []string) []string {
 	for len(args) > 0 && strings.HasPrefix(args[0], "--work-tree=") {
-		args = args[1:] // from OwnWorkTree
+		args = args[1:]
 	}
 	switch {
 	case len(args) > 0 && args[0] == "status":
@@ -194,9 +193,6 @@ func filterConfigs(dir string, args []string) []string {
 	return nil
 }
 
-// worktreeArg returns the worktree given to `git worktree remove` or
-// `move`, which is their first argument that is not an option, if it
-// exists.
 func worktreeArg(dir string, args []string) string {
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") {
@@ -316,10 +312,9 @@ func MergeUnchanged(ctx context.Context, r Runner, dir, current, ancestor, other
 	return out == blobs[0], nil
 }
 
-// blankFilters appends GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n pairs that set
-// every command of the drivers in keys to the empty string, which disables
-// them. keys are NUL-separated config keys such as filter.x.clean. Pairs the
-// user's environment already set stay.
+// blankFilters sets each command of the drivers in keys to the empty string,
+// which git treats as no command. keys are NUL-separated config keys such as
+// filter.x.clean.
 func blankFilters(env []string, keys string) []string {
 	seen := map[string]bool{}
 	n, _ := strconv.Atoi(os.Getenv("GIT_CONFIG_COUNT"))
@@ -378,7 +373,7 @@ func parseWorktreeList(out string) []WorktreeEntry {
 			continue
 		}
 		if cur == nil {
-			continue // attributes before the first "worktree" field
+			continue
 		}
 		switch key {
 		case "HEAD":
@@ -426,8 +421,6 @@ func (e *Error) Message() string {
 	return e.Err.Error()
 }
 
-// brief shows a git error by its message alone, because the command line
-// does not help users.
 type brief struct{ git *Error }
 
 func (b brief) Error() string { return b.git.Message() }

@@ -15,10 +15,6 @@ export default defineConfig([
       "import-x/resolver-next": [createNodeResolver({ symlinks: false })],
     },
     rules: {
-      // The site reaches another project only through its package name, so
-      // Moon and pnpm know about the dependency and the package exports
-      // decide what it gets. A path that does not resolve would slip past
-      // these checks, so it fails too.
       "import-x/no-relative-packages": "error",
       "import-x/no-restricted-paths": [
         "error",
@@ -34,6 +30,7 @@ export default defineConfig([
           ],
         },
       ],
+      // no-restricted-paths skips an import that does not resolve.
       "import-x/no-unresolved": "error",
     },
   },

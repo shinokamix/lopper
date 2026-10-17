@@ -56,14 +56,10 @@ func TestUpdateBuilds(t *testing.T) {
 	})
 }
 
-// TestScript runs the end-to-end scenarios in testdata/script against
-// real git repositories created inside each script's $WORK directory.
 func TestScript(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/script",
 		Setup: func(env *testscript.Env) error {
-			// Isolate git from the developer's machine: no system or global config,
-			// so no global hooks, and a fixed identity.
 			gitconfig := filepath.Join(env.WorkDir, ".gitconfig")
 			content := "[user]\n\tname = lopper\n\temail = test@lopper.invalid\n[init]\n\tdefaultBranch = main\n"
 			if err := os.WriteFile(gitconfig, []byte(content), 0o600); err != nil {

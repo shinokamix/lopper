@@ -15,10 +15,8 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// remover stands in for Engine.Remove. It records what it was asked to
-// remove and fails with fail's error for a worktree there.
 type remover struct {
-	calls []string // "id" or "id forced", or "measure id"
+	calls []string
 	fail  map[lopper.ID]error
 	sizes map[lopper.ID]int64
 }
@@ -48,7 +46,6 @@ func removalApp(t *testing.T) (*app, *remover) {
 	return a, rm
 }
 
-// found reports a checked worktree of repository /r with its size.
 func found(a *app, id string, size int64, f lopper.Facts) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: lopper.ID(id), Path: "/r/" + id, Branch: id, Repo: lopper.Repo{Path: "/r"},
@@ -57,15 +54,12 @@ func found(a *app, id string, size int64, f lopper.Facts) {
 	inspected(a, lopper.ID(id), f)
 }
 
-// Removing asks once, showing what would be lost, and then removes every
-// selected worktree: a safe one without force, so git still guards it,
-// and one shown as not safe with force, since the user confirmed it.
 func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	a, rm := removalApp(t)
 	found(a, "clean", 2_000_000_000, clean())
 	found(a, "wip", 1_000_000_000, lopper.Facts{Dirty: new(3)})
 	found(a, "other", 100, clean())
-	press(a, ' ') // clean, then the cursor moves to wip
+	press(a, ' ')
 	press(a, ' ')
 
 	press(a, 'd')
@@ -99,9 +93,6 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	}
 }
 
-// Without a selection, the remove key takes the row under the cursor. A
-// worktree that was safe when confirmed but holds work by the time it is
-// removed stays, and the summary says why.
 func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	a, rm := removalApp(t)
 	found(a, "big", 2000, clean())
@@ -126,9 +117,6 @@ func TestRemoveCursorRowKeepsOneThatGotWork(t *testing.T) {
 	}
 }
 
-// The confirmation follows the scan until the user confirms. Sizes still
-// being measured arrive, and a worktree that turns out to hold work
-// moves under the warning. What is on screen at enter is what goes.
 func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
@@ -150,9 +138,6 @@ func TestConfirmationFollowsScanUntilConfirmed(t *testing.T) {
 	}
 }
 
-// A worktree still being checked can be picked, but not confirmed until
-// its facts show what would be lost. Until then it sits in a section of
-// its own, neither safe nor holding work.
 func TestConfirmationWaitsForChecks(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "wt", Path: "/r/wt", Branch: "wt", Repo: lopper.Repo{Path: "/r"}}}})
@@ -175,8 +160,6 @@ func TestConfirmationWaitsForChecks(t *testing.T) {
 	}
 }
 
-// A worktree the scan had not measured yet is measured before it goes,
-// so the summary still tells the space freed.
 func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
 	a, rm := removalApp(t)
 	found(a, "known", 1_000_000, clean())
@@ -196,8 +179,6 @@ func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
 	}
 }
 
-// Worktrees of different repositories may share a branch name, so the
-// confirmation tells them apart by repository.
 func TestConfirmationNamesRepositories(t *testing.T) {
 	a, _ := removalApp(t)
 	for _, repo := range []string{"app", "api"} {
@@ -218,9 +199,6 @@ func TestConfirmationNamesRepositories(t *testing.T) {
 	}
 }
 
-// Every worktree to be removed can be seen before confirming, however many
-// there are, since the ones out of sight could hold work. Scrolled to them,
-// the warning over them stays in sight, and what is out of sight is counted.
 func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	a, _ := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
@@ -251,9 +229,6 @@ func TestConfirmationScrollsThroughLongSelection(t *testing.T) {
 	}
 }
 
-// The summary says why each worktree was not removed, in a column that fits
-// the screen however long the reason. A line wider than the screen breaks
-// the whole summary, and a long path pushes the cause out of sight.
 func TestSummaryTellsWhyInColumn(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 72, Height: 20})
@@ -281,8 +256,6 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 		t.Errorf("reasons are not in one column:\n%s\n%s", gitErr, notSafe)
 	}
 
-	// A summary wider than the screen loses its centering, and every line
-	// runs past the edge and is cut off, as in "      …".
 	a.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
 	for _, l := range plainLines(a) {
 		if strings.TrimSpace(l) == "…" {
@@ -292,8 +265,6 @@ func TestSummaryTellsWhyInColumn(t *testing.T) {
 	}
 }
 
-// However short the terminal, the summary says that some worktrees were
-// not removed. Without that, it reads as if everything went.
 func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 9})
@@ -313,8 +284,6 @@ func TestSummaryOnShortScreenStillCountsFailures(t *testing.T) {
 	}
 }
 
-// When many worktrees were not removed, the summary scrolls through why,
-// still saying how many there are.
 func TestSummaryScrollsThroughFailures(t *testing.T) {
 	a, rm := removalApp(t)
 	a.Update(tea.WindowSizeMsg{Width: 90, Height: 12})
@@ -342,8 +311,6 @@ func TestSummaryScrollsThroughFailures(t *testing.T) {
 	}
 }
 
-// Quitting in the middle waits for the worktree being removed, which git
-// could leave half deleted, and removes no more.
 func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {
 	a, rm := removalApp(t)
 	found(a, "one", 2000, clean())
@@ -368,8 +335,6 @@ func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {
 	}
 }
 
-// Scanning again starts from an empty list, and the scan it replaces,
-// possibly still running, cannot add to it.
 func TestScanAgainDropsOldScan(t *testing.T) {
 	a, _ := removalApp(t)
 	scans := 0
@@ -394,8 +359,6 @@ func TestScanAgainDropsOldScan(t *testing.T) {
 	}
 }
 
-// A note that does not block removal, such as "merged", is no reason the
-// worktree was kept.
 func TestReasonNamesOnlyBlockingNotes(t *testing.T) {
 	err := &engine.NotSafeError{Verdict: lopper.Verdict{Notes: []lopper.Note{
 		{Text: "1 uncommitted", Kind: lopper.NoteWork, Blocks: true},

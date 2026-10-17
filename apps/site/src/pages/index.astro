@@ -169,7 +169,6 @@ const commands: [string, string][] = [
       () => true,
       () => false,
     );
-    // The visitor may pick another command while the copy is pending.
     if (!way.checked) return;
     resetCopy();
     if (copied) {
@@ -248,8 +247,6 @@ const commands: [string, string][] = [
     outline-offset: 2px;
   }
 
-  /* The radio stays focusable but covers none of the label, so the whole
-     label shows the hand cursor. */
   input {
     position: absolute;
     width: 1px;

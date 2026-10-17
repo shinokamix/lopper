@@ -1,24 +1,24 @@
-# Installs the latest lopper release for Windows:
+# Installs the latest lopper release for Windows. Users run it like this.
 #
 #   irm https://lopper.dev/install.ps1 | iex
 #
-# $env:LOPPER_VERSION = 'v0.1.0' installs that release instead, and
-# $env:LOPPER_INSTALL_DIR (default %LOCALAPPDATA%\Programs\lopper) is where
-# lopper.exe goes; that directory is added to your PATH. The archive is
-# checked against the release's checksums.txt before anything is installed.
+# $env:LOPPER_VERSION = 'v0.1.0' installs that release instead.
+# $env:LOPPER_INSTALL_DIR sets where lopper.exe goes and defaults to
+# %LOCALAPPDATA%\Programs\lopper. The script adds that directory to your PATH.
+# It checks the archive against the release's checksums.txt before it installs
+# anything.
 #
-# Runs in a script block so that, run with iex, it leaves no variables in
-# your session, and fails with throw: exit would close your window.
+# A script block keeps variables out of your session when iex runs it. It fails
+# with throw because exit would close your window.
 & {
 	$ErrorActionPreference = 'Stop'
-	$ProgressPreference = 'SilentlyContinue' # the progress bar slows downloads down many times over
+	# The progress bar slows downloads down many times over.
+	$ProgressPreference = 'SilentlyContinue'
 	# Windows PowerShell 5.1 may still default to TLS 1.0, which GitHub refuses.
 	[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 	$repo = 'https://github.com/shinokamix/lopper'
 	$dir = if ($env:LOPPER_INSTALL_DIR) { $env:LOPPER_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\lopper' }
-	# Absolute, from PowerShell's location: it goes into PATH, where .\bin
-	# would mean another directory in every terminal.
 	$dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($dir)
 
 	# A 32-bit PowerShell on 64-bit Windows reports x86 here, the system's
@@ -31,7 +31,6 @@
 	}
 
 	if ($env:LOPPER_VERSION) {
-		# With or without the v of the tag: 0.1.0 is v0.1.0.
 		$tag = 'v' + $env:LOPPER_VERSION.TrimStart('v')
 	} else {
 		# releases/latest redirects to releases/tag/<latest tag>.
@@ -62,8 +61,8 @@
 			}
 		}
 
-		# Files are named with -LiteralPath: -Path reads [ and ] as wildcards,
-		# and a Move-Item whose path matches nothing silently does nothing.
+		# -Path reads [ and ] as wildcards, and a Move-Item whose path matches
+		# nothing does nothing, so files go through -LiteralPath.
 		$want = Get-Content -LiteralPath "$tmp\checksums.txt" | ForEach-Object {
 			$sum, $file = $_ -split '  ', 2
 			if ($file -eq $archive) { $sum }
@@ -75,12 +74,10 @@
 
 		Expand-Archive -LiteralPath "$tmp\$archive" -DestinationPath "$tmp\x"
 		New-Item -ItemType Directory -Force $dir | Out-Null
-		# Copied beside the target, then renamed over it. A running
-		# lopper.exe cannot be replaced or deleted, but can be renamed away;
-		# each install renames it to a name of its own, as the one renamed
-		# before may still run. Those that no longer do are deleted here.
+		# Windows cannot replace or delete a running lopper.exe but can rename it.
+		# Each install renames it to a name of its own, since the one renamed
+		# before may still run, and deletes those that no longer do.
 		Copy-Item -LiteralPath "$tmp\x\lopper.exe" $stage
-		# Run before it replaces anything: an antivirus may have taken it away.
 		try {
 			& $stage --version | Out-Null
 		} catch {
@@ -106,25 +103,22 @@
 		Remove-Item -Force -LiteralPath $stage -ErrorAction SilentlyContinue
 	}
 
-	# The user's PATH is read and written as stored, unexpanded: written
-	# back through [Environment], %USERPROFILE% in it would be frozen.
+	# The script keeps the user's PATH unexpanded because writing it back through
+	# [Environment] would freeze %USERPROFILE% in it.
 	$key = Get-Item 'HKCU:\Environment'
 	$path = $key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
 	if (($path -split ';') -notcontains $dir) {
 		Set-ItemProperty 'HKCU:\Environment' Path (($path.TrimEnd(';'), $dir) -join ';' -replace '^;') -Type ExpandString
 		# Setting any variable through [Environment] tells running programs,
-		# Explorer among them, to reread the environment; this one, named so
-		# that it cannot be one of the user's, goes again.
+		# Explorer among them, to reread the environment. This one has a name
+		# that no user variable has, and the script removes it right away.
 		$ping = "LOPPER_INSTALL_$([Guid]::NewGuid().ToString('N'))"
 		[Environment]::SetEnvironmentVariable($ping, '1', 'User')
 		[Environment]::SetEnvironmentVariable($ping, $null, 'User')
 		Write-Host "Added $dir to your PATH; open a new terminal to run lopper there"
 	}
-	# This terminal may have been opened before $dir went into PATH, by this
-	# install or an earlier one.
 	if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }
 
-	# A lopper.exe installed some other way would still run instead.
 	$found = Get-Command lopper -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 	if ($found -and $found.Source -ne $exe) {
 		Write-Warning "$($found.Source) comes first in your PATH: lopper runs it, not $exe"

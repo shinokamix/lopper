@@ -13,8 +13,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// gitRepo creates an isolated repository with one commit on main and a
-// linked worktree next to it on branch work, and returns both paths.
 func gitRepo(t *testing.T) (repo, wt string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -35,7 +33,6 @@ func gitRepo(t *testing.T) (repo, wt string) {
 	return repo, wt
 }
 
-// git runs git in dir and fails the test on error.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	out, err := gitx.Exec{}.Run(t.Context(), dir, args...)
@@ -45,8 +42,6 @@ func git(t *testing.T, dir string, args ...string) string {
 	return out
 }
 
-// Only its repository finds a worktree whose directory is gone, and the list
-// shows it that way. Removing it drops git's record of it.
 func TestRemoveForgetsGoneWorktree(t *testing.T) {
 	repo, wt := gitRepo(t)
 	if err := os.RemoveAll(wt); err != nil {
@@ -62,8 +57,6 @@ func TestRemoveForgetsGoneWorktree(t *testing.T) {
 	}
 }
 
-// lateWrite is git in a worktree that gets a file just before git removes
-// it, as when an agent is still at work there.
 type lateWrite struct {
 	gitx.Runner
 	file string
@@ -78,8 +71,6 @@ func (l lateWrite) Run(ctx context.Context, dir string, args ...string) (string,
 	return l.Runner.Run(ctx, dir, args...)
 }
 
-// Unforced, a worktree found safe is removed without --force, so a file
-// written after that check is kept by git's own refusal.
 func TestRemoveLetsGitGuardLateWork(t *testing.T) {
 	_, wt := gitRepo(t)
 	late := filepath.Join(wt, "late.txt")
@@ -136,8 +127,6 @@ func TestRemoveRechecksIndexFlagsAfterScan(t *testing.T) {
 	}
 }
 
-// hiddenEdit is git in a worktree where another process, while history is
-// read, hides an edit behind assume-unchanged.
 type hiddenEdit struct {
 	gitx.Runner
 	wt, file string
@@ -155,8 +144,6 @@ func (h hiddenEdit) Run(ctx context.Context, dir string, args ...string) (string
 	return h.Runner.Run(ctx, dir, args...)
 }
 
-// git's own check before removal misses an edit hidden by index flags, so
-// they are read after everything else the inspection asks git.
 func TestRemoveChecksIndexFlagsLast(t *testing.T) {
 	repo, wt := gitRepo(t)
 	file := filepath.Join(wt, "tracked.txt")

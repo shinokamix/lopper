@@ -12,7 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # New or updated dependencies: known vulnerabilities and licenses.
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -27,7 +26,6 @@ jobs:
           allow-licenses: >-
             MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, OFL-1.1,
             LicenseRef-scancode-google-patent-license-golang
-          # Dev tools from apps/lopper/tools/go.mod. They never reach the lopper binary.
           allow-dependencies-licenses: >-
             pkg:golang/github.com/golangci/golangci-lint/v2,
             pkg:golang/github.com/OpenPeeDeeP/depguard/v2,
@@ -41,7 +39,6 @@ jobs:
             pkg:golang/github.com/leonklingele/grouper,
             pkg:golang/github.com/xen0n/gosmopolitan
 
-  # Static analysis of the workflows themselves (injection, excessive permissions…).
   zizmor:
     runs-on: ubuntu-latest
     steps:

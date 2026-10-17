@@ -9,10 +9,7 @@ fileGroups:
     - public/**/*
     - astro.config.ts
     - tsconfig.json
-    # The site ships files from the demo package. vercel.json deploys the
-    # site when the same paths outside it change.
     - /packages/demo/**/*
-  # Changing any of these can change what a check reports.
   tooling:
     - package.json
     - eslint.config.js
@@ -43,7 +40,6 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(tooling)'
-      # astro.config.ts builds the canonical and og:image links from this domain.
       - $VERCEL_PROJECT_PRODUCTION_URL
       - $VERCEL_ENV
     outputs:
@@ -61,8 +57,6 @@ tasks:
     command: eslint .
     inputs: *checked
 
-  # The pre-commit hook runs it, so only the files that Prettier checks, its
-  # config and the lockfile that pins its version make it affected.
   format:
     description: Fail if files need formatting
     command: prettier --check .

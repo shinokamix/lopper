@@ -1,6 +1,4 @@
 #!/bin/sh
-# Runs install.sh as `curl … | sh` would: a release pinned without its v,
-# then the latest over it. A lopper earlier in PATH must be warned about.
 set -eu
 export LOPPER_INSTALL_DIR="$RUNNER_TEMP/bin"
 

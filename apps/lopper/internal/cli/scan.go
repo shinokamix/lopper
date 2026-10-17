@@ -23,8 +23,6 @@ type scanRecord struct {
 	Facts       scanFacts `json:"facts"`
 }
 
-// scanFacts is how `scan --json` prints [lopper.Facts]. Scripts rely on this
-// format, so it lives here, where renaming a core field cannot change it.
 type scanFacts struct {
 	Dirty          *int              `json:"dirty,omitempty"`
 	UncheckedFiles *int              `json:"unchecked_files,omitempty"`
@@ -72,7 +70,7 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				case engine.FactsUpdated:
 					r := records[ev.ID]
 					if r == nil {
-						continue // not announced by WorktreeFound; nothing to attach to
+						continue
 					}
 					r.Facts, r.Safe = newScanFacts(ev.Facts), ev.Verdict.Safe
 				case engine.ScanDone:
@@ -92,7 +90,6 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(out)
 			}
-			// TODO: pretty table output via lipgloss/table.
 			for _, r := range out {
 				safe := "unsafe"
 				if r.Safe {

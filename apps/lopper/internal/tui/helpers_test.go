@@ -18,14 +18,11 @@ func testApp() *app {
 	return &app{store: newStore(), keys: defaultKeys(), theme: newTheme(true), help: help.New(), spin: spinner.New(), list: newList([]alias{{"/home/me", "~"}})}
 }
 
-// press sends a key and runs what it leads to, as the program would.
 func press(a *app, code rune) tea.Cmd {
 	_, cmd := a.Update(tea.KeyPressMsg{Code: code})
 	return cmd
 }
 
-// settle runs cmd and every command the messages it leads to return, as
-// the program would, apart from the spinner's ticks.
 func settle(a *app, cmd tea.Cmd) {
 	if cmd == nil {
 		return
@@ -59,20 +56,14 @@ func lineWith(t *testing.T, lines []string, s string) int {
 	return 0
 }
 
-// statusLine is the line above the key help, which shows the path under the
-// cursor.
 func statusLine(lines []string) string {
 	return strings.TrimSpace(lines[len(lines)-2])
 }
 
-// clean is what the scan finds in a worktree it reports safe: merged,
-// with nothing uncommitted, unchecked or unpushed.
 func clean() lopper.Facts {
 	return lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)}
 }
 
-// inspected sends what the engine reports once it knows the facts of the
-// worktree with id: the facts and the verdict it draws from them.
 func inspected(a *app, id lopper.ID, f lopper.Facts) {
 	wt := a.store.byID[id].worktree
 	a.Update(eventMsg{ev: engine.FactsUpdated{ID: id, Facts: f, Verdict: verdict.Of(wt, f)}})

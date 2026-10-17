@@ -16,9 +16,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
-// fakeGit lists n linked worktrees for every repository. Any other git
-// command fails at once or, when block is set and it runs inside a
-// worktree, waits for cancellation like a slow git process would.
 type fakeGit struct {
 	n       int
 	block   bool
@@ -31,7 +28,6 @@ func (f fakeGit) RunRaw(ctx context.Context, dir, _ string, args ...string) (str
 
 func (f fakeGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	if len(args) > 1 && args[0] == "worktree" && args[1] == "list" {
-		// Records work for both plain and -z porcelain output.
 		sep := "\n"
 		if slices.Contains(args, "-z") {
 			sep = "\x00"
@@ -57,7 +53,6 @@ func (f fakeGit) Run(ctx context.Context, dir string, args ...string) (string, e
 	return "", errors.New("fake git: unsupported")
 }
 
-// newRepo lays out a repository that has linked worktrees on disk.
 func newRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -67,7 +62,6 @@ func newRepo(t *testing.T) string {
 	return root
 }
 
-// checker verifies the event stream contract as events arrive.
 type checker struct {
 	t      *testing.T
 	known  map[lopper.ID]bool
@@ -105,7 +99,7 @@ func (c *checker) see(ev Event) {
 
 func TestScanEventOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		const n = 300 // more than the channel buffers hold
+		const n = 300
 		c := newChecker(t)
 		for ev := range New().withGit(fakeGit{n: n}).Scan(t.Context(), Options{Roots: []string{newRepo(t)}}) {
 			c.see(ev)
@@ -119,8 +113,6 @@ func TestScanEventOrder(t *testing.T) {
 	})
 }
 
-// The UIs show the verdict a scan sends and decide nothing themselves, so
-// every update must carry the notes that explain it, not only Safe.
 func TestScanSendsVerdictWithNotes(t *testing.T) {
 	_, path := gitRepo(t)
 	git(t, path, "commit", "-q", "--allow-empty", "-m", "work")
@@ -164,8 +156,6 @@ func TestScanReportsRootError(t *testing.T) {
 	}
 }
 
-// Cancelling while the consumer keeps reading must neither break the event
-// order nor leave goroutines behind, which synctest detects.
 func TestScanCancelMidScan(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -182,8 +172,6 @@ func TestScanCancelMidScan(t *testing.T) {
 	})
 }
 
-// A consumer that stops reading after cancelling must not leak the
-// pipeline's goroutines, which synctest detects when they stay blocked.
 func TestScanAbandonedConsumer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -194,8 +182,6 @@ func TestScanAbandonedConsumer(t *testing.T) {
 	})
 }
 
-// budget must always leave at least one goroutine per stage and never
-// exceed the requested concurrency once there is room for both.
 func TestBudget(t *testing.T) {
 	for _, n := range []int{0, 1, 2, 3, 8, 64} {
 		l, w := budget(n)

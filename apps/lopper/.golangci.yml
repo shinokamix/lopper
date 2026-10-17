@@ -15,13 +15,13 @@ formatters:
         - localmodule
 
 linters:
-  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
   enable:
     - contextcheck
     - errorlint
     - exhaustive
     - forcetypeassert
-    - gochecksumtype # exhaustive type switches over //sumtype:decl interfaces
+    - gochecksumtype
     - gocritic
     - gosec
     - misspell
@@ -35,12 +35,10 @@ linters:
     - usestdlibvars
   settings:
     exhaustive:
-      # A `default:` branch counts as handling the remaining cases.
       default-signifies-exhaustive: true
     gocritic:
       enabled-tags: [diagnostic, performance, style]
       disabled-checks:
-        # Worktree and Facts are small value types passed by value on purpose.
         - hugeParam
         - rangeValCopy
         - unnamedResult
@@ -76,9 +74,11 @@ linters:
       - common-false-positives
       - std-error-handling
     rules:
-      # Running git with computed arguments is the whole point of gitx.
       - path: internal/gitx/
         linters: [gosec]
         text: G204
+      - path: internal/discovery/
+        linters: [gosec]
+        text: G703
       - path: _test\.go
         linters: [gosec, forcetypeassert]

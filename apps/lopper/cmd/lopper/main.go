@@ -34,9 +34,8 @@ func run() int {
 	return 0
 }
 
-// buildVersions returns the version to display and the version to update
-// from. GoReleaser stamps version, and go install records the module
-// version. A local build records VCS settings even on a clean release tag,
+// GoReleaser stamps version, and go install records the module version. A
+// local build records VCS settings even on a clean release tag,
 // so it gets no updates.
 func buildVersions() (display, release string) {
 	if version != "dev" {

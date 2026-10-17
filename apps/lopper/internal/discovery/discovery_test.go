@@ -15,12 +15,10 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// fakeGit answers `git worktree list` from a canned listing per directory
-// and records every directory it was asked about.
 type fakeGit struct {
 	mu    sync.Mutex
-	lists map[string][]string // linked worktree paths by repository directory
-	fail  map[string]error    // git's error by repository directory
+	lists map[string][]string
+	fail  map[string]error
 	calls []string
 }
 
@@ -32,7 +30,7 @@ func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, er
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(args) > 0 && args[0] == "--work-tree="+dir {
-		args = args[1:] // as git does, for a repository without a checkout
+		args = args[1:]
 	}
 	if len(args) < 2 || args[0] != "worktree" || args[1] != "list" {
 		return "", errors.New("unsupported")
@@ -41,7 +39,6 @@ func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, er
 	if err := f.fail[dir]; err != nil {
 		return "", err
 	}
-	// Records work for both plain and -z porcelain output.
 	sep := "\n"
 	if slices.Contains(args, "-z") {
 		sep = "\x00"
@@ -89,8 +86,6 @@ func gitDir(t *testing.T, dir string) {
 	mkdir(t, filepath.Join(dir, "refs"))
 }
 
-// scan runs Scan and returns what it found. A walk that does not end, such
-// as one going round a symlink loop, fails the test instead of hanging it.
 func scan(t *testing.T, git *fakeGit, opts Options) []lopper.Worktree {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -134,8 +129,6 @@ func TestScanFollowsLinkedWorktreeToMainRepo(t *testing.T) {
 	elsewhere := filepath.Join(dir, "elsewhere")
 	wt := filepath.Join(elsewhere, "wt")
 	linkWorktree(t, main, wt)
-	// A submodule's .git file points at a whole repository, which has no
-	// linked worktrees of its own, so no git process runs for it.
 	write(t, filepath.Join(main, ".git", "modules", "sub", "HEAD"), "ref: refs/heads/main\n")
 	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "objects"))
 	mkdir(t, filepath.Join(main, ".git", "modules", "sub", "refs"))
@@ -158,18 +151,13 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	gone := filepath.Join(dir, "gone")
 	orphan := filepath.Join(dir, "agent", "orphan")
 	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(gone, ".git", "worktrees", "orphan")+"\n")
-	// A stray file named HEAD above the repository does not make a git directory.
 	write(t, filepath.Join(dir, "HEAD"), "")
-	// A submodule whose repository is gone is not a worktree.
 	write(t, filepath.Join(dir, "agent", "sub", ".git"), "gitdir: "+filepath.Join(gone, ".git", "modules", "sub")+"\n")
-	// A repository moved after `git worktree add`. The worktree's .git file
-	// is stale, but the repository still tracks it.
 	moved := filepath.Join(dir, "moved")
 	mkdir(t, filepath.Join(moved, ".git", "worktrees", "wt"))
 	wt := filepath.Join(dir, "agent", "wt")
 	write(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(dir, "old", ".git", "worktrees", "wt")+"\n")
 
-	// Overlapping roots must not report the orphan twice.
 	git := &fakeGit{lists: map[string][]string{moved: {wt}}}
 	found := scan(t, git, Options{Roots: []string{dir, filepath.Join(dir, "agent")}})
 
@@ -187,8 +175,6 @@ func TestScanReportsOrphanedWorktrees(t *testing.T) {
 	}
 }
 
-// The walk enters caches and dependency trees too. Agents and tools create
-// worktrees there, and a worktree nobody sees is never cleaned up.
 func TestScanWalksEveryDirectory(t *testing.T) {
 	root := t.TempDir()
 	lib := filepath.Join(root, "Library", "Caches", "repo")
@@ -203,9 +189,6 @@ func TestScanWalksEveryDirectory(t *testing.T) {
 	}
 }
 
-// A worktree found through its .git file stays in the results when its
-// repository cannot be listed, marked as unconfirmed and with the branch
-// its admin directory names.
 func TestScanKeepsWorktreesGitCannotList(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -226,8 +209,7 @@ func TestScanKeepsWorktreesGitCannotList(t *testing.T) {
 }
 
 // The repository of a nested submodule lives in the modules directory of
-// its parent submodule's repository. Its worktrees are found even when no
-// checkout of either submodule is left.
+// its parent submodule's repository.
 func TestScanFindsNestedSubmoduleRepos(t *testing.T) {
 	root := t.TempDir()
 	superGit := filepath.Join(root, "super", ".git")
@@ -260,18 +242,13 @@ func TestScanFollowsSymlinkedDirectories(t *testing.T) {
 	repo := filepath.Join(outside, "repo")
 	linkWorktree(t, repo, filepath.Join(outside, "repo-wt"))
 	symlink(t, outside, filepath.Join(root, "code"))
-	// A worktree whose repository is gone, reached by two paths. The walk
-	// meets the link first, yet reports where the worktree really is.
 	target := filepath.Join(root, "deep", "er", "real")
 	orphan := filepath.Join(target, "orphan")
 	write(t, filepath.Join(orphan, ".git"), "gitdir: "+filepath.Join(outside, "gone", ".git", "worktrees", "orphan")+"\n")
 	symlink(t, target, filepath.Join(root, "alias"))
-	// Two links back to an ancestor. Without loop detection, the number of
-	// paths doubles with every level.
 	symlink(t, root, filepath.Join(root, "deep", "up"))
 	symlink(t, root, filepath.Join(target, "up"))
 
-	// Reached through the link, the repository lists its worktree.
 	git := &fakeGit{lists: map[string][]string{
 		filepath.Join(root, "code", "repo"): {filepath.Join(outside, "repo-wt")},
 	}}
@@ -306,10 +283,6 @@ func TestScanRootErrors(t *testing.T) {
 	}
 }
 
-// A scan reports where it met each repository. That is its own directory
-// rather than the .git file of a worktree that may be removed, or that file
-// when the repository lies outside the roots. A later scan lists those
-// repositories before its walk.
 func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 	root := t.TempDir()
 	deep := filepath.Join(root, "deep", "er")
@@ -329,7 +302,6 @@ func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 		t.Fatalf("met %v, want %v", met, want)
 	}
 
-	// Repositories made since, which the walk meets before those known.
 	for i := range 8 {
 		fresh := filepath.Join(root, "new"+strconv.Itoa(i))
 		linkWorktree(t, fresh, fresh+"-wt")
@@ -342,9 +314,6 @@ func TestScanListsKnownRepositoriesFirst(t *testing.T) {
 	}
 }
 
-// Known places change when worktrees are found, never which. A place outside
-// the roots, one gone since, or one that is no longer a repository adds
-// nothing.
 func TestScanKnownDoesNotChangeWhatIsFound(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -372,8 +341,6 @@ func TestScanKnownDoesNotChangeWhatIsFound(t *testing.T) {
 	}
 }
 
-// A cancelled scan did not meet every repository, so what it met must not
-// replace what an earlier scan met.
 func TestScanCancelledReportsNothingMet(t *testing.T) {
 	root := t.TempDir()
 	linkWorktree(t, filepath.Join(root, "repo"), filepath.Join(root, "wt"))

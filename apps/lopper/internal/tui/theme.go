@@ -8,24 +8,15 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// theme defines every color and style.
-//
-// Color only carries meaning, in GitHub's Primer palette so it reads as on
-// GitHub: purple for merged work, yellow for work that exists only locally,
-// red for failures. ANSI palette slots would follow the terminal theme, but
-// many themes make magenta look red. Everything else, the cursor and the
-// selection included, differs by brightness: faint, normal, bold and a
-// neutral background.
 type theme struct {
-	title  lipgloss.Style
-	subtle lipgloss.Style
-	repo   lipgloss.Style
-	cursor lipgloss.Style // band under the cursor row
-	picked lipgloss.Style // fainter band under selected rows
-	// pickedCursor is the band under the cursor when its row is selected.
+	title        lipgloss.Style
+	subtle       lipgloss.Style
+	repo         lipgloss.Style
+	cursor       lipgloss.Style
+	picked       lipgloss.Style
 	pickedCursor lipgloss.Style
-	selected     lipgloss.Style // text of selected rows
-	caret        lipgloss.Style // where typed text goes
+	selected     lipgloss.Style
+	caret        lipgloss.Style
 	failure      lipgloss.Style
 	note         map[lopper.NoteKind]lipgloss.Style
 }

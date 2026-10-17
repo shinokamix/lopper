@@ -15,7 +15,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// sized reports worktree id of repository repo, measured at size.
 func sized(a *app, id, repo string, size int64) {
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
 		ID: lopper.ID(id), Path: "/w/" + id, Branch: id, Repo: lopper.Repo{Path: repo},
@@ -23,15 +22,12 @@ func sized(a *app, id, repo string, size int64) {
 	a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(id), Facts: lopper.Facts{SizeBytes: &size}}})
 }
 
-// typeText types s as a terminal sends it, one key per character.
 func typeText(a *app, s string) {
 	for _, c := range s {
 		a.Update(tea.KeyPressMsg{Code: c, Text: string(c)})
 	}
 }
 
-// order returns the lines of the view that contain the texts, in the
-// order they are shown.
 func order(t *testing.T, a *app, texts ...string) []string {
 	t.Helper()
 	lines := plainLines(a)
@@ -39,9 +35,6 @@ func order(t *testing.T, a *app, texts ...string) []string {
 	return texts
 }
 
-// Rows stay where they were found while the scan fills them in. A size
-// arriving does not move a row, and a longer branch found later does not
-// push the facts of the others aside.
 func TestRowsHoldStillWhileTheScanGoesOn(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -64,9 +57,6 @@ func TestRowsHoldStillWhileTheScanGoesOn(t *testing.T) {
 	}
 }
 
-// s shows the largest worktrees first, groups by their total and rows
-// by their own, with the rows still being measured after the others; s
-// again returns to the order found.
 func TestSShowsLargestFirst(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -92,9 +82,6 @@ func TestSShowsLargestFirst(t *testing.T) {
 	}
 }
 
-// Sorting moves rows but never moves the cursor to another worktree. d acts
-// on the same row before and after, even the first row the user has not
-// moved from.
 func TestSortKeepsTheCursorOnItsWorktree(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -107,8 +94,6 @@ func TestSortKeepsTheCursorOnItsWorktree(t *testing.T) {
 	}
 }
 
-// Removing worktrees changes the totals, so a list shown largest first is
-// ranked again.
 func TestLargestFirstAfterRemoving(t *testing.T) {
 	a, _ := removalApp(t)
 	sized(a, "a-big", "/r/alpha", 1000)
@@ -117,7 +102,7 @@ func TestLargestFirstAfterRemoving(t *testing.T) {
 	a.Update(eventMsg{ev: engine.ScanDone{}})
 	press(a, 's')
 
-	press(a, 'd') // a-big, under the cursor
+	press(a, 'd')
 	settle(a, press(a, tea.KeyEnter))
 	press(a, tea.KeyEscape)
 	if got, want := order(t, a, "alpha", "beta"), []string{"beta", "alpha"}; !slices.Equal(got, want) {
@@ -125,27 +110,23 @@ func TestLargestFirstAfterRemoving(t *testing.T) {
 	}
 }
 
-// Shown largest first while the scan goes on, the list is re-ranked
-// once a second, not on every size, and the row under the cursor stays
-// on its screen line as rows land above it; the end of the scan ranks
-// it for the last time.
 func TestLargestFirstReranksAroundTheCursor(t *testing.T) {
 	a := testApp()
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 10}) // four lines of list
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 10})
 	for i := 1; i <= 8; i++ {
-		sized(a, fmt.Sprintf("r%d", i), "/r", int64(900-100*i)) // r1 800 B … r8 100 B
+		sized(a, fmt.Sprintf("r%d", i), "/r", int64(900-100*i))
 	}
 	press(a, 's')
 	for range 6 {
 		press(a, tea.KeyDown)
 	}
-	view(a)             // r7 on the last line shown
-	press(a, tea.KeyUp) // r6, above it
+	view(a)
+	press(a, tea.KeyUp)
 	lines := plainLines(a)
 	at := lineWith(t, lines, "r6")
 
-	sized(a, "r9", "/r", 850)  // above r1
-	sized(a, "r10", "/r", 250) // between r6 and r7
+	sized(a, "r9", "/r", 850)
+	sized(a, "r10", "/r", 250)
 	if lines := plainLines(a); lineWith(t, lines, "r6") != at || !strings.Contains(lines[at+1], "r7") {
 		t.Errorf("list changed before its re-ranking:\n%s", strings.Join(lines, "\n"))
 	}
@@ -169,9 +150,6 @@ func TestLargestFirstReranksAroundTheCursor(t *testing.T) {
 	}
 }
 
-// search reports three worktrees: feature/login, safe to delete, and
-// fix/typo, with uncommitted work, in app; chore/deps, with unpushed
-// commits, in api.
 func searchApp() *app {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -191,9 +169,6 @@ func searchApp() *app {
 	return a
 }
 
-// / shows only the rows matching every word typed, by branch, path or fact.
-// A fact matches without its count and not inside another fact, so "merged"
-// leaves out "not merged". esc shows every row again.
 func TestSearchShowsMatchingRows(t *testing.T) {
 	all := []string{"feature/login", "fix/typo", "chore/deps"}
 	for _, tc := range []struct {
@@ -228,11 +203,9 @@ func TestSearchShowsMatchingRows(t *testing.T) {
 	}
 }
 
-// While searching, letters go into the query rather than act as keys;
-// enter ends the search and keeps its rows, and the keys act again.
 func TestKeysTypedIntoTheSearch(t *testing.T) {
 	a := searchApp()
-	typeText(a, "/deps") // d removes, s sorts
+	typeText(a, "/deps")
 	v := view(a)
 	if strings.Contains(v, "Remove") || strings.Contains(v, "largest first") || !strings.Contains(plainLines(a)[1], "/ deps") {
 		t.Errorf("letters typed into the search acted as keys:\n%s", v)
@@ -245,12 +218,10 @@ func TestKeysTypedIntoTheSearch(t *testing.T) {
 	}
 }
 
-// Rows hidden by the search stay selected. The footer counts them, and
-// removing acts on them, as the confirmation shows.
 func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
 	a := searchApp()
 	press(a, tea.KeyDown)
-	press(a, ' ') // fix/typo
+	press(a, ' ')
 	typeText(a, "/login")
 	press(a, tea.KeyEnter)
 	lines := plainLines(a)
@@ -266,8 +237,6 @@ func TestSelectionHiddenBySearchIsCounted(t *testing.T) {
 	}
 }
 
-// The key help shows the main keys, ending with ?, which stays however
-// narrow the screen.
 func TestKeyHelpEndsWithQuestionMark(t *testing.T) {
 	a := searchApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
@@ -280,9 +249,6 @@ func TestKeyHelpEndsWithQuestionMark(t *testing.T) {
 	}
 }
 
-// ? shows every key in place of the list, within the screen however small.
-// Where they do not fit, ↓ scrolls to the rest. ? or esc goes back to the
-// list.
 func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	every := []string{"↑/k up", "↓/j down", "space select", "d remove", "/ search", "s sort", "q quit"}
 	for _, size := range []tea.WindowSizeMsg{{Width: 100, Height: 12}, {Width: 28, Height: 12}} {
@@ -320,8 +286,6 @@ func TestQuestionMarkShowsEveryKey(t *testing.T) {
 	}
 }
 
-// Removing a selected row the search hides leaves the cursor on the row
-// it shows, which the next d acts on.
 func TestRemovingAHiddenRowKeepsTheCursor(t *testing.T) {
 	a, _ := removalApp(t)
 	sized(a, "match-a", "/r", 30)
@@ -329,7 +293,7 @@ func TestRemovingAHiddenRowKeepsTheCursor(t *testing.T) {
 	sized(a, "hidden", "/r", 10)
 	press(a, tea.KeyDown)
 	press(a, tea.KeyDown)
-	press(a, ' ') // hidden and last, so the cursor stays on it
+	press(a, ' ')
 	typeText(a, "/match")
 	press(a, tea.KeyEnter)
 	if got := statusLine(plainLines(a)); !strings.HasPrefix(got, "/w/match-a ") {
@@ -406,8 +370,6 @@ func TestRowShowsFactsAndPathUnderRepository(t *testing.T) {
 	}
 }
 
-// Agents put worktrees deep in temporary directories; such paths must
-// neither push a line past the screen nor hide where the worktree is.
 func TestLongPathsFitTheScreen(t *testing.T) {
 	a := testApp()
 	a.list = newList([]alias{{"/private/tmp", "tmp"}, {"/home/me", "~"}})
@@ -433,9 +395,6 @@ func TestLongPathsFitTheScreen(t *testing.T) {
 	}
 }
 
-// A row shows all its facts when the screen has room, and otherwise the
-// most pressing ones and how many more there are. A fact that makes a
-// worktree unsafe must never vanish without a trace.
 func TestRowShowsAllFactsOrCountsTheRest(t *testing.T) {
 	a := testApp()
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
@@ -467,8 +426,6 @@ func TestNarrowRowShowsUncheckedFilesBeforeMerged(t *testing.T) {
 	}
 }
 
-// The selection total sits at the right end of the status line, under
-// the size column, not among the key help.
 func TestSelectionIsShownBesideThePath(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -487,8 +444,6 @@ func TestSelectionIsShownBesideThePath(t *testing.T) {
 	}
 }
 
-// A size still being measured shows a one-cell spinner; the status
-// column must stay where it is on rows with a known size.
 func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
@@ -501,7 +456,7 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	inspected(a, "measuring", clean())
 
 	lines := plainLines(a)
-	at := lineWith(t, lines, "a-branch") // measured first, since it is larger
+	at := lineWith(t, lines, "a-branch")
 	known, unknown := lines[at], strings.TrimRight(lines[at+1], " ")
 	if !strings.Contains(known, "1.0 kB") || !strings.HasSuffix(unknown, spinning(a)) {
 		t.Fatalf("want the measured row, then the one still being measured:\n%s\n%s", known, unknown)
@@ -511,11 +466,8 @@ func TestStatusColumnAlignsWhileSizeIsUnknown(t *testing.T) {
 	}
 }
 
-// spinning is the spinner's current frame, which a size being measured shows.
 func spinning(a *app) string { return strings.TrimSpace(a.spin.View()) }
 
-// A size that could not be measured must not look as if it still were, or
-// the spinner would turn forever.
 func TestSizeSpinsOnlyWhileBeingMeasured(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
@@ -539,7 +491,7 @@ func TestSelectionAndCursorBandsDiffer(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "a", Branch: "alpha"}}})
 	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "b", Branch: "bravo"}}})
-	a.Update(tea.KeyPressMsg{Code: ' '}) // selects alpha and moves on to bravo
+	a.Update(tea.KeyPressMsg{Code: ' '})
 
 	if !onBand(a, "alpha", a.theme.picked) || onBand(a, "alpha", a.theme.cursor) {
 		t.Errorf("row selected with space does not show the selection band: %q", rawLine(a, "alpha"))
@@ -554,14 +506,12 @@ func TestSelectionAndCursorBandsDiffer(t *testing.T) {
 	}
 }
 
-// onBand reports whether the row showing text is drawn on style's background.
 func onBand(a *app, text string, style lipgloss.Style) bool {
 	bg := style.Render(" ")
-	bg = bg[strings.Index(bg, "48;"):strings.Index(bg, "m")] // the background's parameters
+	bg = bg[strings.Index(bg, "48;"):strings.Index(bg, "m")]
 	return strings.Contains(rawLine(a, text), bg+"m")
 }
 
-// rawLine returns the styled line of the view containing text, or "".
 func rawLine(a *app, text string) string {
 	for l := range strings.SplitSeq(a.View().Content, "\n") {
 		if strings.Contains(ansi.Strip(l), text) {
@@ -571,8 +521,6 @@ func rawLine(a *app, text string) string {
 	return ""
 }
 
-// Scrolling assumes one screen line per line of the view, so on a narrow
-// terminal every line must still fit, and a row must keep its size.
 func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 40, Height: 20})

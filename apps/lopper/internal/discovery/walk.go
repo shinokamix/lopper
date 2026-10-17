@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/charlievieth/fastwalk"
+
+	"github.com/shinokamix/lopper/apps/lopper/internal/pathx"
 )
 
 // findRepos reports each repository met during the walk once, by its
@@ -25,11 +26,6 @@ import (
 // skips. findRepos looks them up there, because their checkout may be gone
 // while their worktrees are not.
 //
-// findRepos checks the places in opts.Known below the roots first, so it
-// reports their repositories early. The walk finds the same set either way.
-// The returned places prefer a repository's own directory over a
-// worktree's .git file, which may be removed.
-//
 // Symlinks to directories are followed. Each physical directory is walked
 // once, so links to an ancestor and overlapping roots cause no repeats. On
 // Windows a directory may be walked twice, but never in a loop.
@@ -37,11 +33,10 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 	var (
 		seen   sync.Map
 		mu     sync.Mutex
-		places = map[string]place{} // where each repository was met, by real git directory
+		places = map[string]place{}
 	)
 	var report func(gitDir string, at place)
 	report = func(gitDir string, at place) {
-		// The same repo may be reached via a symlinked path.
 		resolved := realPath(gitDir)
 		if at.path != "" {
 			mu.Lock()
@@ -68,7 +63,6 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 			linked(physical(opts.Roots, filepath.Dir(path)), gf)
 		}
 		if ok && !gf.repoGone {
-			// Even without this worktree, the repository may have others.
 			report(gf.commonDir, place{path, false})
 		}
 	}
@@ -77,8 +71,8 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		if ctx.Err() != nil {
 			break
 		}
-		if !below(opts.Roots, path) {
-			continue // the walk would not meet it
+		if !pathx.Below(opts.Roots, path) {
+			continue
 		}
 		info, err := os.Stat(path)
 		switch {
@@ -112,7 +106,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				if path == root {
 					return fmt.Errorf("scan %s: %w", root, err)
 				}
-				return nil // skip unreadable entries below a root
+				return nil
 			}
 			typ, link := d.Type(), d.Type()&fs.ModeSymlink != 0
 			if link {
@@ -134,7 +128,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				return nil
 			}
 			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
-				report(filepath.Dir(path), place{filepath.Dir(path), true}) // a bare repository
+				report(filepath.Dir(path), place{filepath.Dir(path), true})
 				return fs.SkipDir
 			}
 			if link && typ.IsDir() {
@@ -153,15 +147,11 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 	return met, nil
 }
 
-// place is where the walk met a repository. own marks the repository's own
-// directory, which is its .git directory or a bare repository.
 type place struct {
 	path string
 	own  bool
 }
 
-// isBare reports whether dir is a bare repository that the walk would find
-// by its worktrees directory.
 func isBare(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, "worktrees"))
 	return err == nil && info.IsDir() && isGitDir(dir)
@@ -199,39 +189,17 @@ func modules(dir string, found func(gitDir string)) {
 	}
 }
 
-// physical names dir the same way whichever path the walk took. It resolves
-// dir, but under the first root that contains it, spelled as that root is
-// given.
 func physical(roots []string, dir string) string {
 	resolved := realPath(dir)
 	for _, root := range roots {
-		if rel, ok := within(realPath(root), resolved); ok {
+		if rel, ok := pathx.Within(realPath(root), resolved); ok {
 			return filepath.Join(filepath.Clean(root), rel)
 		}
 	}
 	return resolved
 }
 
-// below reports whether a walk of roots reaches path by name, without
-// resolving symlinks.
-func below(roots []string, path string) bool {
-	return slices.ContainsFunc(roots, func(root string) bool {
-		_, ok := within(filepath.Clean(root), path)
-		return ok
-	})
-}
-
-// within returns path relative to dir, if it is dir or below it.
-func within(dir, path string) (string, bool) {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return rel, true
-}
-
-// realPath resolves symlinks, so two paths to one directory compare equal.
-// For a missing path it resolves the part that exists, because git may
+// realPath resolves the part of a missing path that exists, because git may
 // record a missing worktree through a symlink the walk does not use.
 func realPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {

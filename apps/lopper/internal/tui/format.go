@@ -10,9 +10,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// facts is what a row shows about its worktree. "merged" keeps its color
-// whether or not the row is safe, as on GitHub. Work that would be lost
-// comes first, in its own color.
 func facts(r *row) []lopper.Note {
 	if !r.checked {
 		return []lopper.Note{{Text: "checking…"}}
@@ -22,22 +19,17 @@ func facts(r *row) []lopper.Note {
 
 const noteSep = " · "
 
-// notesWidth is how many cells notes take in one line.
 func notesWidth(notes []lopper.Note) int {
 	w := 0
 	for i, n := range notes {
 		if i > 0 {
-			w += len(noteSep) - 1 // the dot is one cell but two bytes
+			w += len(noteSep) - 1
 		}
 		w += ansi.StringWidth(n.Text)
 	}
 	return w
 }
 
-// fitNotes returns the leading notes that fit in w cells and how many are
-// left out, which the row counts as "+N" rather than drop silently. If not
-// even the first note fits whole, fitNotes cuts it short rather than leave a
-// bare count.
 func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
 	for k := len(notes); k > 0; k-- {
 		need := notesWidth(notes[:k])
@@ -56,17 +48,15 @@ func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
 	if rest > 0 {
 		room -= ansi.StringWidth(more(rest))
 	}
-	if room < 4 { // too short to recognize, so a count says more
+	if room < 4 {
 		return nil, len(notes)
 	}
 	first.Text = ansi.Truncate(first.Text, room, "…")
 	return []lopper.Note{first}, rest
 }
 
-// more is the count of notes left out, shown after the last one.
 func more(n int) string { return fmt.Sprintf(" +%d", n) }
 
-// branchName is the branch, or the short commit of a detached HEAD.
 func branchName(wt lopper.Worktree) string {
 	if wt.Branch != "" {
 		return wt.Branch
@@ -77,11 +67,8 @@ func branchName(wt lopper.Worktree) string {
 	return "(detached)"
 }
 
-// alias is a short name for a directory that paths often start with.
 type alias struct{ dir, name string }
 
-// abbrev replaces the directory of the first matching alias with its
-// name. aliases are ordered longest directory first.
 func abbrev(p string, aliases []alias) string {
 	for _, a := range aliases {
 		rel, err := filepath.Rel(a.dir, p)
@@ -92,9 +79,6 @@ func abbrev(p string, aliases []alias) string {
 	return p
 }
 
-// repoName names a repository by its directory, skipping the
-// conventional names of bare repositories: ~/code/app/.bare and
-// ~/code/app.git are both "app".
 func repoName(path string) string {
 	name := filepath.Base(path)
 	if name == ".bare" || name == ".git" {
@@ -103,9 +87,6 @@ func repoName(path string) string {
 	return strings.TrimSuffix(name, ".git")
 }
 
-// fitPath shortens p to at most w cells by replacing whole directories in
-// the middle with "…". It keeps the first directory, often ~ or tmp, and as
-// many of the last ones as fit, as in tmp/…/lab/outside/c3.
 func fitPath(p string, w int) string {
 	if ansi.StringWidth(p) <= w {
 		return p
@@ -125,18 +106,14 @@ func fitPath(p string, w int) string {
 			return best
 		}
 	}
-	// Not even the last directory fits, so keep its end.
 	return ansi.TruncateLeft(p, ansi.StringWidth(p)-w+1, "…")
 }
 
-// fit truncates or pads s to exactly w terminal cells.
 func fit(s string, w int) string {
 	s = ansi.Truncate(s, w, "…")
 	return s + strings.Repeat(" ", max(w-ansi.StringWidth(s), 0))
 }
 
-// formatBytes formats a size in SI units like "1.4 GB", as macOS Finder
-// does.
 func formatBytes(n int64) string {
 	const unit = 1000
 	if n < unit {

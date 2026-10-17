@@ -17,7 +17,8 @@ func newUpdateCmd(version string) *cobra.Command {
 		Long: "update downloads the latest release from " + update.Repo + ", checks it " +
 			"against the release's checksums and replaces the running lopper binary with it.",
 		Args: cobra.NoArgs,
-		// Updating needs no git, so skip the root's check for it.
+		// cobra runs only the nearest PersistentPreRunE, so this one skips the
+		// root's git check.
 		PersistentPreRunE: func(*cobra.Command, []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !update.Released(version) {
@@ -32,7 +33,7 @@ func newUpdateCmd(version string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			current := "v" + strings.TrimPrefix(version, "v") // goreleaser sets it without the v
+			current := "v" + strings.TrimPrefix(version, "v")
 			if !update.Newer(version, latest) {
 				fmt.Fprintf(cmd.OutOrStdout(), "lopper %s is the latest release\n", current)
 				return nil

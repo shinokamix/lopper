@@ -50,7 +50,6 @@ func TestSafe(t *testing.T) {
 			if v.Safe != tc.want {
 				t.Errorf("Safe = %v, want %v", v.Safe, tc.want)
 			}
-			// A refusal the user cannot see the reason for reads as a bug.
 			if !v.Safe && !slices.ContainsFunc(v.Notes, func(n lopper.Note) bool { return n.Blocks }) {
 				t.Errorf("not safe, but no note says why: %v", v.Notes)
 			}
@@ -58,8 +57,6 @@ func TestSafe(t *testing.T) {
 	}
 }
 
-// After a squash merge, local commits exist nowhere else. Counting them as
-// unpushed would warn about work that is not at risk.
 func TestNotesCountUnpushedOnlyUntilMerged(t *testing.T) {
 	repo := lopper.Worktree{Repo: lopper.Repo{DefaultBranch: "main"}}
 	for _, tc := range []struct {
@@ -76,9 +73,6 @@ func TestNotesCountUnpushedOnlyUntilMerged(t *testing.T) {
 	}
 }
 
-// Without a base branch nothing failed: lopper has nothing to compare the
-// branch with, and saying "couldn't check" would send the user hunting for
-// an error.
 func TestNoBaseBranchIsNotAFailedCheck(t *testing.T) {
 	f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0)}
 	want := []lopper.Note{{Text: "no base branch", Kind: lopper.NotePlain, Blocks: true}}
@@ -87,8 +81,6 @@ func TestNoBaseBranchIsNotAFailedCheck(t *testing.T) {
 	}
 }
 
-// "merged" keeps its kind, and so its color, whether or not the worktree is
-// safe to delete, and comes after the work deleting it would lose.
 func TestNotesShowMergedLastInItsKind(t *testing.T) {
 	repo := lopper.Worktree{Repo: lopper.Repo{DefaultBranch: "main"}}
 	moved := repo
@@ -99,7 +91,7 @@ func TestNotesShowMergedLastInItsKind(t *testing.T) {
 		wt     lopper.Worktree
 		facts  lopper.Facts
 		want   string
-		marked bool // "merged" is of kind NoteMerged
+		marked bool
 	}{
 		{"merged", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: merged}, "merged", true},
 		{"merged but dirty", repo, lopper.Facts{Dirty: new(1), UncheckedFiles: new(0), Unpushed: new(0), Merged: merged}, "1 uncommitted · merged", true},

@@ -9,7 +9,6 @@ fileGroups:
     - internal/**/*
     - go.mod
     - go.sum
-  # Changing any of these can change what a check reports.
   tooling:
     - tools/go.mod
     - tools/go.sum
@@ -21,7 +20,6 @@ fileGroups:
     - /.github/workflows/ci.yml
     - /.github/actions/**/*
 
-# Go caches builds and test results itself; Moon only picks what to run.
 taskOptions:
   cache: false
   windowsShell: bash
@@ -35,9 +33,8 @@ tasks:
     outputs:
       - bin/*
 
-  # The pre-commit hook runs it when a staged Go file changes. It checks the
-  # whole module, since moon would also pass the files a commit deletes and
-  # golangci-lint fails on a missing path. In CI, `lint` checks formatting.
+  # It checks the whole module because Moon would also pass the files a commit
+  # deletes, and golangci-lint fails on a missing path.
   format:
     description: Fail if Go files need formatting (gofumpt, gci)
     command: go tool -modfile tools/go.mod golangci-lint fmt --diff
@@ -89,7 +86,6 @@ tasks:
 
   coverage:
     description: Run tests and open the coverage report
-    # One command: a script line that fails does not stop the next.
     script: go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
     preset: utility
 
@@ -108,7 +104,6 @@ tasks:
     command: go tool -modfile tools/go.mod govulncheck ./...
     inputs: *checked
     options:
-      # New advisories appear without any change here.
       runInCI: always
 
   fixture:
@@ -126,7 +121,6 @@ tasks:
       git -C wt-unpushed commit -q --allow-empty -m work
       echo 'Fixture ready. From apps/lopper, run: go run ./cmd/lopper .tmp/fixture'
     env:
-      # Keep a global core.hooksPath from running hooks on the fixture commits.
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: core.hooksPath
       GIT_CONFIG_VALUE_0: /dev/null

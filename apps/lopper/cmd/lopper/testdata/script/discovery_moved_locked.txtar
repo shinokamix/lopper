@@ -1,0 +1,15 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b pinned ../old/locked
+exec git -C repo worktree lock ../old/locked
+mv old/locked $WORK/lockmoved
+exec lopper scan $WORK/lockmoved
+stdout '^unsafe\s+pinned\s+.*lockmoved$'
+! stdout 'old[/\\]locked$'
+exec lopper scan --json $WORK/lockmoved
+stdout '"locked": true'
+
+mkdir old/locked
+exec lopper scan $WORK/lockmoved
+stdout '^unsafe\s+pinned\s+.*lockmoved$'
+! stdout 'old[/\\]locked$'

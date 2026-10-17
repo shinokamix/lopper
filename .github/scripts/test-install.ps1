@@ -1,8 +1,3 @@
-# Runs install.ps1 as `irm … | iex` would, into a relative directory with
-# [ ] in its name: a release pinned without its v, then the latest twice
-# while the lopper.exe each replaces is still running, the one the second
-# replaced included. Each install runs as if from a terminal opened before
-# the first, with another lopper earlier in PATH to be warned about.
 $ErrorActionPreference = 'Stop'
 $running = @()
 try {
@@ -24,7 +19,6 @@ try {
 		$env:LOPPER_VERSION = $null
 
 		foreach ($i in 1..2) {
-			# Scanning the whole drive keeps this lopper.exe busy for a while.
 			# Start-Process would read the [ ] in its path as wildcards.
 			$start = New-Object Diagnostics.ProcessStartInfo "$dir\lopper.exe", 'scan C:\'
 			$start.UseShellExecute = $false

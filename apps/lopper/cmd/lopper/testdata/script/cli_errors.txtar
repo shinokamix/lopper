@@ -1,5 +1,5 @@
-# Bad path arguments fail up front with a clear message.
-# (fang capitalizes and wraps errors, hence relative paths and (?i).)
+# fang capitalizes and wraps errors, so the patterns ignore case and the
+# start of the path.
 
 ! exec lopper scan /nonexistent
 stderr '(?i)nonexistent: no such directory'

@@ -1,4 +1,3 @@
-# A squash covers a nonempty merge, but a new empty merge needs to be kept.
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m initial
 exec git -C repo branch initial
@@ -19,7 +18,6 @@ stdout '"merged": "content"'
 stdout '"safe": true'
 ! stdout '"safe": false'
 
-# Merging an independent commit with the same content leaves the tree unchanged.
 exec git -C repo checkout -q -b side2 initial
 cp side.txt repo/side.txt
 exec git -C repo add side.txt
@@ -34,7 +32,6 @@ stdout '"unpushed": 5'
 stdout '"safe": false'
 ! stdout '"safe": true'
 
-# Removing this detached worktree would drop the only reference to its new HEAD.
 ! exec lopper rm wt
 stderr 'not safe to delete: .*not merged'
 exists wt/.git

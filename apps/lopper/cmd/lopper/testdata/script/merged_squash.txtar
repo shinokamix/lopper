@@ -1,4 +1,3 @@
-# Squash preserves the combined changes, rather than the original commits.
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
 exec git -C repo worktree add -q -b feature ../wt
@@ -9,7 +8,6 @@ cp b.txt wt/b.txt
 exec git -C wt add b.txt
 exec git -C wt commit -q -m second
 
-# Integrating only the first commit leaves work to keep.
 exec git -C repo merge -q --squash feature~1
 exec git -C repo commit -q -m partial
 exec lopper scan --json $WORK
@@ -17,7 +15,6 @@ stdout '"merged": "none"'
 stdout '"safe": false'
 ! stdout '"safe": true'
 
-# Replace the partial integration with a real squash of both commits.
 exec git -C repo reset -q --hard HEAD~1
 exec git -C repo merge -q --squash feature
 exec git -C repo commit -q -m squash
@@ -30,14 +27,12 @@ stdout '"unpushed": 2'
 stdout '"safe": true'
 ! stdout '"safe": false'
 
-# A dirty checkout stays unsafe even though its commits were integrated.
 cp local.txt wt/local.txt
 exec lopper scan --json $WORK
 stdout '"merged": "content"'
 stdout '"safe": false'
 ! stdout '"safe": true'
 
-# Committing the new work must not reuse the earlier squash match.
 exec git -C wt add local.txt
 exec git -C wt commit -q -m local
 exec lopper scan --json $WORK

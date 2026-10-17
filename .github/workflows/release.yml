@@ -13,8 +13,8 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # publish the GitHub release
-      id-token: write # sign the provenance attestation
+      contents: write
+      id-token: write
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -23,16 +23,10 @@ jobs:
           persist-credentials: false
       - uses: $/.github/actions/setup-ci
         with:
-          # Release artifacts must not come from a cache PRs could have written.
           cache: false
-          # moon check lopper installs Go when it runs, and the job needs no
-          # Node or pnpm.
           setup: false
-      # A tag on a commit CI never passed would still be released: check again.
-      # It checks only lopper, so no npm package from the site runs in a job
-      # that can publish and sign a release.
+      # GitHub runs this on a tag even when CI never passed on its commit.
       - run: moon check lopper
-      # goreleaser runs go itself, outside Moon.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/lopper/tools/go.mod
@@ -43,19 +37,15 @@ jobs:
           args: release --config apps/lopper/.goreleaser.yaml --clean
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # Lets anyone check an archive came from this workflow:
-      # gh attestation verify lopper_darwin_arm64.tar.gz -R shinokamix/lopper
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
       # go install resolves versions of the nested module only from tags with
-      # its directory as prefix. Without one, it builds a pseudo-version that
-      # lopper update does not treat as a release.
+      # its directory as prefix.
       - name: Tag the Go module
         run: |
           module_tag="apps/lopper/$GITHUB_REF_NAME"
           sha=$(git rev-parse "$GITHUB_REF_NAME^{commit}")
-          # A rerun or a manual fix may have created the tag already.
           if git rev-parse -q --verify "refs/tags/$module_tag" >/dev/null; then
             test "$(git rev-parse "$module_tag^{commit}")" = "$sha"
           else

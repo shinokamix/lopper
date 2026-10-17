@@ -1,0 +1,14 @@
+exec git init -q sm/lib
+exec git -C sm/lib commit -q --allow-empty -m init
+exec git init -q sm/super
+exec git -C sm/super -c protocol.file.allow=always submodule add -q ../lib lib
+exec git -C sm/super/lib worktree add -q -b one $WORK/smwt/one
+exec git -C sm/super/lib worktree add -q -b two $WORK/smwt/two
+mv smwt/one away
+exec git -C sm/super/lib worktree prune
+mv away smwt/one
+
+exec lopper scan $WORK/smwt
+stdout -count=2 '^\w+\s'
+stdout '^unsafe\s+.*smwt[/\\]one$'
+stdout '^\w+\s+two\s'

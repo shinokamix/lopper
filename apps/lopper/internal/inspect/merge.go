@@ -11,9 +11,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// mergeKind checks ancestry, then whether base contains the branch's changes.
-// It resolves both to commits first, so a branch that moves meanwhile cannot
-// mix histories.
 func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.MergeKind, error) {
 	out, err := in.Git.Run(ctx, dir, "rev-parse", "--revs-only", "--end-of-options", base+"^{commit}", "HEAD^{commit}")
 	if err != nil {
@@ -46,8 +43,6 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 	if len(bases) != 1 {
 		return lopper.NotMerged, nil
 	}
-	// Most branches are not merged, and the content check usually finds that
-	// before it reads a blob, so it runs before the diff of every local commit.
 	kind, err := in.contentMerge(ctx, dir, bases[0], head, base)
 	if err != nil || kind == lopper.NotMerged {
 		return kind, err
@@ -56,8 +51,6 @@ func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.Mer
 	if err != nil {
 		return lopper.NotMerged, err
 	}
-	// An empty commit, or a merge with no changes against its first parent,
-	// keeps the worktree even when the combined diff matches an earlier squash.
 	if local != len(commits) {
 		return lopper.NotMerged, nil
 	}
@@ -75,31 +68,20 @@ func (in Inspector) nonemptyCommits(ctx context.Context, dir, commits string) (i
 }
 
 const (
-	// maxMergeSize is the largest file merged as text; a larger changed
-	// file counts as not merged.
 	maxMergeSize = 8 << 20
-	// maxReadSize is the most blob data one cat-file reads into memory,
-	// enough for the three versions of the largest file.
-	maxReadSize = 3 * maxMergeSize
-	// maxArgsSize keeps the paths given to one ls-tree within command
-	// line limits.
+	maxReadSize  = 3 * maxMergeSize
+	// maxArgsSize keeps the paths of one ls-tree within command line limits.
 	maxArgsSize = 16 << 10
 )
 
-// rawChange is one file of `git diff --raw`.
 type rawChange struct {
 	srcMode, dstMode, srcID, dstID, status, path string
 }
 
-// treeEntry is one object of `git ls-tree`.
 type treeEntry struct{ mode, id string }
 
-// textMerge names the blobs of one file that replaying ancestor..other
-// onto current must leave unchanged.
 type textMerge struct{ current, ancestor, other string }
 
-// contentMerge reports MergedSquash if replaying the branch's file changes
-// onto base leaves every file unchanged, without conflicts.
 func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base string) (lopper.MergeKind, error) {
 	out, err := in.Git.Run(ctx, dir, "diff", "--raw", "--no-abbrev", "-z", "--no-ext-diff", "--no-textconv",
 		"--no-renames", "--no-relative", "--ignore-submodules=none", ancestor, head, "--")
@@ -148,8 +130,6 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 		if cur.id == ch.dstID {
 			continue
 		}
-		// Base still has the file the branch started from, so the change is
-		// not in base.
 		if cur.id == ch.srcID {
 			return lopper.NotMerged, nil
 		}
@@ -172,7 +152,6 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	if slices.ContainsFunc(ids, func(id string) bool { return sizes[id] > maxMergeSize }) {
 		return lopper.NotMerged, nil
 	}
-	// Read blobs in batches to bound the memory they take.
 	for len(merges) > 0 {
 		n, size := 0, 0
 		for n < len(merges) {
@@ -202,9 +181,7 @@ func (in Inspector) contentMerge(ctx context.Context, dir, ancestor, head, base 
 	return lopper.MergedSquash, nil
 }
 
-// treeEntries returns the entries tree has for paths, subtrees included. It
-// passes paths to ls-tree in batches that fit a command line. -t keeps a
-// tree listed when another path leads into it.
+// treeEntries passes -t so ls-tree lists a tree that another path leads into.
 func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []string) (map[string]treeEntry, error) {
 	entries := make(map[string]treeEntry, len(paths))
 	for len(paths) > 0 {
@@ -223,7 +200,7 @@ func (in Inspector) treeEntries(ctx context.Context, dir, tree string, paths []s
 				continue
 			}
 			header, path, ok := strings.Cut(record, "\t")
-			fields := strings.Fields(header) // mode, type, object
+			fields := strings.Fields(header)
 			if !ok || len(fields) != 3 {
 				return nil, fmt.Errorf("invalid ls-tree entry: %q", record)
 			}

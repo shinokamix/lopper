@@ -11,13 +11,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# `moon ci` runs every task a changed file affects, the same ones
-# `moon check --all` runs locally. It diffs against main, so checkouts fetch the
-# full history, without file contents (blob:none). Each job puts a table of what
-# ran into its summary.
+# `moon ci` diffs against main, so checkouts fetch the full history without file
+# contents.
 jobs:
-  # This job lints for every target OS and checks tidiness, tests, govulncheck
-  # and the site.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -27,7 +23,6 @@ jobs:
           filter: blob:none
           persist-credentials: false
       - uses: $/.github/actions/setup-ci
-      # Only this job builds the site, so only it caches the pnpm store.
       - id: pnpm
         # The assignment fails the step when pnpm is missing, and echo would not.
         run: |
@@ -40,13 +35,11 @@ jobs:
           restore-keys: pnpm-${{ runner.os }}-${{ runner.arch }}-
       - run: moon ci --summary minimal
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
-        # No report when no task was affected.
         if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
         with:
           access-token: ${{ github.token }}
-          skip-comment: true # a comment per job would flood the PR
+          skip-comment: true
 
-  # Tests on the other OSes; the rest doesn't depend on the host.
   test:
     strategy:
       fail-fast: false
@@ -62,11 +55,10 @@ jobs:
       - uses: $/.github/actions/setup-ci
       - run: moon ci --summary minimal :test
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
-        # No report when no task was affected.
         if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
         with:
           access-token: ${{ github.token }}
-          skip-comment: true # a comment per job would flood the PR
+          skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
   release-snapshot:
@@ -80,14 +72,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/lopper/tools/go.mod
-          # The job builds release artifacts: don't restore a cache PRs could have written.
           cache: false
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"
           args: release --config apps/lopper/.goreleaser.yaml --snapshot --clean
 
-  # The install scripts, run against the latest release.
   install:
     if: github.event_name == 'pull_request'
     strategy:

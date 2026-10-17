@@ -20,11 +20,11 @@ import (
 // Options control a discovery run.
 type Options struct {
 	Roots   []string // walked in full, skipping no directory below them
-	Listers int      // concurrent `git worktree list` processes; at least 1
+	Listers int      // concurrent `git worktree list` processes; less than 1 means 1
 	// Known are places, as Met received them, where an earlier scan met
 	// repositories. Scan checks those below Roots before the walk, so their
-	// repositories are listed first. They change when a scan finds
-	// worktrees, never which.
+	// repositories are listed first. Known never changes which worktrees
+	// Scan finds.
 	Known []string
 	// Met, if set, receives the places where a scan met repositories, for a
 	// later scan's Known. Scan calls it only after a walk that neither failed
@@ -39,15 +39,15 @@ type Options struct {
 // root is an error. Scan skips unreadable directories below a root.
 func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.Worktree)) error {
 	gitDirs := make(chan string, 64)
-	var listed sync.Map // real paths of worktrees their repository listed
+	var listed sync.Map
 
 	var (
 		mu         sync.Mutex
-		missing    = map[string]lopper.Worktree{} // .git file gone, by recordKey
-		orphans    = map[string]orphan{}          // by real path
-		candidates = map[string]orphan{}          // tracked, says the .git file; by real path
-		listErrs   = map[string]string{}          // why `git worktree list` failed, by real git directory
-		repos      = map[string]lopper.Repo{}     // repositories git could list, by real git directory
+		missing    = map[string]lopper.Worktree{}
+		orphans    = map[string]orphan{}
+		candidates = map[string]orphan{}
+		listErrs   = map[string]string{}
+		repos      = map[string]lopper.Repo{}
 	)
 
 	var wg sync.WaitGroup
@@ -55,7 +55,7 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		wg.Go(func() {
 			for gitDir := range gitDirs {
 				repo, err := listRepo(ctx, git, gitDir, func(wt lopper.Worktree) {
-					if !present(&wt) { // unless it was moved, see below
+					if !present(&wt) {
 						mu.Lock()
 						defer mu.Unlock()
 						missing[recordKey(gitDir, wt.Path)] = wt
@@ -93,21 +93,13 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		opts.Met(met)
 	}
 
-	// Orphans and missing worktrees wait until every repository is listed. A
-	// worktree whose .git file points to a moved repository still appears in
-	// that repository's list if the walk reached it, so only the rest are
-	// orphans. A worktree moved to another directory appears in the list as
-	// missing, and Scan reports it once, at its new path.
 	if ctx.Err() == nil {
-		// Sorted, so the same copy wins every time when copies of one
-		// worktree claim the same missing entry.
 		for _, key := range slices.Sorted(maps.Keys(orphans)) {
 			o := orphans[key]
 			if _, ok := listed.Load(key); ok {
 				continue
 			}
 			if o.gf.movedFrom != "" {
-				// Another repository may have used and left the same path.
 				from := recordKey(o.gf.commonDir, o.gf.movedFrom)
 				if stale, ok := missing[from]; ok {
 					delete(missing, from)
@@ -120,8 +112,6 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 		for _, key := range slices.Sorted(maps.Keys(missing)) {
 			emit(missing[key])
 		}
-		// Report worktrees whose .git file the repository did not confirm,
-		// rather than lose them when git fails.
 		for _, key := range slices.Sorted(maps.Keys(candidates)) {
 			if _, ok := listed.Load(key); ok {
 				continue
@@ -223,20 +213,16 @@ func firstLine(s string) string {
 	return line
 }
 
-// orphan is a linked worktree found through its .git file, with what that
-// file says about its repository.
 type orphan struct {
 	wt lopper.Worktree
 	gf gitFile
 }
 
-// recordKey identifies a repository's record of a worktree at path.
 func recordKey(gitDir, path string) string {
 	return realPath(gitDir) + "\x00" + realPath(path)
 }
 
-// isGone reports whether path definitely does not exist.
 func isGone(path string) bool {
-	_, err := os.Lstat(path) //nolint:gosec // G703: paths git wrote, see readGitFile
+	_, err := os.Lstat(path)
 	return errors.Is(err, fs.ErrNotExist)
 }

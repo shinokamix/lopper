@@ -1,0 +1,10 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b first $WORK/old/wt
+mv old away
+exec git -C repo worktree prune
+exec git -C repo worktree add -q -b second $WORK/new/wt
+mv away old
+
+exec lopper scan $WORK/old
+stdout '^unsafe\s+.*old[/\\]wt$'

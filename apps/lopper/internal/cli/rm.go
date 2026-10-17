@@ -62,12 +62,9 @@ type remover struct {
 	force bool
 }
 
-// errGone is returned for a path whose folder is gone. Only git's record is
-// left, in a repository the path does not lead to.
 var errGone = errors.New("no such directory; if a repository lists a worktree there, " +
 	"`git worktree prune` in it removes the record")
 
-// remove removes the worktree at path, found as lopper scan would find it.
 func (r *remover) remove(ctx context.Context, path string) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {

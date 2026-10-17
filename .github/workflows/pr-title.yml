@@ -10,8 +10,6 @@ concurrency:
   group: pr-title-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# PRs are squash-merged with the title as the commit message, so this is the
-# only place commit messages on main get checked.
 jobs:
   conventional:
     runs-on: ubuntu-latest
@@ -34,8 +32,7 @@ jobs:
             chore
             style
             revert
-          # Scopes are package names, the site, the demo, and the deps and
-          # deps-dev that Dependabot uses.
+          # Dependabot uses the deps and deps-dev scopes.
           scopes: |
             cli
             config

@@ -1,7 +1,3 @@
-# demo.tape sources this script. It puts the lopper that demo:record installs
-# on PATH and builds a throwaway home in .tmp/demo with a few repositories and
-# the worktrees agents leave behind, so the recording never shows the real disk.
-
 set -e
 root=$PWD
 rm -rf "$root/.tmp/demo" && mkdir -p "$root/.tmp/demo/code"
@@ -10,7 +6,6 @@ export HOME=$root/.tmp/demo PATH=$root/.tmp/bin:$PATH LOPPER_NO_UPDATE_CHECK=1
 export GIT_AUTHOR_NAME=demo GIT_AUTHOR_EMAIL=demo@example.com
 export GIT_COMMITTER_NAME=demo GIT_COMMITTER_EMAIL=demo@example.com
 
-# repo name: creates ~/code/name with a main branch that ignores node_modules.
 repo() {
 	git init -q -b main ~/code/"$1"
 	echo node_modules/ >~/code/"$1"/.gitignore
@@ -18,8 +13,6 @@ repo() {
 	git -C ~/code/"$1" commit -q -m "chore: initialize repository"
 }
 
-# worktree repo path branch megabytes message: adds a worktree with one
-# commit and an ignored node_modules of the given size.
 worktree() {
 	git -C ~/code/"$1" worktree add -q -b "$3" "$2"
 	git -C ~/code/"$1"/"$2" commit -q --allow-empty -m "$5"
@@ -27,7 +20,6 @@ worktree() {
 	head -c $(($4 * 1024 * 1024)) /dev/zero >~/code/"$1"/"$2"/node_modules/blob
 }
 
-# merged repo branch: merges branch into main, as a finished PR would be.
 merged() { git -C ~/code/"$1" merge -q --no-edit "$2"; }
 
 repo storefront

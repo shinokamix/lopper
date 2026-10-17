@@ -1,4 +1,3 @@
-# Merge inspection must not execute diff programs from repository config.
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
 exec git -C repo worktree add -q -b feature ../wt
@@ -14,7 +13,6 @@ exec git -C repo commit -q -m squash
 cp attributes repo/.git/info/attributes
 exec git -C repo config diff.external 'touch ../external-marker; true'
 exec git -C repo config diff.evil.textconv 'touch ../textconv-marker; true'
-# Plain Git runs both programs, so absence of markers below has meaning.
 exec git -C wt diff HEAD~1 HEAD
 exists external-marker
 rm external-marker

@@ -1,5 +1,4 @@
-// Package cli defines the command tree. Running `lopper` without a
-// subcommand opens the TUI; subcommands are for scripts and CI.
+// Package cli defines the command tree.
 package cli
 
 import (
@@ -45,8 +44,6 @@ func NewRoot(releaseVersion string) *cobra.Command {
 	return root
 }
 
-// directories rejects path arguments that are not existing directories,
-// before any scanning starts.
 func directories(_ *cobra.Command, args []string) error {
 	for _, a := range args {
 		info, err := os.Stat(a)
@@ -78,9 +75,6 @@ func scanOptions(args []string) (engine.Options, error) {
 	return remembered(engine.Options{Roots: roots}), nil
 }
 
-// remembered makes a scan start with the repositories earlier scans met and
-// remember the ones it meets, unless LOPPER_NO_CACHE is set. An unreadable or
-// unwritable cache only makes the scan as slow as without one.
 func remembered(opts engine.Options) engine.Options {
 	if os.Getenv("LOPPER_NO_CACHE") != "" {
 		return opts
@@ -91,10 +85,6 @@ func remembered(opts engine.Options) engine.Options {
 	return opts
 }
 
-// offerUpdates lets the TUI offer a newer release that an earlier start
-// found, and looks for one in the background until stop, for the next
-// start to offer. It does neither if lopper was built from source or
-// LOPPER_NO_UPDATE_CHECK is set.
 func offerUpdates(ctx context.Context, version string) (updates tui.Updates, stop func()) {
 	if !update.Released(version) || os.Getenv("LOPPER_NO_UPDATE_CHECK") != "" {
 		return tui.Updates{}, func() {}
@@ -103,7 +93,7 @@ func offerUpdates(ctx context.Context, version string) (updates tui.Updates, sto
 	if err != nil {
 		return tui.Updates{}, func() {}
 	}
-	latest := u.Available(version) // before Refresh changes what it reads
+	latest := u.Available(version)
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {

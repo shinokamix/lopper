@@ -18,8 +18,6 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-// setup creates an isolated repository with one commit on main and
-// returns its path. Git never reads the developer's system or global config.
 func setup(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -42,7 +40,6 @@ func setup(t *testing.T) string {
 	return repo
 }
 
-// git prepares test repositories, including pushes to local remotes.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
@@ -61,8 +58,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// addWorktree creates the linked worktree "wt" next to repo and describes it the
-// way discovery would.
 func addWorktree(t *testing.T, repo string, args ...string) lopper.Worktree {
 	t.Helper()
 	path := filepath.Join(filepath.Dir(repo), "wt")
@@ -124,7 +119,6 @@ func TestQuickDirtyUntracked(t *testing.T) {
 	wantFacts(t, quick(t, wt), 1, 0, lopper.MergedFF)
 }
 
-// The repository has no remote, so a new commit exists only here.
 func TestQuickUnpushedUnmergedNoRemote(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "feature")
@@ -159,8 +153,6 @@ func TestQuickNoBaseBranch(t *testing.T) {
 	}
 }
 
-// A corrupt index makes `git status` fail while history is still readable.
-// Dirty must stay unknown, and Errors must record the cause.
 func TestQuickStatusFails(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "merged")
@@ -180,7 +172,6 @@ func TestQuickStatusFails(t *testing.T) {
 	}
 }
 
-// Integration must preserve file contents and keep new empty commits.
 func TestQuickContentMergeKeepsLocalWork(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -214,8 +205,6 @@ func TestQuickContentMergeKeepsLocalWork(t *testing.T) {
 	}
 }
 
-// Matching a merge's parent commits does not cover changes made in the merge.
-// A squash of the full branch does cover them.
 func TestQuickSquashCoversMergeResolution(t *testing.T) {
 	repo := setup(t)
 	initial := git(t, repo, "rev-parse", "HEAD")
@@ -260,7 +249,6 @@ func TestQuickContentMergeKeepsTrailingNewlineChange(t *testing.T) {
 	wantFacts(t, quick(t, wt), 0, 1, lopper.NotMerged)
 }
 
-// countingGit counts the git processes an inspection starts.
 type countingGit struct {
 	gitx.Runner
 	calls *int
@@ -276,8 +264,6 @@ func (c countingGit) RunRaw(ctx context.Context, dir, stdin string, args ...stri
 	return c.Runner.RunRaw(ctx, dir, stdin, args...)
 }
 
-// A squash of a branch that touched many files, each changed again on main
-// since, takes one text merge per file but not a lookup and reads per file.
 func TestQuickSquashOfManyFilesStartsFewProcesses(t *testing.T) {
 	const files = 100
 	repo := setup(t)
@@ -306,8 +292,6 @@ func TestQuickSquashOfManyFilesStartsFewProcesses(t *testing.T) {
 	}
 }
 
-// A file too large to merge in memory keeps the worktree, even when base
-// has its changes.
 func TestQuickSquashOfLargeFileIsNotMerged(t *testing.T) {
 	var b strings.Builder
 	for i := 0; b.Len() <= maxMergeSize; i++ {
@@ -338,7 +322,6 @@ func (f failingHistoryGit) Run(ctx context.Context, dir string, args ...string) 
 	return f.Runner.Run(ctx, dir, args...)
 }
 
-// The history of local commits matters only once base has their changes.
 func TestQuickHistoryFailureLeavesMergeUnknown(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "feature")
@@ -408,8 +391,6 @@ func TestQuickIndexFlagsWithUnusualPathsAndBrokenSymlink(t *testing.T) {
 	}
 }
 
-// indexOutput replaces only the index listing, so status and history still
-// come from the real repository when testing failures at the Git boundary.
 type indexOutput struct {
 	gitx.Runner
 	out string
@@ -467,7 +448,8 @@ func TestQuickIndexFlagPathErrorIsUnknown(t *testing.T) {
 func TestQuickIndexFlagsAcceptNamesWindowsReserves(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "-b", "merged")
-	// A repository made on another OS can hold these; git still lists them.
+	// A repository made on another OS can hold these names, and git still
+	// lists them.
 	out := "h nul\x00h dir/aux.c\x00h a:b\x00"
 	f := (Inspector{Git: indexOutput{Runner: gitx.Exec{}, out: out}}).Quick(t.Context(), wt)
 	if f.UncheckedFiles == nil || *f.UncheckedFiles != 3 || len(f.Errors) != 0 {
@@ -530,8 +512,6 @@ func TestSlowSize(t *testing.T) {
 	}
 }
 
-// A worktree git reports as gone has no directory to measure. It frees
-// nothing, which a known zero says and an unknown size would not.
 func TestSlowSizeOfGoneWorktreeIsZero(t *testing.T) {
 	wt := lopper.Worktree{Path: filepath.Join(t.TempDir(), "gone"), State: lopper.StateGone}
 	f := (Inspector{}).Slow(t.Context(), wt, lopper.Facts{})

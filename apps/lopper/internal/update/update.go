@@ -1,5 +1,5 @@
 // Package update finds the latest lopper release and installs it over the
-// running binary. It is the only package that reaches the network.
+// running binary.
 package update
 
 import (
@@ -32,8 +32,6 @@ import (
 // Repo is where releases are published.
 const Repo = "https://github.com/shinokamix/lopper"
 
-// maxDownload caps what lopper downloads or unpacks. A release archive is a
-// few megabytes.
 const maxDownload = 100 << 20
 
 // Updater installs releases of Repo over the binary at Exe.
@@ -47,9 +45,6 @@ type Updater struct {
 	Cache string
 }
 
-// checkEvery is how long Refresh trusts the latest release it found,
-// retryEvery how long it waits after failing to find one, and
-// postponeFor how long Postpone keeps a release from being offered.
 const (
 	checkEvery  = 24 * time.Hour
 	retryEvery  = time.Hour
@@ -80,7 +75,7 @@ func New() (*Updater, error) {
 
 // Available returns the latest release the last Refresh found if it is
 // newer than current, not skipped and not postponed, and "" otherwise.
-// It reads only the cache, so starting lopper never waits for the network.
+// It reads only the cache.
 func (u *Updater) Available(current string) string {
 	latest, _ := u.read(latestFile)
 	if latest == "" || !Newer(current, latest) {
@@ -95,10 +90,9 @@ func (u *Updater) Available(current string) string {
 	return latest
 }
 
-// Refresh asks GitHub for the latest release, which Available offers on the
-// next start. It asks at most once a day after an answer and once an hour
-// after a failure, so an offline start does not ask every time. It keeps
-// nothing if ctx ends first.
+// Refresh asks GitHub for the latest release for Available to offer. It
+// asks at most once a day after an answer and once an hour after a
+// failure. It keeps nothing if ctx ends first.
 func (u *Updater) Refresh(ctx context.Context) {
 	if u.Cache == "" {
 		return
@@ -115,9 +109,9 @@ func (u *Updater) Refresh(ctx context.Context) {
 	defer cancel()
 	latest, err := u.Latest(ask)
 	if err != nil && ctx.Err() != nil {
-		return // lopper quit, so ask on the next start
+		return
 	}
-	u.write(latestFile, latest) // "" if offline
+	u.write(latestFile, latest)
 }
 
 // Skip keeps Available from offering release tag again.
@@ -130,15 +124,12 @@ func (u *Updater) Postpone(tag string) {
 	u.write(postponedFile, tag)
 }
 
-// Files in Cache.
 const (
-	latestFile    = "latest-release"    // what Refresh found, "" if it failed
-	skippedFile   = "skipped-release"   // what Skip was told
-	postponedFile = "postponed-release" // what Postpone was told, and when
+	latestFile    = "latest-release"
+	skippedFile   = "skipped-release"
+	postponedFile = "postponed-release"
 )
 
-// read returns the release kept in a file in Cache, if any, and when it
-// was written.
 func (u *Updater) read(name string) (tag string, written time.Time) {
 	if u.Cache == "" {
 		return "", time.Time{}
@@ -155,7 +146,6 @@ func (u *Updater) read(name string) (tag string, written time.Time) {
 	return "", info.ModTime()
 }
 
-// write keeps tag in a file in Cache. A failed write only means asking again.
 func (u *Updater) write(name, tag string) {
 	if u.Cache == "" {
 		return
@@ -240,8 +230,6 @@ func (u *Updater) Install(ctx context.Context, tag string) error {
 	if err != nil {
 		return fmt.Errorf("%s of %s: %w", name, tag, err)
 	}
-	// Nothing stops replace once it starts, since on Windows that could
-	// leave no binary.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -283,8 +271,6 @@ func checksum(sums []byte, name string) (string, error) {
 	return "", fmt.Errorf("%s is not listed in the release's checksums", name)
 }
 
-// unpack returns the lopper binary from a release archive: a zip on
-// Windows, a gzipped tarball elsewhere.
 func unpack(archive []byte, isZip bool) ([]byte, error) {
 	if isZip {
 		zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
@@ -329,18 +315,16 @@ func readAll(r io.Reader) ([]byte, error) {
 	return data, err
 }
 
-// replace writes bin next to exe and renames it over exe, so a running
-// lopper keeps its file and no half-written binary is left. Windows cannot
-// replace or delete a running binary but can rename it away. Each update
-// renames it to a new name, since the one the previous update renamed may
-// still run, and deletes the old ones that no longer run.
+// Windows cannot replace or delete a running binary but can rename it away.
+// Each update renames it to a new name, since the one the previous update
+// renamed may still run, and deletes the old ones that no longer run.
 func replace(exe string, bin []byte, windows bool) error {
 	dir := filepath.Dir(exe)
 	tmp, err := os.CreateTemp(dir, ".lopper-update-*")
 	if err != nil {
 		return fmt.Errorf("cannot write to %s: %w", dir, err)
 	}
-	defer os.Remove(tmp.Name()) // fails harmlessly once renamed
+	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(bin); err != nil {
 		_ = tmp.Close()
 		return err

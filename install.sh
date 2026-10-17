@@ -1,15 +1,15 @@
 #!/bin/sh
-# Installs the latest lopper release for macOS or Linux:
+# Installs the latest lopper release for macOS or Linux. Users run it like this.
 #
 #   curl -fsSL https://lopper.dev/install.sh | sh
 #
-# LOPPER_VERSION=v0.1.0 installs that release instead; LOPPER_INSTALL_DIR
-# (default ~/.local/bin) is where the binary goes. The archive is checked
-# against the release's checksums.txt before anything is installed.
+# LOPPER_VERSION=v0.1.0 installs that release instead. LOPPER_INSTALL_DIR sets
+# where the binary goes and defaults to ~/.local/bin. The script checks the
+# archive against the release's checksums.txt before it installs anything.
 set -eu
 
-# The script runs from main on its last line, so a download that curl | sh
-# cuts short runs nothing.
+# sh runs the lines that curl has delivered so far. Only the last line calls
+# main, so a download cut short runs nothing.
 main() {
 	repo="https://github.com/shinokamix/lopper"
 	dir="${LOPPER_INSTALL_DIR:-$HOME/.local/bin}"
@@ -31,7 +31,6 @@ main() {
 	esac
 
 	if [ -n "${LOPPER_VERSION:-}" ]; then
-		# With or without the v of the tag: 0.1.0 is v0.1.0.
 		tag="v${LOPPER_VERSION#v}"
 	else
 		# releases/latest redirects to releases/tag/<latest tag>.
@@ -71,13 +70,10 @@ main() {
 
 	tar -xzf "$tmp/$archive" -C "$tmp" lopper
 	mkdir -p "$dir"
-	# Copied to a file of its own beside the target, then renamed over it: a
-	# running lopper keeps its file, two installs at once never write the same
-	# one, and a copy cut short is removed on exit.
+	# mv swaps the file in one step, and a running lopper keeps the old one.
 	stage=$(mktemp "$dir/.lopper.XXXXXX")
 	cp "$tmp/lopper" "$stage"
 	chmod 755 "$stage"
-	# Run before it replaces anything: $dir may be mounted noexec.
 	"$stage" --version >/dev/null || fail "the downloaded lopper does not run"
 	mv -f "$stage" "$dir/lopper"
 	echo "Installed lopper $tag to $dir/lopper"
@@ -86,7 +82,6 @@ main() {
 	*":$dir:"*) ;;
 	*) echo "$dir is not in your PATH; add it to run lopper by name" ;;
 	esac
-	# A lopper installed some other way would still run instead.
 	found=$(command -v lopper || true)
 	if [ -n "$found" ] && [ "$found" != "$dir/lopper" ]; then
 		echo "$found comes first in your PATH: lopper runs it, not $dir/lopper"

@@ -1,8 +1,3 @@
-# A worktree whose metadata is damaged is still found, and told apart from
-# an orphan: its repository is known, but cannot confirm the worktree.
-# Such a worktree is never safe.
-
-# No commondir: git lists the worktree, but cannot work in it.
 exec git init -q a/repo
 exec git -C a/repo commit -q --allow-empty -m init
 exec git -C a/repo worktree add -q -b feature $WORK/a/wt
@@ -12,13 +7,10 @@ stdout -count=1 '"path"'
 stdout '"safe": false'
 stdout 'commondir is missing from '
 ! stdout '"orphaned": true'
-# ...also when the walk reaches only the worktree.
 exec lopper scan --json $WORK/a/wt
 stdout 'commondir is missing from '
 stdout '"branch": "feature"'
 
-# commondir names a directory that is gone: git lists the worktree but
-# cannot work in it. Its intact sibling is unaffected.
 exec git init -q b/repo
 exec git -C b/repo commit -q --allow-empty -m init
 exec git -C b/repo worktree add -q -b broken $WORK/b/broken
@@ -31,7 +23,6 @@ exec lopper scan --json $WORK/b
 stdout -count=1 '"unconfirmed": "'
 stdout 'commondir names .*nowhere is gone'
 
-# The repository is no longer one: its objects are gone.
 exec git init -q c/repo
 exec git -C c/repo commit -q --allow-empty -m init
 exec git -C c/repo worktree add -q -b feature $WORK/c/wt
@@ -41,8 +32,6 @@ stdout -count=1 '"path"'
 stdout 'its git directory .* is not a git repository'
 ! stdout '"orphaned": true'
 
-# No link back to the worktree: git leaves it out of `worktree list`, yet
-# still works inside, so its unsaved work is found.
 exec git init -q d/repo
 exec git -C d/repo commit -q --allow-empty -m init
 exec git -C d/repo worktree add -q -b feature $WORK/d/wt
@@ -54,14 +43,12 @@ stdout '"safe": false'
 stdout 'gitdir is missing from '
 stdout '"dirty": 1'
 ! stdout '"orphaned": true'
-# An empty link is no better.
 rm d/wt/dirty.txt
 cp empty d/repo/.git/worktrees/wt/gitdir
 exec lopper scan --json $WORK/d
 stdout 'gitdir is empty in '
 stdout '"safe": false'
 
-# A lock is kept, too: the user asked for the worktree to stay.
 exec git init -q l/repo
 exec git -C l/repo commit -q --allow-empty -m init
 exec git -C l/repo worktree add -q -b pinned $WORK/l/wt
@@ -72,7 +59,6 @@ stdout '"safe": false'
 stdout '"locked": true'
 stdout 'gitdir is missing from '
 
-# No HEAD in the admin directory: listed, but git cannot open it.
 exec git init -q e/repo
 exec git -C e/repo commit -q --allow-empty -m init
 exec git -C e/repo worktree add -q -b feature $WORK/e/wt

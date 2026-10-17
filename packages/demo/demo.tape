@@ -1,6 +1,3 @@
-# This tape records the demo for the README and the site. Regenerate it with
-# `moon run demo:record`.
-
 Output demo.mp4
 
 Set Shell zsh
@@ -12,7 +9,6 @@ Set Theme "GitHub Dark"
 Set TypingSpeed 80ms
 
 Hide
-# Keep the recording in color even when the caller disables terminal colors.
 Env NO_COLOR ""
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
@@ -27,7 +23,6 @@ Sleep 600ms
 Enter
 Sleep 3.2s
 
-# Sort by size and use search so selection does not depend on scan order.
 Type "s"
 Sleep 800ms
 Type "/merged"
@@ -50,7 +45,5 @@ Type "d"
 Sleep 3.5s
 Enter
 
-# Removal takes as long as the disk does; hold once the result is up. The
-# loop starts over from here.
 Wait+Screen@20s /freed/
 Sleep 5.5s

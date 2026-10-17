@@ -1,5 +1,4 @@
-// Package inspect collects Facts about a worktree. It never decides from
-// them, which is verdict's job.
+// Package inspect collects Facts about a worktree.
 package inspect
 
 import (
@@ -27,11 +26,11 @@ type Inspector struct {
 
 // Quick gathers the facts git reports: working tree state, index flags and
 // merge status. A fact git cannot provide stays nil and its error goes to
-// Facts.Errors, so verdict refuses to call the worktree safe.
+// Facts.Errors.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
 	var f lopper.Facts
 	switch wt.State {
-	case lopper.StateGone, lopper.StateOrphaned: // git cannot look inside
+	case lopper.StateGone, lopper.StateOrphaned:
 		return f
 	case lopper.StateTracked, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
@@ -53,7 +52,6 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	} else {
 		f.Unpushed = &n
 	}
-	// Without a base branch Merged stays nil, and verdict reports that.
 	if base := wt.Repo.DefaultBranch; base != "" {
 		if kind, err := in.mergeKind(ctx, wt.Path, base); err != nil {
 			fail("compare with "+base, err)
@@ -61,8 +59,8 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 			f.Merged = &kind
 		}
 	}
-	// git worktree remove checks status itself but not index flags, so read
-	// them last, closest to removal.
+	// git worktree remove checks status but not index flags, so they are
+	// read last, closest to removal.
 	if n, err := in.uncheckedFiles(ctx, wt.Path); err != nil {
 		fail("check index flags", err)
 	} else {
@@ -71,10 +69,10 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	return f
 }
 
-// uncheckedFiles counts the files whose index flags hide edits from status.
-// Assume-unchanged always hides them. Skip-worktree does when the path
-// exists, since missing paths are normal in a sparse checkout. Without
-// --sparse, git lists each file of a sparse index with its own flags.
+// uncheckedFiles counts files whose index flags hide edits. Assume-unchanged
+// always hides them. Skip-worktree hides them when the path exists, since
+// missing paths are normal in a sparse checkout. Without --sparse, git lists
+// each file of a sparse index with its own flags.
 func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error) {
 	out, err := in.Git.Run(ctx, dir, "ls-files", "--cached", "-v", "-z")
 	if err != nil {
@@ -92,7 +90,6 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 			return 0, errors.New("invalid ls-files record")
 		}
 		tag, path := record[0], filepath.FromSlash(record[2:])
-		// The path is checked on disk below, so it must stay inside the worktree.
 		for component := range strings.SplitSeq(path, string(filepath.Separator)) {
 			if component == "" || component == "." || component == ".." {
 				return 0, errors.New("invalid ls-files path")
@@ -101,27 +98,31 @@ func (in Inspector) uncheckedFiles(ctx context.Context, dir string) (int, error)
 		if tag >= 'a' && tag <= 'z' {
 			unchecked[path] = true
 		} else if tag == 'S' {
-			_, err := os.Lstat(filepath.Join(dir, path))
-			switch {
-			case err == nil:
-				unchecked[path] = true
-			case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
-				// A sparse checkout omits these files on purpose. A file in
-				// place of their directory holds no copy of them.
-			default:
+			ok, err := exists(filepath.Join(dir, path))
+			if err != nil {
 				return 0, fmt.Errorf("check %q: %w", path, err)
+			}
+			if ok {
+				unchecked[path] = true
 			}
 		}
 	}
 	return len(unchecked), nil
 }
 
-// Slow gathers the facts that need a walk of the directory. It walks in
-// parallel, since a dependency tree can hold hundreds of thousands of files.
-// The size leaves out unreadable or vanished entries below the root. An
-// error at the root or a cancellation leaves the size unknown. A worktree
-// git reports as gone takes no space.
-// TODO: LastTouched from non-ignored files, busy processes.
+func exists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+const walkWorkersPerWorktree = 4
+
+// Slow measures the size of the worktree's directory. It leaves out
+// unreadable or vanished entries below the root. An error at the root or a
+// cancellation leaves the size unknown. A gone worktree takes no space.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
 	switch wt.State {
 	case lopper.StateGone:
@@ -132,9 +133,8 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 	var size atomic.Int64
 	f.SizeBytes = nil
 	conf := fastwalk.DefaultConfig
-	conf.ToSlash = false // paths are compared with wt.Path
-	// Slow runs in one worker per worktree; keep each walk's own pool small.
-	conf.NumWorkers = 4
+	conf.ToSlash = false
+	conf.NumWorkers = walkWorkersPerWorktree
 	err := fastwalk.Walk(&conf, wt.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -168,7 +168,7 @@ func (in Inspector) count(ctx context.Context, dir string, args ...string) (int,
 	return strconv.Atoi(strings.TrimSpace(out))
 }
 
-// firstLine keeps error messages short, because git may add lines of hints.
+// firstLine drops the hint lines git adds to errors.
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line

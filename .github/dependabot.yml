@@ -4,10 +4,8 @@ updates:
     directories: [/apps/lopper, /apps/lopper/tools]
     schedule:
       interval: weekly
-    # Skip releases younger than a week: most compromised versions are yanked by then.
     cooldown:
       default-days: 7
-    # "build(deps): …" — PR titles must be Conventional Commits (pr-title.yml).
     commit-message:
       prefix: build
       include: scope
@@ -16,7 +14,6 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: github-actions
-    # Composite actions are not found from / on their own.
     directories: [/, /.github/actions/setup-ci]
     schedule:
       interval: weekly

@@ -2,17 +2,12 @@ package tui
 
 import "charm.land/bubbles/v2/key"
 
-// keyMap defines every key binding, and the help text comes from it.
 type keyMap struct {
-	up, down, toggle, remove, quit key.Binding
-	// On the list: its order, its search and its key help.
-	sort, search, help key.Binding
-	// While searching.
-	done, clear, move key.Binding
-	// On the removal screen.
+	up, down, toggle, remove, quit      key.Binding
+	sort, search, help                  key.Binding
+	done, clear, move                   key.Binding
 	scroll, confirm, stop, rescan, back key.Binding
-	// On the update screen.
-	install, later, skip, restart key.Binding
+	install, later, skip, restart       key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -40,7 +35,6 @@ func defaultKeys() keyMap {
 	}
 }
 
-// bindings is a set of keys to show help for.
 type bindings []key.Binding
 
 func (b bindings) ShortHelp() []key.Binding  { return b }

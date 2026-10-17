@@ -1,0 +1,8 @@
+exec git init -q lib
+exec git -C lib commit -q --allow-empty -m init
+exec git init -q --separate-git-dir=$WORK/metadata $WORK/super
+exec git -C super -c protocol.file.allow=always submodule add -q $WORK/lib worktrees/lib
+rm metadata/modules
+
+exec lopper scan $WORK/super
+! stdout .

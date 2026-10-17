@@ -1,4 +1,3 @@
-# Missing historical blobs must stay unknown until the user fetches them.
 exec git init -q source
 cp initial.txt source/content.txt
 exec git -C source add content.txt
@@ -20,7 +19,6 @@ exec git clone -q --no-local --no-checkout --filter=blob:none source checkouts/r
 exec git -C checkouts/repo checkout -q main
 exec git -C checkouts/repo worktree add -q -b feature ../wt origin/feature
 
-# Caller settings must not enable automatic downloads in lopper.
 env GIT_NO_LAZY_FETCH=0
 env GIT_ALLOW_PROTOCOL=file
 exec lopper scan --json checkouts
@@ -29,7 +27,6 @@ stdout 'could not compare with origin/main'
 ! stdout '"safe": true'
 ! stdout '"merged":'
 
-# Plain Git can fetch the blob. Inspection then recognizes the squash.
 exec git -C checkouts/wt cat-file blob main~2:content.txt
 cmp stdout initial.txt
 exec lopper scan --json checkouts

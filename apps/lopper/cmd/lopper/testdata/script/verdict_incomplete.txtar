@@ -1,11 +1,7 @@
-# A worktree whose status cannot be read is never reported as safe, even
-# when its branch is merged: the facts say what is unknown and why.
-
 exec git init -q repo
 exec git -C repo commit -q --allow-empty -m init
 exec git -C repo worktree add -q -b merged ../wt-merged
 
-# Corrupt the worktree's index: `git status` fails, history stays readable.
 cp garbage.txt repo/.git/worktrees/wt-merged/index
 ! exec git -C wt-merged status --porcelain
 

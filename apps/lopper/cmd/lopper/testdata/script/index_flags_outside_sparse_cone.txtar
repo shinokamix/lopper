@@ -1,0 +1,30 @@
+exec git init -q repo
+cp original.txt repo/tracked.txt
+mkdir repo/included repo/excluded
+cp original.txt repo/included/file.txt
+cp original.txt repo/excluded/file.txt
+exec git -C repo add .
+exec git -C repo commit -q -m init
+
+exec git -C repo worktree add -q -b sparse-hidden ../wt-sparse-hidden
+exec git -C wt-sparse-hidden sparse-checkout set --cone --sparse-index included
+mkdir wt-sparse-hidden/excluded
+cp edited.txt wt-sparse-hidden/excluded/file.txt
+exec git -C wt-sparse-hidden update-index --assume-unchanged excluded/file.txt
+exec git -C wt-sparse-hidden status --porcelain
+! stdout .
+exec lopper scan --json wt-sparse-hidden
+stdout '"safe": false'
+! stdout '"safe": true'
+stdout '"dirty": 0'
+stdout '"unchecked_files": 1'
+! exec lopper rm wt-sparse-hidden
+stderr '1 unchecked.*index flags'
+cmp wt-sparse-hidden/excluded/file.txt edited.txt
+exec lopper rm --force wt-sparse-hidden
+! exists wt-sparse-hidden
+
+-- original.txt --
+committed content
+-- edited.txt --
+work that must survive

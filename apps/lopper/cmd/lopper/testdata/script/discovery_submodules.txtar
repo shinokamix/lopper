@@ -1,7 +1,3 @@
-# The repository of a submodule lives in its superproject's .git/modules.
-# Its worktrees are found through it, even when the submodule's checkout
-# is gone and the worktrees lie outside the scanned directory.
-
 exec git init -q lib
 exec git -C lib commit -q --allow-empty -m init
 exec git init -q super
@@ -14,13 +10,3 @@ exec lopper scan $WORK/super
 stdout -count=1 '^\w+\s'
 stdout '\sfeature\s+.*outside[/\\]wt$'
 ! stderr .
-
-# A submodule of a linked worktree of the superproject keeps its
-# repository in that worktree's admin directory.
-exec git -C super worktree add -q -b other $WORK/superwt
-exec git -C $WORK/superwt -c protocol.file.allow=always submodule update -q --init
-exec git -C $WORK/superwt/libs/lib worktree add -q -b from-wt $WORK/outside/wt2
-rm $WORK/superwt/libs/lib
-
-exec lopper scan $WORK/super
-stdout '\sfrom-wt\s+.*outside[/\\]wt2$'

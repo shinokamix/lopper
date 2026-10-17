@@ -1,4 +1,3 @@
-# Identical patches in different places must not make a worktree safe.
 exec git init -q repo
 cp initial.txt repo/content.txt
 exec git -C repo add content.txt

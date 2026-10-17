@@ -1,0 +1,23 @@
+exec git init -q repo
+cp original.txt repo/tracked.txt
+mkdir repo/included repo/excluded
+cp original.txt repo/included/file.txt
+cp original.txt repo/excluded/file.txt
+exec git -C repo add .
+exec git -C repo commit -q -m init
+
+exec git -C repo worktree add -q -b sparse ../wt-sparse
+exec git -C wt-sparse sparse-checkout set --cone included
+! exists wt-sparse/excluded/file.txt
+exec lopper scan --json wt-sparse
+stdout '"safe": true'
+stdout '"unchecked_files": 0'
+exec git -C wt-sparse sparse-checkout reapply --sparse-index
+exec lopper scan --json wt-sparse
+stdout '"safe": true'
+stdout '"unchecked_files": 0'
+exec lopper rm wt-sparse
+! exists wt-sparse
+
+-- original.txt --
+committed content

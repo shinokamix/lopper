@@ -41,25 +41,36 @@ done
 benchstat() {
 	go tool -modfile tools/go.mod benchstat "$@" base="$work/base.txt" head="$work/head.txt"
 }
-benchstat | tee "$work/table.txt"
+benchstat | tee "$work/benchstat.txt"
 
 # benchstat prints a change only when it is significant, and "~" otherwise.
-slower=$(benchstat -format csv 2>/dev/null | awk -F, -v max="$max_slowdown" '
+benchstat -format csv 2>/dev/null | awk -F, -v max="$max_slowdown" '
 	$1 == "" && $2 != "" && $2 !~ /^(base|head)$/ { unit = $2 }
-	unit == "sec/op" && $1 ~ /^Scan\// && $6 ~ /^\+[0-9.]+%$/ && $6 + 0 > max { print $1 " " $6 }
-')
+	unit == "sec/op" && $1 ~ /^Scan\// {
+		name = $1
+		sub(/^Scan\//, "", name)
+		sub(/-[0-9]+$/, "", name)
+		change = $6
+		if (change == "~") change = "no change"
+		else if (change ~ /^\+/ && change + 0 > max) change = change " :x:"
+		printf "| %s | %.0f ms | %.0f ms | %s |\n", name, $2 * 1000, $4 * 1000, change
+	}
+' >"$work/rows.md"
+slower=$(grep ':x:' "$work/rows.md" || true)
 if [ -n "$slower" ]; then
-	verdict=":x: Slower than base by more than $max_slowdown%: $(echo "$slower" | paste -sd , - | sed "s/,/, /g")"
+	verdict=":x: A scan is more than $max_slowdown% slower than base."
 else
-	verdict=":white_check_mark: No scan is slower than base by more than $max_slowdown%."
+	verdict=":white_check_mark: No scan is more than $max_slowdown% slower than base."
 fi
 
 # BENCH_REPORT receives the result as Markdown, for a pull request comment.
 report=${BENCH_REPORT:-$work/report.md}
 {
 	printf '### Scan speed\n\n%s\n\n' "$verdict"
-	printf '`base` is %s, `head` is this change.\n\n' "$(git rev-parse --short "$base")"
-	printf '```\n%s\n```\n' "$(cat "$work/table.txt")"
+	printf '| Scan | base %s | this change | Change |\n|---|--:|--:|---|\n' "$(git rev-parse --short "$base")"
+	cat "$work/rows.md"
+	printf '\nMedian of %s runs each.\n\n' "$rounds"
+	printf '<details><summary>benchstat</summary>\n\n```\n%s\n```\n\n</details>\n' "$(cat "$work/benchstat.txt")"
 } >"$report"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	cat "$report" >>"$GITHUB_STEP_SUMMARY"

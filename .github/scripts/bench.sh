@@ -6,7 +6,7 @@
 set -eu
 base=${1:-main}
 rounds=${BENCH_ROUNDS:-10}
-max_slowdown=${BENCH_MAX_SLOWDOWN:-20}
+max_slowdown=${BENCH_MAX_SLOWDOWN:-10}
 
 root=$(git rev-parse --show-toplevel)
 cd "$root/apps/lopper"

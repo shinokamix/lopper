@@ -98,7 +98,7 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - `moon run fuzz` fuzzes the `git worktree list` parser.
 - `moon run bench` times `lopper scan` built from `main` and from your checkout
   on the same generated repositories. CI runs it on every pull request that
-  changes lopper and fails when a scan gets more than 20% slower.
+  changes lopper and fails when a scan gets more than 10% slower.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

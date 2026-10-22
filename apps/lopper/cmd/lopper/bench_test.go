@@ -42,23 +42,60 @@ func BenchmarkScan(b *testing.B) {
 		{"worktrees", repos * len(linked)},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
+			dir := filepath.Join(root, tc.name)
+			git := gitCalls(b, bin, root, dir, tc.worktrees)
 			var user, sys time.Duration
 			for b.Loop() {
-				cmd := exec.Command(bin, "scan", "--json", filepath.Join(root, tc.name))
-				cmd.Env = append(os.Environ(), gitEnv(root)...)
-				cmd.Env = append(cmd.Env, "LOPPER_NO_CACHE=1", "LOPPER_NO_UPDATE_CHECK=1")
-				out, err := cmd.Output()
-				if err != nil {
-					b.Fatalf("lopper scan: %v\n%s", err, out)
-				}
-				user += cmd.ProcessState.UserTime()
-				sys += cmd.ProcessState.SystemTime()
-				checkScan(b, out, tc.worktrees)
+				state := scan(b, bin, root, dir, tc.worktrees)
+				user += state.UserTime()
+				sys += state.SystemTime()
 			}
+			b.ReportMetric(float64(git), "git/op")
 			b.ReportMetric(float64(user.Milliseconds())/float64(b.N), "user-ms/op")
 			b.ReportMetric(float64(sys.Milliseconds())/float64(b.N), "sys-ms/op")
 		})
 	}
+}
+
+func scan(b *testing.B, bin, root, dir string, worktrees int, env ...string) *os.ProcessState {
+	b.Helper()
+	cmd := exec.Command(bin, "scan", "--json", dir)
+	cmd.Env = append(os.Environ(), gitEnv(root)...)
+	cmd.Env = append(cmd.Env, "LOPPER_NO_CACHE=1", "LOPPER_NO_UPDATE_CHECK=1")
+	cmd.Env = append(cmd.Env, env...)
+	out, err := cmd.Output()
+	if err != nil {
+		b.Fatalf("lopper scan: %v\n%s", err, out)
+	}
+	checkScan(b, out, worktrees)
+	return cmd.ProcessState
+}
+
+// gitCalls counts the git processes one scan starts, through a git on PATH
+// that logs each call. Unlike the time, the count does not depend on the
+// runner, so a rise is never noise.
+func gitCalls(b *testing.B, bin, root, dir string, worktrees int) int {
+	b.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		b.Fatal(err)
+	}
+	tmp := b.TempDir()
+	calls := filepath.Join(tmp, "calls")
+	wrapper := "#!/bin/sh\necho >>\"$LOPPER_BENCH_GIT_CALLS\"\nexec \"$LOPPER_BENCH_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(tmp, "git"), []byte(wrapper), 0o700); err != nil {
+		b.Fatal(err)
+	}
+	scan(b, bin, root, dir, worktrees,
+		"PATH="+tmp+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"LOPPER_BENCH_GIT="+git,
+		"LOPPER_BENCH_GIT_CALLS="+calls,
+	)
+	log, err := os.ReadFile(calls)
+	if err != nil && !os.IsNotExist(err) {
+		b.Fatal(err)
+	}
+	return strings.Count(string(log), "\n")
 }
 
 // checkScan fails a scan that missed worktrees or could not inspect them,

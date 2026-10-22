@@ -83,13 +83,19 @@ jobs:
             apps/lopper/tools/go.sum
       - run: sh .github/scripts/bench.sh HEAD^1
         env:
-          BENCH_REPORT: ${{ runner.temp }}/bench.md
+          BENCH_OUT: ${{ runner.temp }}/bench
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success() || failure()
+        with:
+          name: bench
+          path: ${{ runner.temp }}/bench
+          if-no-files-found: ignore
       # The token of a pull request from a fork cannot comment. Each run
       # edits the comment of the run before.
       - if: (success() || failure()) && github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          [ -f "$RUNNER_TEMP/bench.md" ] || exit 0
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/bench.md"
+          [ -f "$RUNNER_TEMP/bench/report.md" ] || exit 0
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/bench/report.md"
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}

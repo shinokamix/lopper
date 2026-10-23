@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// The generated trees. walk holds no repository, so a scan of it times the
-// walk alone. worktrees holds repositories whose worktrees each carry an
-// ignored dependency tree, as real projects do.
 const (
 	walkDirs    = 300
 	walkSubdirs = 10
@@ -23,8 +20,6 @@ const (
 	depFiles    = 25
 )
 
-// linked are the worktrees every repository gets. Their mix runs each path
-// of inspect: clean, dirty, unpushed and merged by squash.
 var linked = []string{"merged", "dirty", "unpushed", "squashed"}
 
 // BenchmarkScan times `lopper scan` as a user runs it. It runs the binary

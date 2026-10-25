@@ -6,7 +6,7 @@
 # report.md, for a pull request comment, and the raw base.txt and head.txt,
 # for benchstat.
 set -eu
-base=${1:-main}
+base=${1:-$(git merge-base HEAD origin/main)}
 rounds=${BENCH_ROUNDS:-10}
 max_slowdown=${BENCH_MAX_SLOWDOWN:-20}
 
@@ -60,7 +60,7 @@ benchstat -format csv >"$work/benchstat.csv" 2>"$work/benchstat.err" || {
 
 # benchstat prints a time change only when it is significant, and "~"
 # otherwise.
-awk -F, -v max="$max_slowdown" '
+awk -F, -v max="$max_slowdown" -v failures="$work/failures" '
 	function number(s) { return s ~ /^[0-9.e+-]+$/ }
 	$1 == "" && $2 != "" && $2 !~ /^(base|head)$/ { unit = $2 }
 	$1 !~ /^Scan\// { next }
@@ -77,13 +77,19 @@ awk -F, -v max="$max_slowdown" '
 	unit == "git/op" {
 		change = "no change"
 		if ($4 != $2) change = sprintf("%+d", $4 - $2)
-		if ($4 > $2) change = change " :x:"
+		if ($4 > $2) {
+			change = change " :x:"
+			print "git" >failures
+		}
 		git[name] = sprintf("| %s: git processes | %d | %d | %s |", name, $2, $4, change)
 	}
 	unit == "sec/op" {
 		change = $6
 		if (change == "~") change = "not significant"
-		else if (change ~ /^\+/ && change + 0 > max) change = change " :x:"
+		else if (change ~ /^\+/ && change + 0 > max) {
+			change = change " :x:"
+			print "time" >failures
+		}
 		time[name] = sprintf("| %s: time | %.0f ms | %.0f ms | %s |", name, $2 * 1000, $4 * 1000, change)
 	}
 	END {
@@ -103,11 +109,12 @@ awk -F, -v max="$max_slowdown" '
 	}
 ' "$work/benchstat.csv" >"$work/rows.md"
 
+touch "$work/failures"
 failures=""
-if grep -q 'git processes.*:x:' "$work/rows.md"; then
+if grep -qx git "$work/failures"; then
 	failures="starts more git processes"
 fi
-if grep -q 'time.*:x:' "$work/rows.md"; then
+if grep -qx time "$work/failures"; then
 	failures="${failures:+$failures and }scans significantly more than $max_slowdown% slower"
 fi
 if [ -n "$failures" ]; then

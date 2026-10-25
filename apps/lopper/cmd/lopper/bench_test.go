@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -58,17 +59,16 @@ func scan(b *testing.B, bin, root, dir string, worktrees int, env ...string) *os
 	cmd.Env = append(os.Environ(), gitEnv(root)...)
 	cmd.Env = append(cmd.Env, "LOPPER_NO_CACHE=1", "LOPPER_NO_UPDATE_CHECK=1")
 	cmd.Env = append(cmd.Env, env...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		b.Fatalf("lopper scan: %v\n%s", err, out)
+		b.Fatalf("lopper scan: %v\n%s", err, stderr.Bytes())
 	}
 	checkScan(b, out, worktrees)
 	return cmd.ProcessState
 }
 
-// gitCalls counts the git processes one scan starts, through a git on PATH
-// that logs each call. Unlike the time, the count does not depend on the
-// runner, so a rise is never noise.
 func gitCalls(b *testing.B, bin, root, dir string, worktrees int) int {
 	b.Helper()
 	git, err := exec.LookPath("git")
@@ -93,8 +93,6 @@ func gitCalls(b *testing.B, bin, root, dir string, worktrees int) int {
 	return strings.Count(string(log), "\n")
 }
 
-// checkScan fails a scan that missed worktrees or could not inspect them,
-// because its time would mean nothing.
 func checkScan(b *testing.B, out []byte, want int) {
 	b.Helper()
 	var records []struct {
@@ -197,8 +195,6 @@ func repo(b *testing.B, root, dir string) {
 	writeFile(b, filepath.Join(path("dirty"), "draft.txt"), "draft\n")
 	writeFile(b, filepath.Join(path("unpushed"), "notes.txt"), text(map[int]string{50: "work"}))
 	git(path("unpushed"), "commit", "-q", "-am", "work")
-	// main takes the squashed change with one of its own, so lopper has to
-	// merge the file to see that the branch is in main.
 	writeFile(b, filepath.Join(path("squashed"), "notes.txt"), text(map[int]string{10: "fix"}))
 	git(path("squashed"), "commit", "-q", "-am", "fix")
 	writeFile(b, filepath.Join(dir, "notes.txt"), text(map[int]string{10: "fix", 90: "more"}))
@@ -211,7 +207,6 @@ func repo(b *testing.B, root, dir string) {
 	}
 }
 
-// gitEnv keeps the runner's git config out of the fixture and of the scan.
 func gitEnv(root string) []string {
 	return []string{
 		"GIT_CONFIG_NOSYSTEM=1",

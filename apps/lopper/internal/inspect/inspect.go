@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/charlievieth/fastwalk"
 
@@ -52,11 +53,21 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	} else {
 		f.Unpushed = &n
 	}
-	if base := wt.Repo.DefaultBranch; base != "" {
-		if kind, err := in.mergeKind(ctx, wt.Path, base); err != nil {
-			fail("compare with "+base, err)
-		} else {
-			f.Merged = &kind
+	base := wt.Repo.DefaultBranch
+	tips, err := in.tips(ctx, wt.Path, base)
+	switch {
+	case err != nil && base != "":
+		fail("compare with "+base, err)
+	case err != nil:
+		fail("read the last commit", err)
+	default:
+		f.LastCommit = &tips.headDate
+		if base != "" {
+			if kind, err := in.mergeKind(ctx, wt.Path, tips.base, tips.head); err != nil {
+				fail("compare with "+base, err)
+			} else {
+				f.Merged = &kind
+			}
 		}
 	}
 	// git worktree remove checks status but not index flags, so they are
@@ -67,6 +78,36 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		f.UncheckedFiles = &n
 	}
 	return f
+}
+
+type tips struct {
+	head, base string
+	headDate   time.Time
+}
+
+func (in Inspector) tips(ctx context.Context, dir, base string) (tips, error) {
+	args := []string{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %cI", "--end-of-options", "HEAD^{commit}"}
+	if base != "" {
+		args = append(args, base+"^{commit}")
+	}
+	out, err := in.Git.Run(ctx, dir, append(args, "--")...)
+	if err != nil {
+		return tips{}, err
+	}
+	fields := strings.Fields(out)
+	// git log --no-walk lists a commit once, so base equal to HEAD gives one line.
+	if len(fields) != 2 && (base == "" || len(fields) != 4) {
+		return tips{}, fmt.Errorf("expected HEAD and base commits, got %q", out)
+	}
+	date, err := time.Parse(time.RFC3339, fields[1])
+	if err != nil {
+		return tips{}, err
+	}
+	t := tips{head: fields[0], base: fields[0], headDate: date}
+	if len(fields) == 4 {
+		t.base = fields[2]
+	}
+	return t, nil
 }
 
 // uncheckedFiles counts files whose index flags hide edits. Assume-unchanged

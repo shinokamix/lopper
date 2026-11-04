@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
@@ -150,6 +151,26 @@ func TestQuickNoBaseBranch(t *testing.T) {
 	wt.Repo.DefaultBranch = ""
 	if f := quick(t, wt); f.Merged != nil {
 		t.Errorf("Merged = %v, want unknown", *f.Merged)
+	}
+}
+
+func TestQuickLastCommitIsTheCommitterDateOfHead(t *testing.T) {
+	repo := setup(t)
+	wt := addWorktree(t, repo, "-b", "feature")
+	t.Setenv("GIT_AUTHOR_DATE", "2020-01-01T00:00:00Z")
+	t.Setenv("GIT_COMMITTER_DATE", "2024-03-05T10:20:30+02:00")
+	git(t, wt.Path, "commit", "-q", "--allow-empty", "-m", "work")
+	want := time.Date(2024, 3, 5, 8, 20, 30, 0, time.UTC)
+
+	for _, base := range []string{"main", "feature", ""} {
+		wt.Repo.DefaultBranch = base
+		f := quick(t, wt)
+		if f.LastCommit == nil || !f.LastCommit.Equal(want) {
+			t.Errorf("with base %q: LastCommit = %v, want %v", base, ptr(f.LastCommit), want)
+		}
+		if len(f.Errors) > 0 {
+			t.Errorf("with base %q: Errors = %q, want none", base, f.Errors)
+		}
 	}
 }
 
@@ -316,7 +337,7 @@ func TestQuickSquashOfLargeFileIsNotMerged(t *testing.T) {
 type failingHistoryGit struct{ gitx.Runner }
 
 func (f failingHistoryGit) Run(ctx context.Context, dir string, args ...string) (string, error) {
-	if len(args) > 0 && args[0] == "log" {
+	if slices.Contains(args, "--diff-merges=first-parent") {
 		return "", errors.New("commit history unavailable")
 	}
 	return f.Runner.Run(ctx, dir, args...)

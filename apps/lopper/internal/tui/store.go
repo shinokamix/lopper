@@ -2,6 +2,7 @@ package tui
 
 import (
 	"cmp"
+	"math"
 	"slices"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/engine"
@@ -87,27 +88,55 @@ type ranks struct {
 }
 
 func sizeRanks(groups []group) ranks {
-	rk := ranks{rows: map[lopper.ID]int{}, repos: map[string]int{}}
-	totals := map[string]int64{}
 	measured := func(r *row) int64 {
 		if r.facts.SizeBytes == nil {
 			return -1
 		}
 		return *r.facts.SizeBytes
 	}
+	total := func(rows []*row) int64 {
+		var sum int64
+		for _, r := range rows {
+			sum += sizeOf(r)
+		}
+		return sum
+	}
+	return rankBy(groups, measured, total)
+}
+
+func ageRanks(groups []group) ranks {
+	staleness := func(r *row) int64 {
+		if r.facts.LastCommit == nil {
+			return math.MinInt64
+		}
+		return -r.facts.LastCommit.Unix()
+	}
+	oldest := func(rows []*row) int64 {
+		most := int64(math.MinInt64)
+		for _, r := range rows {
+			most = max(most, staleness(r))
+		}
+		return most
+	}
+	return rankBy(groups, staleness, oldest)
+}
+
+func rankBy(groups []group, rowKey func(*row) int64, repoKey func([]*row) int64) ranks {
+	rk := ranks{rows: map[lopper.ID]int{}, repos: map[string]int{}}
+	keys := map[string]int64{}
 	for _, g := range groups {
 		rows := slices.Clone(g.rows)
-		slices.SortStableFunc(rows, func(a, b *row) int { return cmp.Compare(measured(b), measured(a)) })
+		slices.SortStableFunc(rows, func(a, b *row) int { return cmp.Compare(rowKey(b), rowKey(a)) })
 		for i, r := range rows {
 			rk.rows[r.worktree.ID] = i
-			totals[g.repo.Path] += sizeOf(r)
 		}
+		keys[g.repo.Path] = repoKey(g.rows)
 	}
-	byTotal := slices.Clone(groups)
-	slices.SortStableFunc(byTotal, func(a, b group) int {
-		return cmp.Compare(totals[b.repo.Path], totals[a.repo.Path])
+	byKey := slices.Clone(groups)
+	slices.SortStableFunc(byKey, func(a, b group) int {
+		return cmp.Compare(keys[b.repo.Path], keys[a.repo.Path])
 	})
-	for i, g := range byTotal {
+	for i, g := range byKey {
 		rk.repos[g.repo.Path] = i
 	}
 	return rk

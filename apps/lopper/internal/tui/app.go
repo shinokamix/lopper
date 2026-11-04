@@ -34,6 +34,7 @@ type app struct {
 	scan     func(context.Context) <-chan engine.Event
 	remove   func(ctx context.Context, wt lopper.Worktree, force bool) error
 	measure  func(context.Context, lopper.Worktree) *int64
+	now      func() time.Time
 	updates  Updates
 	offer    *offer
 	installs installs
@@ -70,6 +71,7 @@ func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) 
 		scan:    func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
 		remove:  eng.Remove,
 		measure: eng.Measure,
+		now:     time.Now,
 		updates: updates,
 		store:   newStore(),
 		keys:    defaultKeys(),
@@ -118,9 +120,9 @@ func (a *app) startScan(ctx context.Context) {
 	a.gen++
 	a.events = a.scan(ctx)
 	a.store = newStore()
-	bySize := a.list.bySize
+	order := a.list.order
 	a.list = newList(a.list.aliases)
-	a.list.bySize = bySize
+	a.list.order = order
 }
 
 func (a *app) waitEvent() tea.Cmd {
@@ -135,7 +137,7 @@ func (a *app) waitEvent() tea.Cmd {
 }
 
 func (a *app) startRanking() tea.Cmd {
-	if !a.list.bySize || !a.store.scanning {
+	if a.list.order == foundOrder || !a.store.scanning {
 		return nil
 	}
 	a.ranking++
@@ -172,7 +174,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		next := a.waitEvent()
 		return a, next
 	case rankMsg:
-		if msg.seq != a.ranking || !a.list.bySize || !a.store.scanning {
+		if msg.seq != a.ranking || a.list.order == foundOrder || !a.store.scanning {
 			return a, nil
 		}
 		a.list.rank(a.store)
@@ -340,14 +342,14 @@ func (a *app) View() tea.View {
 	case a.removal != nil && a.removal.phase == finished:
 		screen = a.removal.summary(a.theme, a.help, a.keys, w, max(a.height-1, 1))
 	case a.removal != nil:
-		screen = a.removal.view(a.theme, a.help, a.keys, spin, w, max(a.height-1, 1))
+		screen = a.removal.view(a.theme, a.help, a.keys, spin, a.now(), w, max(a.height-1, 1))
 	default:
 		height := max(a.height-chromeLines, 1)
 		var body string
 		if a.list.allKeys {
 			body = a.list.keysView(a.help, a.keys, w, height)
 		} else {
-			body = a.list.view(a.theme, a.store, spin, w, height)
+			body = a.list.view(a.theme, a.store, spin, a.now(), w, height)
 		}
 		screen = a.list.header(a.theme, a.store, a.spin.View(), w) + "\n\n" + body + "\n\n" +
 			a.list.footer(a.theme, a.store, a.help, a.keys, spin, w)

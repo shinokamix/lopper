@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -57,7 +58,7 @@ func TestRowsHoldStillWhileTheScanGoesOn(t *testing.T) {
 	}
 }
 
-func TestSShowsLargestFirst(t *testing.T) {
+func TestSCyclesLargestOldestAndFound(t *testing.T) {
 	a := testApp()
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	sized(a, "a-one", "/r/alpha", 100)
@@ -74,11 +75,68 @@ func TestSShowsLargestFirst(t *testing.T) {
 	}
 
 	press(a, 's')
-	if got, want := order(t, a, "zeta", "a-two", "a-one", "a-new"), []string{"a-one", "a-new", "a-two", "zeta"}; !slices.Equal(got, want) {
-		t.Errorf("s again shows %q, want the order found %q:\n%s", got, want, view(a))
+	if header := plainLines(a)[1]; !strings.Contains(header, "oldest first") || strings.Contains(header, "largest first") {
+		t.Errorf("s again does not say the list is shown oldest first: %q", header)
 	}
-	if strings.Contains(view(a), "largest first") {
-		t.Errorf("header still says largest first:\n%s", view(a))
+
+	press(a, 's')
+	if got, want := order(t, a, "zeta", "a-two", "a-one", "a-new"), []string{"a-one", "a-new", "a-two", "zeta"}; !slices.Equal(got, want) {
+		t.Errorf("s a third time shows %q, want the order found %q:\n%s", got, want, view(a))
+	}
+	if strings.Contains(view(a), " first") {
+		t.Errorf("header still names a sort order:\n%s", view(a))
+	}
+}
+
+func committed(a *app, id, repo string, ago time.Duration) {
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{
+		ID: lopper.ID(id), Path: "/w/" + id, Branch: id, Repo: lopper.Repo{Path: repo},
+	}}})
+	if ago > 0 {
+		at := testNow.Add(-ago)
+		a.Update(eventMsg{ev: engine.FactsUpdated{ID: lopper.ID(id), Facts: lopper.Facts{LastCommit: &at}}})
+	}
+}
+
+func TestOldestFirstPutsTheStalestWorkOnTop(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	const day = 24 * time.Hour
+	committed(a, "a-week", "/r/alpha", 7*day)
+	committed(a, "a-unknown", "/r/alpha", 0)
+	committed(a, "a-year", "/r/alpha", 400*day)
+	committed(a, "z-month", "/r/zeta", 30*day)
+	committed(a, "b-years", "/r/beta", 800*day)
+
+	press(a, 's')
+	press(a, 's')
+	got := order(t, a, "a-week", "a-unknown", "a-year", "zeta", "beta")
+	if want := []string{"beta", "a-year", "a-week", "a-unknown", "zeta"}; !slices.Equal(got, want) {
+		t.Errorf("oldest first shows %q, want %q:\n%s", got, want, view(a))
+	}
+}
+
+func TestRowShowsAgeOfLastCommitBeforeSize(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	for _, wt := range []struct {
+		id  string
+		ago time.Duration
+	}{{"recent", 3 * 24 * time.Hour}, {"stale", 150 * 24 * time.Hour}} {
+		f := clean()
+		f.SizeBytes = new(int64(2_000_000))
+		f.LastCommit = new(testNow.Add(-wt.ago))
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: lopper.ID(wt.id), Branch: wt.id}}})
+		inspected(a, lopper.ID(wt.id), f)
+	}
+
+	lines := plainLines(a)
+	recent, stale := lines[lineWith(t, lines, "recent")], lines[lineWith(t, lines, "stale")]
+	if !strings.HasSuffix(strings.TrimRight(recent, " "), "  3d    2.0 MB") {
+		t.Errorf("row does not show the age of its last commit before its size: %q", recent)
+	}
+	if !strings.HasSuffix(strings.TrimRight(stale, " "), " 5mo    2.0 MB") {
+		t.Errorf("row does not show the age of its last commit before its size: %q", stale)
 	}
 }
 

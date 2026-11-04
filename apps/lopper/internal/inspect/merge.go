@@ -11,17 +11,8 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 )
 
-func (in Inspector) mergeKind(ctx context.Context, dir, base string) (lopper.MergeKind, error) {
-	out, err := in.Git.Run(ctx, dir, "rev-parse", "--revs-only", "--end-of-options", base+"^{commit}", "HEAD^{commit}")
-	if err != nil {
-		return lopper.NotMerged, err
-	}
-	refs := strings.Fields(out)
-	if len(refs) != 2 {
-		return lopper.NotMerged, fmt.Errorf("expected base and HEAD commits, got %q", out)
-	}
-	base, head := refs[0], refs[1]
-	out, err = in.Git.Run(ctx, dir, "rev-list", "--parents", base+".."+head)
+func (in Inspector) mergeKind(ctx context.Context, dir, base, head string) (lopper.MergeKind, error) {
+	out, err := in.Git.Run(ctx, dir, "rev-list", "--parents", base+".."+head)
 	if err != nil {
 		return lopper.NotMerged, err
 	}

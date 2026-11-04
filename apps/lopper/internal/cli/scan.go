@@ -2,7 +2,12 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +34,7 @@ type scanFacts struct {
 	UncheckedFiles *int              `json:"unchecked_files,omitempty"`
 	Unpushed       *int              `json:"unpushed,omitempty"`
 	Merged         *lopper.MergeKind `json:"merged,omitempty"`
+	LastCommit     *time.Time        `json:"last_commit,omitempty"`
 	SizeBytes      *int64            `json:"size_bytes,omitempty"`
 	Errors         []string          `json:"errors,omitempty"`
 }
@@ -39,6 +45,7 @@ func newScanFacts(f lopper.Facts) scanFacts {
 		UncheckedFiles: f.UncheckedFiles,
 		Unpushed:       f.Unpushed,
 		Merged:         f.Merged,
+		LastCommit:     f.LastCommit,
 		SizeBytes:      f.SizeBytes,
 		Errors:         f.Errors,
 	}
@@ -46,6 +53,7 @@ func newScanFacts(f lopper.Facts) scanFacts {
 
 func newScanCmd(eng *engine.Engine) *cobra.Command {
 	var asJSON, safeOnly, pathsOnly bool
+	var olderThan age
 	cmd := &cobra.Command{
 		Use:   "scan [path...]",
 		Short: "Scan for worktrees without the interactive UI",
@@ -82,12 +90,16 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				}
 			}
 
+			now := time.Now()
 			out := make([]*scanRecord, 0, len(order))
 			for _, id := range order {
-				if safeOnly && !records[id].Safe {
+				r := records[id]
+				if safeOnly && !r.Safe {
 					continue
 				}
-				out = append(out, records[id])
+				if !cmd.Flags().Changed("older-than") || olderThan.before(r.Facts.LastCommit, now) {
+					out = append(out, r)
+				}
 			}
 			w := cmd.OutOrStdout()
 			if asJSON {
@@ -117,5 +129,32 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 	cmd.Flags().BoolVar(&safeOnly, "safe", false, "list only worktrees safe to delete")
 	cmd.Flags().BoolVar(&pathsOnly, "paths", false, "print only paths, one per line")
 	cmd.MarkFlagsMutuallyExclusive("json", "paths")
+	cmd.Flags().Var(&olderThan, "older-than", "list only worktrees whose last commit is older than this many hours, days or weeks, such as 12h, 30d or 8w")
 	return cmd
+}
+
+type age struct {
+	text string
+	d    time.Duration
+}
+
+var ageUnits = map[string]time.Duration{"h": time.Hour, "d": 24 * time.Hour, "w": 7 * 24 * time.Hour}
+
+func (a *age) Set(s string) error {
+	digits := strings.TrimRight(s, "hdw")
+	unit, ok := ageUnits[s[len(digits):]]
+	n, err := strconv.ParseInt(digits, 10, 64)
+	if !ok || err != nil || n < 0 || n > math.MaxInt64/int64(unit) {
+		return errors.New("want a whole number of hours, days or weeks, such as 12h, 30d or 8w")
+	}
+	a.text, a.d = s, time.Duration(n)*unit
+	return nil
+}
+
+func (a *age) String() string { return a.text }
+
+func (a *age) Type() string { return "age" }
+
+func (a *age) before(commit *time.Time, now time.Time) bool {
+	return commit != nil && now.Sub(*commit) > a.d
 }

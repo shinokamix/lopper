@@ -84,5 +84,8 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 	case inspected && noBase:
 		add(lopper.NotePlain, true, "no base branch")
 	}
+	if f.UpstreamGone != nil && *f.UpstreamGone {
+		add(lopper.NotePlain, false, "remote branch gone")
+	}
 	return out
 }

@@ -196,3 +196,18 @@ func rankOf[K comparable](m map[K]int, k K) int {
 	}
 	return len(m)
 }
+
+func safeSize(s *store) string {
+	var total int64
+	known := false
+	for _, r := range s.byID {
+		if r.verdict.Safe && r.facts.SizeBytes != nil {
+			total += *r.facts.SizeBytes
+			known = true
+		}
+	}
+	if !known {
+		return ""
+	}
+	return formatBytes(total)
+}

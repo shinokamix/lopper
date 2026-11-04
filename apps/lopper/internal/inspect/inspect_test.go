@@ -138,6 +138,28 @@ func TestQuickPushedUnmerged(t *testing.T) {
 	wantFacts(t, quick(t, wt), 0, 0, lopper.NotMerged)
 }
 
+func TestQuickUpstreamGoneAfterTheRemoteDeletesTheBranch(t *testing.T) {
+	repo := setup(t)
+	origin := filepath.Join(filepath.Dir(repo), "origin.git")
+	git(t, repo, "init", "-q", "--bare", origin)
+	git(t, repo, "remote", "add", "origin", origin)
+	wt := addWorktree(t, repo, "-b", "feature")
+	git(t, wt.Path, "commit", "-q", "--allow-empty", "-m", "work")
+	git(t, wt.Path, "push", "-q", "-u", "origin", "feature")
+	writeFile(t, filepath.Join(wt.Path, "notes.txt"), "draft\n")
+	if f := quick(t, wt); f.UpstreamGone == nil || *f.UpstreamGone {
+		t.Errorf("UpstreamGone = %v while origin/feature exists, want false", ptr(f.UpstreamGone))
+	}
+
+	git(t, origin, "branch", "-q", "-D", "feature")
+	git(t, wt.Path, "fetch", "-q", "--prune")
+	f := quick(t, wt)
+	if f.UpstreamGone == nil || !*f.UpstreamGone {
+		t.Errorf("UpstreamGone = %v after origin deleted feature, want true", ptr(f.UpstreamGone))
+	}
+	wantFacts(t, f, 1, 1, lopper.NotMerged)
+}
+
 func TestQuickDetachedWithCommit(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "--detach")

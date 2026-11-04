@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -103,8 +104,26 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 			l.selected[id] = true
 		}
 		i = min(i+1, len(order)-1)
+	case key.Matches(msg, k.safe):
+		l.selectSafe(s)
 	}
 	l.cursor, l.moved = order[i], true
+}
+
+func (l *list) selectSafe(s *store) {
+	var safe []lopper.ID
+	for _, id := range l.ids(s) {
+		if s.byID[id].verdict.Safe {
+			safe = append(safe, id)
+		}
+	}
+	if len(safe) > 0 && !slices.ContainsFunc(safe, func(id lopper.ID) bool { return !l.selected[id] }) {
+		clear(l.selected)
+		return
+	}
+	for _, id := range safe {
+		l.selected[id] = true
+	}
 }
 
 func (l *list) sort(s *store) {
@@ -265,6 +284,9 @@ func (l *list) header(t theme, s *store, spin string, width int) string {
 	if name := l.order.String(); name != "" {
 		status = t.subtle.Render(name+" · ") + status
 	}
+	if free := safeSize(s); free != "" {
+		status += t.subtle.Render(" · " + free + " safe to free")
+	}
 	return spread(left, status+" ", width)
 }
 
@@ -314,7 +336,7 @@ func (l *list) keyHelp(h help.Model, k keyMap) string {
 		hide.SetHelp("?", "close")
 		return fitKeys(h, bindings{k.scroll, k.quit}, hide)
 	}
-	return fitKeys(h, bindings{k.toggle, k.remove, l.find(k), k.sort, k.quit}, k.help)
+	return fitKeys(h, bindings{k.toggle, k.safe, k.remove, l.find(k), k.sort, k.quit}, k.help)
 }
 
 func (l *list) find(k keyMap) key.Binding {
@@ -341,7 +363,7 @@ func untruncated(h help.Model) help.Model {
 }
 
 func (l *list) keysView(h help.Model, k keyMap, width, height int) string {
-	groups := [][]key.Binding{{k.up, k.down, k.toggle}, {k.remove, l.find(k), k.sort, k.quit}}
+	groups := [][]key.Binding{{k.up, k.down, k.toggle, k.safe}, {k.remove, l.find(k), k.sort, k.quit}}
 	h = untruncated(h)
 	view := h.FullHelpView(groups)
 	if lipgloss.Width(view) > width-1 {

@@ -25,9 +25,9 @@ type Inspector struct {
 	Git gitx.Runner
 }
 
-// Quick gathers the facts git reports: working tree state, index flags and
-// merge status. A fact git cannot provide stays nil and its error goes to
-// Facts.Errors.
+// Quick gathers the facts git reports: working tree state, index flags,
+// merge status and whether the upstream branch is gone. A fact git cannot
+// provide stays nil and its error goes to Facts.Errors.
 func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts {
 	var f lopper.Facts
 	switch wt.State {
@@ -39,10 +39,11 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		f.Errors = append(f.Errors, "could not "+what+": "+firstLine(err.Error()))
 	}
 
-	if out, err := in.Git.Run(ctx, wt.Path, "status", "--porcelain", "--untracked-files=normal"); err != nil {
+	if out, err := in.Git.Run(ctx, wt.Path, "status", "--porcelain=v2", "--branch", "--no-ahead-behind", "--untracked-files=normal"); err != nil {
 		fail("read status", err)
 	} else {
-		f.Dirty = new(countLines(out))
+		dirty, gone := parseStatus(out)
+		f.Dirty, f.UpstreamGone = &dirty, &gone
 	}
 	args := []string{"rev-list", "--count", "HEAD", "--not", "--remotes"}
 	if base := wt.Repo.DefaultBranch; base != "" {
@@ -226,6 +227,22 @@ func (in Inspector) count(ctx context.Context, dir string, args ...string) (int,
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line
+}
+
+// Git prints branch.upstream without branch.ab when the upstream ref is gone.
+func parseStatus(out string) (entries int, upstreamGone bool) {
+	var upstream, tracked bool
+	for line := range strings.Lines(out) {
+		switch {
+		case strings.HasPrefix(line, "# branch.upstream "):
+			upstream = true
+		case strings.HasPrefix(line, "# branch.ab "):
+			tracked = true
+		case !strings.HasPrefix(line, "# "):
+			entries++
+		}
+	}
+	return entries, upstream && !tracked
 }
 
 func countLines(s string) int {

@@ -55,13 +55,19 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	}
 	base := wt.Repo.DefaultBranch
 	tips, err := in.tips(ctx, wt.Path, base)
-	switch {
-	case err != nil && base != "":
+	if err != nil && base != "" {
 		fail("compare with "+base, err)
-	case err != nil:
+		base = ""
+		tips, err = in.tips(ctx, wt.Path, base)
+	}
+	if err != nil {
 		fail("read the last commit", err)
-	default:
-		f.LastCommit = &tips.headDate
+	} else {
+		if date, err := commitDate(tips.headTime); err != nil {
+			fail("read the last commit date", err)
+		} else {
+			f.LastCommit = &date
+		}
 		if base != "" {
 			if kind, err := in.mergeKind(ctx, wt.Path, tips.base, tips.head); err != nil {
 				fail("compare with "+base, err)
@@ -81,12 +87,11 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 }
 
 type tips struct {
-	head, base string
-	headDate   time.Time
+	head, base, headTime string
 }
 
 func (in Inspector) tips(ctx context.Context, dir, base string) (tips, error) {
-	args := []string{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %cI", "--end-of-options", "HEAD^{commit}"}
+	args := []string{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct", "--end-of-options", "HEAD^{commit}"}
 	if base != "" {
 		args = append(args, base+"^{commit}")
 	}
@@ -99,15 +104,23 @@ func (in Inspector) tips(ctx context.Context, dir, base string) (tips, error) {
 	if len(fields) != 2 && (base == "" || len(fields) != 4) {
 		return tips{}, fmt.Errorf("expected HEAD and base commits, got %q", out)
 	}
-	date, err := time.Parse(time.RFC3339, fields[1])
-	if err != nil {
-		return tips{}, err
-	}
-	t := tips{head: fields[0], base: fields[0], headDate: date}
+	t := tips{head: fields[0], base: fields[0], headTime: fields[1]}
 	if len(fields) == 4 {
 		t.base = fields[2]
 	}
 	return t, nil
+}
+
+func commitDate(unix string) (time.Time, error) {
+	sec, err := strconv.ParseInt(unix, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	date := time.Unix(sec, 0).UTC()
+	if y := date.Year(); y < 0 || y > 9999 {
+		return time.Time{}, fmt.Errorf("year %d is outside RFC 3339", y)
+	}
+	return date, nil
 }
 
 // uncheckedFiles counts files whose index flags hide edits. Assume-unchanged

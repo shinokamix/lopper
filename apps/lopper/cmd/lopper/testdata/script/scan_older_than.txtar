@@ -13,7 +13,7 @@ exec git -C repo worktree add -q -b gone ../wt-gone
 rm wt-gone
 
 exec lopper scan --json $WORK
-stdout '"last_commit": "2020-01-02T03:04:05\+02:00"'
+stdout '"last_commit": "2020-01-02T01:04:05Z"'
 
 exec lopper scan --older-than 30d $WORK
 stdout '\sstale\s'

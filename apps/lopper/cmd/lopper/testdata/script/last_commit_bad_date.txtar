@@ -1,0 +1,23 @@
+env 'GIT_COMMITTER_DATE=@1700000000 +2500'
+exec git init -q offset
+exec git -C offset commit -q --allow-empty -m init
+exec git -C offset worktree add -q -b merged ../wt-offset
+
+env 'GIT_COMMITTER_DATE=@253402300800 +0000'
+exec git init -q future
+exec git -C future commit -q --allow-empty -m init
+exec git -C future worktree add -q -b merged ../wt-future
+env GIT_COMMITTER_DATE=
+
+exec lopper scan --json $WORK/wt-offset
+stdout '"safe": true'
+stdout '"merged": "ancestor"'
+stdout '"last_commit": "2023-11-14T22:13:20Z"'
+! stdout '"errors"'
+
+exec lopper scan --json $WORK/wt-future
+stdout '"safe": true'
+stdout '"merged": "ancestor"'
+! stdout '"last_commit"'
+stdout '"could not read the last commit date: '
+! stdout 'could not compare'

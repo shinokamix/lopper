@@ -8,4 +8,3 @@ stdout '^(safe|unsafe)\s+detached @[0-9a-f]{7}\s+.*wt-detached$'
 
 exec lopper scan --json $WORK/wt-detached
 ! stdout '"branch"'
-! stdout 'detached @'

@@ -288,96 +288,77 @@ func TestReleased(t *testing.T) {
 	}
 }
 
-func cache(t *testing.T, u *Updater, tag string, age time.Duration) {
-	t.Helper()
-	u.write(latestFile, tag)
-	then := time.Now().Add(-age)
-	if err := os.Chtimes(filepath.Join(u.Cache, latestFile), then, then); err != nil {
-		t.Fatal(err)
+func latest(tag string) release {
+	return release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/" + tag)}
+}
+
+func TestAvailableOffersTheReleaseOutNow(t *testing.T) {
+	u := updater(t, "darwin", latest("v0.4.0"))
+	if got := u.Available(t.Context(), "0.4.0"); got != "" {
+		t.Errorf("Available on the latest release = %q, want nothing", got)
+	}
+	if got := u.Available(t.Context(), "0.1.0"); got != "v0.4.0" {
+		t.Errorf("Available = %q, want v0.4.0", got)
+	}
+	u.Client.Transport = latest("v0.5.0")
+	if got := u.Available(t.Context(), "0.1.0"); got != "v0.5.0" {
+		t.Errorf("Available once v0.5.0 is out = %q, want v0.5.0", got)
+	}
+	u.Client.Transport = release{}
+	if got := u.Available(t.Context(), "0.1.0"); got != "" {
+		t.Errorf("Available while GitHub fails = %q, want nothing", got)
 	}
 }
 
-func TestRefreshAsksGitHubAtMostDaily(t *testing.T) {
-	latest := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
-	later := release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.9.0")}
-	offline := release{}
-	for _, tc := range []struct {
-		name   string
-		cached string
-		age    time.Duration
-		r      release
-		want   string
-	}{
-		{"asked an hour ago", "v0.3.0", time.Hour, latest, "v0.3.0"},
-		{"asked two days ago", "v0.3.0", 48 * time.Hour, latest, "v0.4.0"},
-		{"offline minutes ago", "", 10 * time.Minute, latest, ""},
-		{"offline two hours ago", "", 2 * time.Hour, latest, "v0.4.0"},
-		{"offline now", "v0.3.0", 48 * time.Hour, offline, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			u := updater(t, "darwin", tc.r)
-			cache(t, u, tc.cached, tc.age)
-			u.Refresh(t.Context())
-			if got := u.Available("0.1.0"); got != tc.want {
-				t.Errorf("Available after Refresh = %q, want %q", got, tc.want)
-			}
-			u.Client.Transport = later
-			u.Refresh(t.Context())
-			if got := u.Available("0.1.0"); got != tc.want {
-				t.Errorf("Available after another Refresh = %q, want %q", got, tc.want)
-			}
-		})
+type timesOut struct{ left *time.Duration }
+
+func (s timesOut) RoundTrip(req *http.Request) (*http.Response, error) {
+	if deadline, ok := req.Context().Deadline(); ok {
+		*s.left = time.Until(deadline)
 	}
+	return nil, context.DeadlineExceeded
 }
 
-func TestRefreshCutShortKeepsNothing(t *testing.T) {
-	u := updater(t, "darwin", release{})
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	u.Refresh(ctx)
-	u.Client.Transport = release{"/shinokamix/lopper/releases/latest": redirect("https://github.com/shinokamix/lopper/releases/tag/v0.4.0")}
-	u.Refresh(t.Context())
-	if got := u.Available("0.1.0"); got != "v0.4.0" {
-		t.Errorf("Available on the next start = %q, want v0.4.0", got)
+func TestAvailableWaitsForGitHubAtMostASecondAndAHalf(t *testing.T) {
+	var left time.Duration
+	u := updater(t, "darwin", nil)
+	u.Client.Transport = timesOut{&left}
+	if got := u.Available(t.Context(), "0.1.0"); got != "" {
+		t.Errorf("Available = %q after GitHub timed out, want nothing", got)
+	}
+	if left <= time.Second || left > 1500*time.Millisecond {
+		t.Errorf("Available gave GitHub %v to answer, want 1.5s", left)
 	}
 }
 
 func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {
-	u := updater(t, "darwin", release{})
-	cache(t, u, "v0.4.0", time.Hour)
-	if got := u.Available("0.4.0"); got != "" {
-		t.Errorf("Available on the latest release = %q, want nothing", got)
-	}
-	if got := u.Available("0.1.0"); got != "v0.4.0" {
-		t.Errorf("Available = %q, want v0.4.0", got)
-	}
+	u := updater(t, "darwin", latest("v0.4.0"))
 	u.Skip("v0.4.0")
-	if got := u.Available("0.1.0"); got != "" {
+	if got := u.Available(t.Context(), "0.1.0"); got != "" {
 		t.Errorf("Available after skipping v0.4.0 = %q, want nothing", got)
 	}
-	u.write(latestFile, "v0.5.0")
-	if got := u.Available("0.1.0"); got != "v0.5.0" {
+	u.Client.Transport = latest("v0.5.0")
+	if got := u.Available(t.Context(), "0.1.0"); got != "v0.5.0" {
 		t.Errorf("Available once v0.5.0 is out = %q, want v0.5.0", got)
 	}
 }
 
 func TestAvailableOffersPostponedReleaseADayLater(t *testing.T) {
-	u := updater(t, "darwin", release{})
-	cache(t, u, "v0.4.0", time.Hour)
+	u := updater(t, "darwin", latest("v0.4.0"))
 	u.Postpone("v0.4.0")
-	if got := u.Available("0.1.0"); got != "" {
+	if got := u.Available(t.Context(), "0.1.0"); got != "" {
 		t.Errorf("Available right after postponing v0.4.0 = %q, want nothing", got)
 	}
 	then := time.Now().Add(-25 * time.Hour)
 	if err := os.Chtimes(filepath.Join(u.Cache, postponedFile), then, then); err != nil {
 		t.Fatal(err)
 	}
-	if got := u.Available("0.1.0"); got != "v0.4.0" {
+	if got := u.Available(t.Context(), "0.1.0"); got != "v0.4.0" {
 		t.Errorf("Available a day after postponing = %q, want v0.4.0", got)
 	}
 	u.Postpone("v0.4.0")
-	u.write(latestFile, "v0.5.0")
-	if got := u.Available("0.1.0"); got != "v0.5.0" {
+	u.Client.Transport = latest("v0.5.0")
+	if got := u.Available(t.Context(), "0.1.0"); got != "v0.5.0" {
 		t.Errorf("Available once v0.5.0 is out = %q, want v0.5.0", got)
 	}
 }

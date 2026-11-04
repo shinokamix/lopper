@@ -40,14 +40,13 @@ type Updater struct {
 	Client   *http.Client
 	Exe      string
 	OS, Arch string
-	// Cache is the directory where Refresh, Skip and Postpone keep what they
-	// learn. "" keeps nothing.
+	// Cache is the directory where Skip and Postpone keep the user's choice.
+	// "" keeps nothing.
 	Cache string
 }
 
 const (
-	checkEvery  = 24 * time.Hour
-	retryEvery  = time.Hour
+	offerWait   = 1500 * time.Millisecond
 	postponeFor = 24 * time.Hour
 )
 
@@ -73,12 +72,14 @@ func New() (*Updater, error) {
 	return u, nil
 }
 
-// Available returns the latest release the last Refresh found if it is
-// newer than current, not skipped and not postponed, and "" otherwise.
-// It reads only the cache.
-func (u *Updater) Available(current string) string {
-	latest, _ := u.read(latestFile)
-	if latest == "" || !Newer(current, latest) {
+// Available asks GitHub for the latest release and returns it if it is newer
+// than current, not skipped and not postponed. It returns "" otherwise, and
+// when GitHub does not answer within 1.5 seconds.
+func (u *Updater) Available(ctx context.Context, current string) string {
+	ctx, cancel := context.WithTimeout(ctx, offerWait)
+	defer cancel()
+	latest, err := u.Latest(ctx)
+	if err != nil || !Newer(current, latest) {
 		return ""
 	}
 	if skipped, _ := u.read(skippedFile); skipped == latest {
@@ -88,30 +89,6 @@ func (u *Updater) Available(current string) string {
 		return ""
 	}
 	return latest
-}
-
-// Refresh asks GitHub for the latest release for Available to offer. It
-// asks at most once a day after an answer and once an hour after a
-// failure. It keeps nothing if ctx ends first.
-func (u *Updater) Refresh(ctx context.Context) {
-	if u.Cache == "" {
-		return
-	}
-	latest, asked := u.read(latestFile)
-	wait := checkEvery
-	if latest == "" {
-		wait = retryEvery
-	}
-	if time.Since(asked) < wait {
-		return
-	}
-	ask, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	latest, err := u.Latest(ask)
-	if err != nil && ctx.Err() != nil {
-		return
-	}
-	u.write(latestFile, latest)
 }
 
 // Skip keeps Available from offering release tag again.
@@ -125,7 +102,6 @@ func (u *Updater) Postpone(tag string) {
 }
 
 const (
-	latestFile    = "latest-release"
 	skippedFile   = "skipped-release"
 	postponedFile = "postponed-release"
 )

@@ -78,12 +78,6 @@ changed since the scan. Then it runs `git worktree remove`, which
 deletes the folder and Git's record of it but keeps the branch. There is
 no trash, so the folder is gone for good.
 
-### What do the exit codes mean?
-
-`0` when the command did all it was asked, `1` on an error, and `2` when
-`lopper rm` left worktrees only because they are not safe to delete. If
-any other worktree failed too, the code is `1`.
-
 ### Where does it look?
 
 Everywhere under your home and temp folders, hidden ones too. lopper

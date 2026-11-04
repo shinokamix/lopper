@@ -23,7 +23,9 @@ func newRmCmd(eng *engine.Engine) *cobra.Command {
 			"why is printed. --force removes it anyway, whatever work it holds, even when " +
 			"git lost track of it: moved by hand, orphaned or damaged. The branch is always " +
 			"kept. A worktree whose folder is gone is not removed: only git's record of it " +
-			"is left, and `git worktree prune` in its repository clears that.",
+			"is left, and `git worktree prune` in its repository clears that. " +
+			"It exits 2 when every worktree left was refused as not safe, and 1 on any " +
+			"other failure.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rm := remover{eng: eng, force: force}

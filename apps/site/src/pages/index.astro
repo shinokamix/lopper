@@ -114,10 +114,24 @@ const commands: [string, string][] = [
     <section>
       <h2>faq</h2>
       <details name="faq">
+        <summary>When is a worktree safe?</summary>
+        <p>
+          When Git tracks it where it is, it is not locked,{" "}
+          <code>git status</code> is clean, no index flag hides edits, and its
+          commits are in the base branch, even after a squash or rebase. The
+          base is <code>origin/HEAD</code>, <code>main</code> or{" "}
+          <code>master</code> as of your last fetch. A check that could not run
+          counts as failed. Ignored files, such as <code>.env</code>, are not
+          checked and are deleted with the worktree.
+        </p>
+      </details>
+      <details name="faq">
         <summary>Can it delete unfinished work?</summary>
         <p>
-          Not without asking. lopper warns you about uncommitted or unmerged
-          work, and <code>lopper rm</code> needs <code>--force</code> for it.
+          Only when you ask it to. <code>lopper rm</code> refuses a worktree
+          that is not safe unless you pass <code>--force</code>. In the TUI,{" "}
+          <code>d</code> lists such worktrees under "removal may lose work", and
+          confirming removes them anyway. The branch is always kept.
         </p>
       </details>
       <details name="faq">

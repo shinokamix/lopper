@@ -229,20 +229,23 @@ func firstLine(s string) string {
 	return line
 }
 
-// Git prints branch.upstream without branch.ab when the upstream ref is gone.
+// Git prints branch.upstream without branch.ab when the upstream ref is gone,
+// and also on an unborn branch, whose branch.oid is "(initial)".
 func parseStatus(out string) (entries int, upstreamGone bool) {
-	var upstream, tracked bool
+	var upstream, tracked, unborn bool
 	for line := range strings.Lines(out) {
 		switch {
 		case strings.HasPrefix(line, "# branch.upstream "):
 			upstream = true
 		case strings.HasPrefix(line, "# branch.ab "):
 			tracked = true
+		case strings.TrimSuffix(line, "\n") == "# branch.oid (initial)":
+			unborn = true
 		case !strings.HasPrefix(line, "# "):
 			entries++
 		}
 	}
-	return entries, upstream && !tracked
+	return entries, upstream && !tracked && !unborn
 }
 
 func countLines(s string) int {

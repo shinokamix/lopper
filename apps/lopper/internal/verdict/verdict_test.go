@@ -33,9 +33,9 @@ func TestSafe(t *testing.T) {
 		{"merged but dirty", repo, lopper.Facts{Dirty: new(2), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)}, false},
 		{"unmerged and unpushed", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(1), Merged: new(lopper.NotMerged)}, false},
 		{"unmerged but pushed", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged)}, false},
-		{"unmerged, pushed, remote branch gone", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged), UpstreamGone: new(true)}, false},
-		{"dirty, remote branch gone", repo, lopper.Facts{Dirty: new(1), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged), UpstreamGone: new(true)}, false},
-		{"merged, clean, remote branch gone", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF), UpstreamGone: new(true)}, true},
+		{"unmerged, pushed, upstream branch gone", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged), UpstreamGone: new(true)}, false},
+		{"dirty, upstream branch gone", repo, lopper.Facts{Dirty: new(1), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged), UpstreamGone: new(true)}, false},
+		{"merged, clean, upstream branch gone", repo, lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF), UpstreamGone: new(true)}, true},
 		{"locked", locked, clean, false},
 		{"folder gone", lopper.Worktree{State: lopper.StateGone}, lopper.Facts{}, true},
 		{"folder gone but locked", lockedGone, lopper.Facts{}, false},
@@ -123,7 +123,7 @@ func TestRemoteBranchGoneIsANoteThatDoesNotBlock(t *testing.T) {
 	f := lopper.Facts{Dirty: new(0), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.NotMerged), UpstreamGone: new(true)}
 	want := []lopper.Note{
 		{Text: "not merged", Kind: lopper.NotePlain, Blocks: true},
-		{Text: "remote branch gone", Kind: lopper.NotePlain},
+		{Text: "upstream branch gone", Kind: lopper.NotePlain},
 	}
 	if got := Of(repo, f).Notes; !slices.Equal(got, want) {
 		t.Errorf("Notes of a pushed, unmerged branch whose remote is gone = %v, want %v", got, want)

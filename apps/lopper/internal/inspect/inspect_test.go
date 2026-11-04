@@ -160,6 +160,21 @@ func TestQuickUpstreamGoneAfterTheRemoteDeletesTheBranch(t *testing.T) {
 	wantFacts(t, f, 1, 1, lopper.NotMerged)
 }
 
+func TestQuickUpstreamOfUnbornBranchIsNotGone(t *testing.T) {
+	repo := setup(t)
+	origin := filepath.Join(filepath.Dir(repo), "origin.git")
+	git(t, repo, "init", "-q", "--bare", origin)
+	git(t, repo, "remote", "add", "origin", origin)
+	wt := addWorktree(t, repo, "-b", "feature")
+	git(t, wt.Path, "push", "-q", "origin", "feature")
+	git(t, wt.Path, "checkout", "-q", "--orphan", "unborn")
+	git(t, wt.Path, "config", "branch.unborn.remote", "origin")
+	git(t, wt.Path, "config", "branch.unborn.merge", "refs/heads/feature")
+	if f := quick(t, wt); f.UpstreamGone == nil || *f.UpstreamGone {
+		t.Errorf("UpstreamGone = %v on an unborn branch whose upstream origin/feature exists, want false", ptr(f.UpstreamGone))
+	}
+}
+
 func TestQuickDetachedWithCommit(t *testing.T) {
 	repo := setup(t)
 	wt := addWorktree(t, repo, "--detach")

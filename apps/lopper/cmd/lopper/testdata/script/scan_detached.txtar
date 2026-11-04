@@ -1,0 +1,10 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q --detach ../wt-detached
+
+exec lopper scan $WORK/wt-detached
+stdout '^(safe|unsafe)\s+detached @[0-9a-f]{7}\s+.*wt-detached$'
+! stderr .
+
+exec lopper scan --json $WORK/wt-detached
+! stdout '"branch"'

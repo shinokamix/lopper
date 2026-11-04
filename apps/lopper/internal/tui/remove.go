@@ -310,7 +310,7 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 
 	branchW := 0
 	for _, it := range append(failed, left...) {
-		branchW = max(branchW, ansi.StringWidth(branchName(it.row.worktree)))
+		branchW = max(branchW, ansi.StringWidth(it.row.worktree.BranchName()))
 	}
 	branchW = min(branchW, width/3)
 	var tbl listing
@@ -326,7 +326,7 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 		titles = append(titles, title)
 		tbl.text, tbl.item, tbl.head = append(tbl.text, title), append(tbl.item, -1), append(tbl.head, head)
 		for i, it := range items {
-			row := fit(branchName(it.row.worktree), branchW) + "  " + t.subtle.Render(reason(it.err))
+			row := fit(it.row.worktree.BranchName(), branchW) + "  " + t.subtle.Render(reason(it.err))
 			tbl.text, tbl.item, tbl.head = append(tbl.text, row), append(tbl.item, i), append(tbl.head, head)
 		}
 	}

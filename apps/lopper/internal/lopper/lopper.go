@@ -25,6 +25,18 @@ type Worktree struct {
 	Reason string
 }
 
+// BranchName returns the branch, a detached HEAD label, or empty when neither
+// is known.
+func (wt Worktree) BranchName() string {
+	if wt.Branch != "" {
+		return wt.Branch
+	}
+	if len(wt.Head) >= 7 {
+		return "detached @" + wt.Head[:7]
+	}
+	return ""
+}
+
 // State says whether git tracks a worktree at its path, and if not, what
 // happened to it.
 type State int

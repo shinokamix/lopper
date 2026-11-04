@@ -111,45 +111,26 @@ const commands: [string, string][] = [
       <pre><code>{commands.map(([command, note], i) => <>{i > 0 && "\n"}{command.padEnd(20)}<span class="dim"># {note}</span></>)}</code></pre>
     </section>
 
-    <section id="what-safe-means">
-      <h2>what safe means</h2>
-      <p>A worktree is safe to remove when all of these hold:</p>
-      <ul>
-        <li>Git tracks it at its current path, and it is not locked.</li>
-        <li>
-          <code>git status</code> shows no changes and no untracked files.
-        </li>
-        <li>
-          No file has an index flag that hides its edits from{" "}
-          <code>git status</code>.
-        </li>
-        <li>
-          Its commits are in the base branch, as ancestors or by content after a
-          squash, rebase or cherry-pick.
-        </li>
-      </ul>
-      <p>
-        The base is <code>origin/HEAD</code>, else local <code>main</code>, else{" "}
-        <code>master</code>. lopper does not fetch, so it compares with the base
-        as of your last <code>git fetch</code>. A check that could not run
-        counts as failed, never as clean.
-      </p>
-      <p>
-        A worktree whose folder is already gone is safe too: only Git's record
-        of it is left, and <code>git worktree prune</code> clears it.
-      </p>
-    </section>
-
     <section>
       <h2>faq</h2>
+      <details name="faq">
+        <summary>When is a worktree safe?</summary>
+        <p>
+          When Git tracks it where it is, it is not locked,{" "}
+          <code>git status</code> is clean, no index flag hides edits, and its
+          commits are in the base branch, even after a squash or rebase. The
+          base is <code>origin/HEAD</code>, <code>main</code> or{" "}
+          <code>master</code> as of your last fetch. A check that could not run
+          counts as failed.
+        </p>
+      </details>
       <details name="faq">
         <summary>Can it delete unfinished work?</summary>
         <p>
           Only when you ask it to. <code>lopper rm</code> refuses a worktree
-          that is not <a href="#what-safe-means">safe</a> unless you pass{" "}
-          <code>--force</code>. In the TUI, <code>d</code> lists such worktrees
-          under "removal may lose work", and confirming removes them anyway. The
-          branch is always kept.
+          that is not safe unless you pass <code>--force</code>. In the TUI,{" "}
+          <code>d</code> lists such worktrees under "removal may lose work", and
+          confirming removes them anyway. The branch is always kept.
         </p>
       </details>
       <details name="faq">

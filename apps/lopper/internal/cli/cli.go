@@ -35,9 +35,7 @@ func NewRoot(releaseVersion string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			updates, stop := offerUpdates(cmd.Context(), releaseVersion)
-			defer stop()
-			return tui.Run(cmd.Context(), eng, opts, updates)
+			return tui.Run(cmd.Context(), eng, opts, offerUpdates(cmd.Context(), releaseVersion))
 		},
 	}
 	root.AddCommand(newScanCmd(eng), newRmCmd(eng), newUpdateCmd(releaseVersion))
@@ -85,29 +83,21 @@ func remembered(opts engine.Options) engine.Options {
 	return opts
 }
 
-func offerUpdates(ctx context.Context, version string) (updates tui.Updates, stop func()) {
+func offerUpdates(ctx context.Context, version string) tui.Updates {
 	if !update.Released(version) || os.Getenv("LOPPER_NO_UPDATE_CHECK") != "" {
-		return tui.Updates{}, func() {}
+		return tui.Updates{}
 	}
 	u, err := update.New()
 	if err != nil {
-		return tui.Updates{}, func() {}
+		return tui.Updates{}
 	}
-	latest := u.Available(version)
-	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		u.Refresh(ctx)
-	}()
-	stop = func() { cancel(); <-done }
 	return tui.Updates{
 		Current:  "v" + strings.TrimPrefix(version, "v"),
-		Latest:   latest,
+		Latest:   u.Available(ctx, version),
 		Repo:     update.Repo,
 		Install:  u.Install,
 		Postpone: u.Postpone,
 		Skip:     u.Skip,
-		Restart:  func() error { stop(); return u.Restart() },
-	}, stop
+		Restart:  u.Restart,
+	}
 }

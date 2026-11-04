@@ -11,6 +11,7 @@ import (
 )
 
 type scanRecord struct {
+	branchLabel string
 	Path        string    `json:"path"`
 	Repo        string    `json:"repo"`
 	Branch      string    `json:"branch,omitempty"`
@@ -65,6 +66,7 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 						Path: wt.Path, Repo: wt.Repo.Path, Branch: wt.Branch,
 						Locked: wt.Locked, Prunable: wt.State == lopper.StateGone, Orphaned: wt.State == lopper.StateOrphaned,
 						MovedFrom: wt.MovedFrom, Unconfirmed: wt.Reason,
+						branchLabel: wt.BranchName(),
 					}
 					order = append(order, wt.ID)
 				case engine.FactsUpdated:
@@ -95,7 +97,7 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				if r.Safe {
 					safe = "safe"
 				}
-				fmt.Fprintf(w, "%-7s %-40s %s\n", safe, r.Branch, r.Path)
+				fmt.Fprintf(w, "%-7s %-40s %s\n", safe, r.branchLabel, r.Path)
 			}
 			return nil
 		},

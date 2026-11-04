@@ -57,16 +57,6 @@ func fitNotes(notes []lopper.Note, w int) (shown []lopper.Note, hidden int) {
 
 func more(n int) string { return fmt.Sprintf(" +%d", n) }
 
-func branchName(wt lopper.Worktree) string {
-	if wt.Branch != "" {
-		return wt.Branch
-	}
-	if len(wt.Head) >= 7 {
-		return "detached @" + wt.Head[:7]
-	}
-	return "(detached)"
-}
-
 type alias struct{ dir, name string }
 
 func abbrev(p string, aliases []alias) string {

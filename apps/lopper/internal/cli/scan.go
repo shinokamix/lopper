@@ -97,7 +97,9 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 			}
 			if pathsOnly {
 				for _, r := range out {
-					fmt.Fprintln(w, r.Path)
+					if _, err := fmt.Fprintln(w, r.Path); err != nil {
+						return err
+					}
 				}
 				return nil
 			}

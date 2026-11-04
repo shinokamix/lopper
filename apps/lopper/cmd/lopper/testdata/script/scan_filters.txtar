@@ -15,14 +15,14 @@ stdout '"path": ".*wt-merged"'
 
 exec lopper scan --paths $WORK
 stdout -count=2 '.+'
-stdout '^\S.*wt-merged$'
-stdout '^\S.*wt-wip$'
+stdout '^(/|[A-Za-z]:\\).*[/\\]wt-merged$'
+stdout '^(/|[A-Za-z]:\\).*[/\\]wt-wip$'
 ! stdout '^(safe|unsafe)'
 ! stderr .
 
 exec lopper scan --safe --paths $WORK
 stdout -count=1 '.+'
-stdout '^\S.*wt-merged$'
+stdout '^(/|[A-Za-z]:\\).*[/\\]wt-merged$'
 
 ! exec lopper scan --json --paths $WORK
 ! stdout .

@@ -15,6 +15,7 @@ stdout '"size_bytes": '
 
 exec lopper scan $WORK/agent
 stdout '^unsafe\s+.*agent[/\\]wt$'
+! stdout 'detached'
 
 exec git init -q $WORK/outside/kept
 exec git -C $WORK/outside/kept commit -q --allow-empty -m init

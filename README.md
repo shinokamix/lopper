@@ -52,12 +52,31 @@ worktrees first and finds the rest while you work. The cache only
 changes how soon worktrees appear, never which, and nothing is removed
 without being checked again. Set `LOPPER_NO_CACHE=1` to scan without it.
 
+## What safe means
+
+A worktree is safe to remove when all of these hold:
+
+- Git tracks it at its current path, and it is not locked.
+- `git status` shows no changes and no untracked files.
+- No file has an index flag that hides its edits from `git status`.
+- Its commits are in the base branch, as ancestors or by content after a
+  squash, rebase or cherry-pick.
+
+The base is `origin/HEAD`, else local `main`, else `master`. lopper does
+not fetch, so it compares with the base as of your last `git fetch`. A
+check that could not run counts as failed, never as clean.
+
+A worktree whose folder is already gone is safe too: only Git's record
+of it is left, and `git worktree prune` clears it.
+
 ## FAQ
 
 ### Can it delete unfinished work?
 
-Not without asking. lopper warns you about uncommitted or unmerged work,
-and `lopper rm` needs `--force` for it.
+Only when you ask it to. `lopper rm` refuses a worktree that is not
+[safe](#what-safe-means) unless you pass `--force`. In the TUI, `d` lists
+such worktrees under "removal may lose work", and confirming removes them
+anyway. The branch is always kept.
 
 ### How does removal work?
 

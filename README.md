@@ -60,6 +60,8 @@ When Git tracks it where it is, it is not locked, `git status` is clean,
 no index flag hides edits, and its commits are in the base branch, even
 after a squash or rebase. The base is `origin/HEAD`, `main` or `master`
 as of your last fetch. A check that could not run counts as failed.
+Ignored files, such as `.env`, are not checked and are deleted with the
+worktree.
 
 ### Can it delete unfinished work?
 

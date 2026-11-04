@@ -121,7 +121,8 @@ const commands: [string, string][] = [
           commits are in the base branch, even after a squash or rebase. The
           base is <code>origin/HEAD</code>, <code>main</code> or{" "}
           <code>master</code> as of your last fetch. A check that could not run
-          counts as failed.
+          counts as failed. Ignored files, such as <code>.env</code>, are not
+          checked and are deleted with the worktree.
         </p>
       </details>
       <details name="faq">

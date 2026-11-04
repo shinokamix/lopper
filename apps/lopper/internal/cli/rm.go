@@ -44,17 +44,26 @@ func newRmCmd(eng *engine.Engine) *cobra.Command {
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", a)
 			}
-			switch {
-			case unsafe > 0:
-				return fmt.Errorf("%d of %d worktrees not removed; --force removes the ones not safe to delete", failed, len(args))
-			case failed > 0:
-				return fmt.Errorf("%d of %d worktrees not removed", failed, len(args))
+			if failed > 0 {
+				return &notRemovedError{failed: failed, unsafe: unsafe, total: len(args)}
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "remove worktrees that are not safe to delete too")
 	return cmd
+}
+
+type notRemovedError struct {
+	failed, unsafe, total int
+}
+
+func (e *notRemovedError) Error() string {
+	msg := fmt.Sprintf("%d of %d worktrees not removed", e.failed, e.total)
+	if e.unsafe > 0 {
+		msg += "; --force removes the ones not safe to delete"
+	}
+	return msg
 }
 
 type remover struct {

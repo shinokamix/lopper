@@ -1,0 +1,31 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b merged ../wt-merged
+exec git -C repo worktree add -q -b wip ../wt-wip
+cp dirty.txt wt-wip/dirty.txt
+
+exec lopper scan --safe $WORK
+stdout -count=1 '.+'
+stdout '^safe\s+merged\s.*wt-merged$'
+! stderr .
+
+exec lopper scan --safe --json $WORK
+stdout -count=1 '"path"'
+stdout '"path": ".*wt-merged"'
+
+exec lopper scan --paths $WORK
+stdout -count=2 '.+'
+stdout '^\S.*wt-merged$'
+stdout '^\S.*wt-wip$'
+! stdout '^(safe|unsafe)'
+! stderr .
+
+exec lopper scan --safe --paths $WORK
+stdout -count=1 '.+'
+stdout '^\S.*wt-merged$'
+
+! exec lopper scan --json --paths $WORK
+! stdout .
+
+-- dirty.txt --
+not committed yet

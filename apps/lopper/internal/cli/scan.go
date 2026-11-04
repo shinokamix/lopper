@@ -45,7 +45,7 @@ func newScanFacts(f lopper.Facts) scanFacts {
 }
 
 func newScanCmd(eng *engine.Engine) *cobra.Command {
-	var asJSON bool
+	var asJSON, safeOnly, pathsOnly bool
 	cmd := &cobra.Command{
 		Use:   "scan [path...]",
 		Short: "Scan for worktrees without the interactive UI",
@@ -84,6 +84,9 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 
 			out := make([]*scanRecord, 0, len(order))
 			for _, id := range order {
+				if safeOnly && !records[id].Safe {
+					continue
+				}
 				out = append(out, records[id])
 			}
 			w := cmd.OutOrStdout()
@@ -91,6 +94,12 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 				enc := json.NewEncoder(w)
 				enc.SetIndent("", "  ")
 				return enc.Encode(out)
+			}
+			if pathsOnly {
+				for _, r := range out {
+					fmt.Fprintln(w, r.Path)
+				}
+				return nil
 			}
 			for _, r := range out {
 				safe := "unsafe"
@@ -103,5 +112,8 @@ func newScanCmd(eng *engine.Engine) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print results as JSON")
+	cmd.Flags().BoolVar(&safeOnly, "safe", false, "list only worktrees safe to delete")
+	cmd.Flags().BoolVar(&pathsOnly, "paths", false, "print only paths, one per line")
+	cmd.MarkFlagsMutuallyExclusive("json", "paths")
 	return cmd
 }

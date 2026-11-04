@@ -31,6 +31,7 @@ const commands: [string, string][] = [
   ["lopper", "open the terminal UI"],
   ["lopper ~/code", "scan a specific directory"],
   ["lopper scan --json", "print scan results as JSON"],
+  ["lopper scan --safe --paths", "print paths of worktrees safe to delete"],
   ["lopper rm ../wt", "remove a worktree if safe"],
   ["lopper update", "update to the latest release"],
 ];
@@ -141,6 +142,15 @@ const commands: [string, string][] = [
           changed since the scan. Then it runs <code>git worktree remove</code>,
           which deletes the folder and Git's record of it but keeps the branch.
           There is no trash, so the folder is gone for good.
+        </p>
+      </details>
+      <details name="faq">
+        <summary>What do the exit codes mean?</summary>
+        <p>
+          <code>0</code> when the command did all it was asked, <code>1</code>{" "}
+          on an error, and <code>2</code> when <code>lopper rm</code> left
+          worktrees only because they are not safe to delete. If any other
+          worktree failed too, the code is <code>1</code>.
         </p>
       </details>
       <details name="faq">

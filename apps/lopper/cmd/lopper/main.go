@@ -28,10 +28,7 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	v, release := buildVersions()
-	if err := fang.Execute(ctx, cli.NewRoot(release), fang.WithVersion(v), fang.WithCommit(commit)); err != nil {
-		return 1
-	}
-	return 0
+	return cli.ExitCode(fang.Execute(ctx, cli.NewRoot(release), fang.WithVersion(v), fang.WithCommit(commit)))
 }
 
 // GoReleaser stamps version, and go install records the module version. A

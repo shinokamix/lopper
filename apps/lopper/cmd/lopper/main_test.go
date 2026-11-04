@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -69,5 +71,29 @@ func TestScript(t *testing.T) {
 			env.Setenv("GIT_CONFIG_GLOBAL", gitconfig)
 			return nil
 		},
+		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+			"exits": exits,
+		},
 	})
+}
+
+func exits(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) < 2 {
+		ts.Fatalf("usage: exits status program [args...]")
+	}
+	want, err := strconv.Atoi(args[0])
+	if err != nil {
+		ts.Fatalf("exits: bad status %q", args[0])
+	}
+	got := 0
+	if err := ts.Exec(args[1], args[2:]...); err != nil {
+		exit, ok := errors.AsType[*exec.ExitError](err)
+		if !ok {
+			ts.Fatalf("exits: %v", err)
+		}
+		got = exit.ExitCode()
+	}
+	if got != want {
+		ts.Fatalf("%s exited with %d, want %d", args[1], got, want)
+	}
 }

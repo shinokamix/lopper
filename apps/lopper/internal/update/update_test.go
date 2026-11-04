@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -320,15 +321,17 @@ func (s timesOut) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestAvailableWaitsForGitHubAtMostASecondAndAHalf(t *testing.T) {
-	var left time.Duration
-	u := updater(t, "darwin", nil)
-	u.Client.Transport = timesOut{&left}
-	if got := u.Available(t.Context(), "0.1.0"); got != "" {
-		t.Errorf("Available = %q after GitHub timed out, want nothing", got)
-	}
-	if left <= time.Second || left > 1500*time.Millisecond {
-		t.Errorf("Available gave GitHub %v to answer, want 1.5s", left)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		var left time.Duration
+		u := updater(t, "darwin", nil)
+		u.Client.Transport = timesOut{&left}
+		if got := u.Available(t.Context(), "0.1.0"); got != "" {
+			t.Errorf("Available = %q after GitHub timed out, want nothing", got)
+		}
+		if left != 1500*time.Millisecond {
+			t.Errorf("Available gave GitHub %v to answer, want 1.5s", left)
+		}
+	})
 }
 
 func TestAvailableOffersNewerReleaseUnlessSkipped(t *testing.T) {

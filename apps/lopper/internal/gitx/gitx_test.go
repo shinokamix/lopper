@@ -299,9 +299,14 @@ func TestBinarySkipsXcrunShim(t *testing.T) {
 	if found, err := exec.LookPath("git"); err != nil || runtime.GOOS != "darwin" || found != "/usr/bin/git" {
 		t.Skip("PATH does not lead to the macOS git shim")
 	}
-	got := binary()
-	if !filepath.IsAbs(got) || got == "/usr/bin/git" {
-		t.Fatalf("binary() = %q, want the git that /usr/bin/git starts", got)
+	planted := t.TempDir()
+	if err := os.WriteFile(filepath.Join(planted, "git"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_EXEC_PATH", planted)
+	got := findGit()
+	if !filepath.IsAbs(got) || got == "/usr/bin/git" || filepath.Dir(got) == planted {
+		t.Fatalf("findGit() = %q, want the git that /usr/bin/git starts", got)
 	}
 	shim, err := exec.Command("/usr/bin/git", "version").Output()
 	if err != nil {

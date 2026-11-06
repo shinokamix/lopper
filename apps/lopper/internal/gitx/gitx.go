@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ErrGitNotFound is returned by Check when PATH has no git binary.
@@ -469,19 +470,27 @@ func DefaultBranch(ctx context.Context, r Runner, dir string) string {
 
 // binary is the git that PATH names. On macOS /usr/bin/git is a shim that
 // asks xcrun for the Command Line Tools or Xcode git each time it starts,
-// which costs over 100 ms per process. binary runs that git directly.
-var binary = sync.OnceValue(func() string {
+// which costs over 100 ms per process. binary asks xcrun once, as the shim
+// does, and runs that git directly.
+var binary = sync.OnceValue(findGit)
+
+func findGit() string {
 	found, err := exec.LookPath("git")
 	if err != nil || runtime.GOOS != "darwin" || found != "/usr/bin/git" {
 		return "git"
 	}
-	out, err := exec.Command(found, "--exec-path").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/xcrun", "--find", "git").Output()
 	if err != nil {
 		return "git"
 	}
-	direct := filepath.Join(strings.TrimSpace(string(out)), "git")
+	direct := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(direct) {
+		return "git"
+	}
 	if info, err := os.Stat(direct); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 		return "git"
 	}
 	return direct
-})
+}

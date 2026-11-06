@@ -106,3 +106,29 @@ func realDir(t *testing.T, dir string) string {
 	}
 	return resolved
 }
+
+func TestUnderMatchesARootSpelledInAnotherCase(t *testing.T) {
+	dir := realDir(t, t.TempDir())
+	wt := filepath.Join(dir, "CaseAgents", "wt")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "caseagents")
+	if _, err := os.Stat(root); err != nil {
+		t.Skip("the file system tells names apart by case")
+	}
+	other := filepath.Join(dir, "other")
+	if err := os.Mkdir(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	roots, err := statRoots([]string{root, other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !under(roots[:1], wt) {
+		t.Errorf("under([%s], %s) = false, want true: the root is the same folder", root, wt)
+	}
+	if under(roots[1:], wt) {
+		t.Errorf("under reports %s under a folder that does not hold it", wt)
+	}
+}

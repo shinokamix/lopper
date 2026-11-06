@@ -71,3 +71,60 @@ func walkReaches(root, dir string) bool {
 	rel, err := filepath.Rel(resolved, dir)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
+
+func under(roots []os.FileInfo, path string) bool {
+	dir, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	for {
+		if info, err := os.Stat(dir); err == nil && slices.ContainsFunc(roots, func(root os.FileInfo) bool { return os.SameFile(root, info) }) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
+
+func physicalRoots(args []string) ([]string, error) {
+	if len(args) == 0 {
+		roots, err := defaultRoots()
+		if err != nil {
+			return nil, err
+		}
+		args = roots
+	}
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		root, err := physical(a)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, root)
+	}
+	return out, nil
+}
+
+// physical resolves path the way the OS does. filepath.Abs and filepath.Join
+// drop "dir/.." before any symlink is followed, so "link/.." would name the
+// folder holding link instead of the parent of its target.
+func physical(path string) (string, error) {
+	if path != "" && !filepath.IsAbs(path) && filepath.VolumeName(path) == "" && !os.IsPathSeparator(path[0]) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		if cwd, err = filepath.EvalSymlinks(cwd); err != nil {
+			return "", err
+		}
+		path = cwd + string(filepath.Separator) + path
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(resolved)
+}

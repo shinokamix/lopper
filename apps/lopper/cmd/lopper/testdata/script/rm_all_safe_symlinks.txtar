@@ -1,0 +1,14 @@
+[windows] skip 'needs symbolic links'
+
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+mkdir elsewhere/inner
+exec git -C repo worktree add -q -b victim ../agents/victim
+exec git -C repo worktree add -q -b intended ../elsewhere/intended
+symlink agents/link -> ../elsewhere/inner
+exec lopper rm --all-safe agents/link/..
+stdout -count=1 '^removed '
+stdout '^removed .*elsewhere[/\\]intended$'
+! exists elsewhere/intended
+exists agents/victim

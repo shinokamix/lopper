@@ -1,0 +1,231 @@
+---
+import Layout from "../components/Layout.astro";
+---
+
+<Layout
+  title="What lopper's notes mean · lopper"
+  description="Each note lopper shows next to a worktree, what it means, and the Git command that resolves it."
+>
+  <main>
+    <section>
+      <h1>What the notes mean</h1>
+      <p class="lede dim">
+        lopper shows notes next to each worktree, and <code>lopper rm</code>
+        prints the ones that keep it from removing a worktree. A worktree is
+        safe to delete only when no note blocks it. Run the commands below in
+        the worktree unless they say otherwise.
+      </p>
+    </section>
+
+    <section>
+      <h2>notes that block removal</h2>
+      <dl>
+        <dt>locked</dt>
+        <dd>
+          <p>
+            Someone ran <code>git worktree lock</code> on it, often a tool that
+            still uses it. <code>git worktree list --porcelain</code> in the
+            repository prints the reason after <code>locked</code>.
+          </p>
+          <p>
+            Once nothing uses it: <code>git worktree unlock &lt;path&gt;</code>
+          </p>
+        </dd>
+
+        <dt>3 uncommitted</dt>
+        <dd>
+          <p>
+            <code>git status</code> lists that many changed, staged or untracked
+            entries. An untracked folder counts once.
+          </p>
+          <p>
+            Commit them, or <code>git stash -u</code>: the stash belongs to the
+            repository and outlives the worktree.
+          </p>
+        </dd>
+
+        <dt>2 unchecked</dt>
+        <dd>
+          <p>
+            That many files have the assume-unchanged or skip-worktree index
+            flag, so <code>git status</code> does not show their edits.{" "}
+            <code>git ls-files -v | grep '^[a-zS]'</code> lists them.
+          </p>
+          <p>
+            <code>git update-index --no-assume-unchanged -- &lt;file&gt;</code>
+            and <code>git update-index --no-skip-worktree -- &lt;file&gt;</code>
+            clear the flags, and <code>git status</code> then shows the edits.
+          </p>
+        </dd>
+
+        <dt>1 unpushed</dt>
+        <dd>
+          <p>
+            That many commits are on no remote branch and not in the base
+            branch, as of your last fetch. lopper shows it only when the work is
+            not merged.
+          </p>
+          <p>
+            <code>git push</code>, or <code>git fetch</code> if they were pushed
+            from elsewhere.
+          </p>
+        </dd>
+
+        <dt>not merged</dt>
+        <dd>
+          <p>
+            The base branch has neither the commits nor their changes. The base
+            is <code>origin/HEAD</code>, <code>main</code> or{" "}
+            <code>master</code>.
+          </p>
+          <p>
+            If it was merged on the server, <code>git fetch</code> brings that
+            in. If you no longer need the work,{" "}
+            <code>lopper rm --force &lt;path&gt;</code> removes the worktree and
+            keeps the branch.
+          </p>
+        </dd>
+
+        <dt>no base branch</dt>
+        <dd>
+          <p>
+            The repository has no <code>origin/HEAD</code>, <code>main</code> or{" "}
+            <code>master</code>, so lopper cannot tell whether the work is
+            merged.
+          </p>
+          <p>
+            <code>git remote set-head origin --auto</code> sets{" "}
+            <code>origin/HEAD</code> to the remote's default branch.
+          </p>
+        </dd>
+
+        <dt>couldn't check</dt>
+        <dd>
+          <p>
+            A Git command failed, so a fact is unknown and counts against the
+            worktree. <code>lopper scan --json</code> lists the errors under{" "}
+            <code>facts.errors</code>, such as{" "}
+            <code>could not read status: …</code>.
+          </p>
+          <p>
+            Run the command the error names, <code>git status</code> for that
+            one, to see Git's whole message, and fix what it reports.
+          </p>
+        </dd>
+
+        <dt>moved by hand</dt>
+        <dd>
+          <p>
+            The folder was moved without <code>git worktree move</code>, and Git
+            still expects it where it was. <code>scan --json</code> shows that
+            place as <code>moved_from</code>.
+          </p>
+          <p>
+            <code>git worktree repair</code> in the worktree, or{" "}
+            <code>git worktree repair &lt;path&gt;</code> in the repository,
+            points Git at the new place.
+          </p>
+        </dd>
+
+        <dt>not confirmed by git</dt>
+        <dd>
+          <p>
+            The folder's <code>.git</code> file names a repository, but the
+            repository's record of the worktree is damaged or it cannot list its
+            worktrees. <code>scan --json</code> gives the reason as{" "}
+            <code>unconfirmed</code>.
+          </p>
+          <p>
+            For <code>gitdir is missing from …</code> or{" "}
+            <code>gitdir is empty in …</code>, <code>git worktree repair</code>{" "}
+            in the worktree rewrites it. For <code>commondir is missing</code>{" "}
+            or <code>HEAD is missing</code>, repair cannot help: copy out what
+            you need, then <code>lopper rm --force &lt;path&gt;</code>. For{" "}
+            <code>could not list its worktrees: …</code>, run{" "}
+            <code>git worktree list</code> in the repository and fix the error
+            it prints, such as a broken <code>.git/config</code>.
+          </p>
+        </dd>
+
+        <dt>not tracked by git</dt>
+        <dd>
+          <p>
+            The folder is still there, but its repository is gone or no longer
+            lists it. <code>scan --json</code> shows it as <code>orphaned</code>
+            , and <code>repo</code> says where the repository was. lopper cannot
+            check such a folder for unsaved work.
+          </p>
+          <p>
+            If you moved the repository,{" "}
+            <code>git worktree repair &lt;path&gt;</code> in its new place links
+            the worktree again. If it is deleted, copy out what you need, then{" "}
+            <code>lopper rm --force &lt;path&gt;</code>.
+          </p>
+        </dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>notes that do not</h2>
+      <dl>
+        <dt>merged</dt>
+        <dd>
+          <p>
+            The work is in the base branch, by a merge or fast-forward, or by a
+            squash, rebase or cherry-pick that left the same changes. Nothing to
+            do.
+          </p>
+        </dd>
+
+        <dt>folder gone</dt>
+        <dd>
+          <p>
+            The folder was deleted and only Git's record of it is left, which
+            takes no space. <code>scan --json</code> shows it as{" "}
+            <code>prunable</code>. <code>lopper rm</code> leaves it alone.
+          </p>
+          <p>
+            <code>git worktree prune</code> in the repository removes the
+            record. It keeps a locked one until{" "}
+            <code>git worktree unlock &lt;path&gt;</code>.
+          </p>
+        </dd>
+      </dl>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .lede {
+    margin-top: 1lh;
+  }
+
+  h2 {
+    margin-bottom: 1lh;
+  }
+
+  dl {
+    margin: 0;
+  }
+
+  dt {
+    font-weight: 700;
+  }
+
+  dt:not(:first-child) {
+    margin-top: 1.5lh;
+  }
+
+  dd {
+    margin: 0.25lh 0 0 2.5ch;
+    color: var(--dim);
+  }
+
+  dd p + p {
+    margin-top: 0.5lh;
+  }
+
+  dd code {
+    color: var(--fg);
+  }
+</style>

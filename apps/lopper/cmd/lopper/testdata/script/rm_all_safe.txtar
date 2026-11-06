@@ -1,0 +1,50 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+exec git -C repo worktree add -q -b merged ../agents/wt-merged
+exec git -C repo worktree add -q -b other ../agents/nested/wt-other
+exec git -C repo worktree add -q -b outside ../wt-outside
+
+exec git -C repo worktree add -q -b dirty ../agents/wt-dirty
+cp notes.txt agents/wt-dirty/notes.txt
+
+exec git -C repo worktree add -q -b unpushed ../agents/wt-unpushed
+exec git -C agents/wt-unpushed commit -q --allow-empty -m work
+
+exec git -C repo worktree add -q -b locked ../agents/wt-locked
+exec git -C repo worktree lock $WORK/agents/wt-locked
+
+exec git -C repo worktree add -q -b moved ../agents/wt-moved-from
+mv agents/wt-moved-from agents/wt-moved
+
+exec git -C repo worktree add -q -b gone ../agents/wt-gone
+rm agents/wt-gone
+
+! exec lopper rm --all-safe --force agents
+stderr '(?i)none of the others'
+exists agents/wt-merged
+
+exec lopper rm --all-safe agents
+stdout -count=2 '^removed '
+stdout '^removed .*agents[/\\]wt-merged$'
+stdout '^removed .*agents[/\\]nested[/\\]wt-other$'
+! stderr .
+! exists agents/wt-merged
+! exists agents/nested/wt-other
+exists wt-outside
+exists agents/wt-dirty/notes.txt
+exists agents/wt-unpushed
+exists agents/wt-locked
+exists agents/wt-moved
+exec git -C repo rev-parse --verify -q refs/heads/merged
+exec git -C repo worktree list --porcelain
+stdout 'wt-gone'
+
+exec lopper rm --all-safe agents
+! stdout .
+
+! exec lopper rm --all-safe missing
+stderr '(?i)missing: no such directory'
+
+-- notes.txt --
+not committed yet

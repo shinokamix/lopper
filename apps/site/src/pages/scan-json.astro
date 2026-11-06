@@ -1,0 +1,269 @@
+---
+import Layout from "../components/Layout.astro";
+
+const example = `[
+  {
+    "path": "/home/me/.agents/wt/fix-login",
+    "repo": "/home/me/code/app",
+    "branch": "fix-login",
+    "safe": true,
+    "facts": {
+      "dirty": 0,
+      "unchecked_files": 0,
+      "unpushed": 0,
+      "merged": "content",
+      "upstream_gone": false,
+      "last_commit": "2026-10-28T14:03:11Z",
+      "size_bytes": 482113536
+    }
+  },
+  {
+    "path": "/tmp/scratch/old-app",
+    "repo": "/home/me/code/old-app",
+    "safe": false,
+    "orphaned": true,
+    "facts": {
+      "size_bytes": 1048576
+    }
+  }
+]`;
+---
+
+<Layout
+  title="scan --json fields · lopper"
+  description="Each field lopper scan --json prints, its type, when it is omitted, and what it means."
+>
+  <main>
+    <section>
+      <h1>scan --json</h1>
+      <p class="lede dim">
+        <code>lopper scan --json [path...]</code> prints a JSON array to stdout,
+        one object per linked worktree in the order lopper found them, or{" "}
+        <code>[]</code> when there are none. Main worktrees are not listed.
+        Messages for a person go to stderr.
+      </p>
+      <pre><code>{example}</code></pre>
+    </section>
+
+    <section>
+      <h2>worktree</h2>
+      <dl>
+        <dt>
+          path <span class="dim">string, always</span>
+        </dt>
+        <dd>The worktree's folder, as an absolute path.</dd>
+
+        <dt>
+          repo <span class="dim">string, always</span>
+        </dt>
+        <dd>
+          The main worktree of the repository it belongs to, or the folder of a
+          bare repository. For an orphaned worktree, where the repository was.
+        </dd>
+
+        <dt>
+          branch <span class="dim">string, omitted if unknown</span>
+        </dt>
+        <dd>
+          The branch checked out, such as <code>fix-login</code>. Omitted when
+          HEAD is detached, or when lopper cannot tell, as for an orphaned
+          worktree.
+        </dd>
+
+        <dt>
+          safe <span class="dim">boolean, always</span>
+        </dt>
+        <dd>
+          Whether lopper considers it safe to delete. It is not safe when lopper
+          could not check for work it holds. A <code>prunable</code> worktree is
+          safe unless locked, since there is no folder left to lose.
+        </dd>
+
+        <dt>
+          locked <span class="dim">boolean, omitted if false</span>
+        </dt>
+        <dd>
+          Someone ran <code>git worktree lock</code> on it. A locked worktree is
+          never safe.
+        </dd>
+
+        <dt>
+          prunable <span class="dim">boolean, omitted if false</span>
+        </dt>
+        <dd>
+          The folder is gone and only Git's record of it is left.{" "}
+          <code>git worktree prune</code> in the repository removes the record.
+        </dd>
+
+        <dt>
+          orphaned <span class="dim">boolean, omitted if false</span>
+        </dt>
+        <dd>
+          The folder is there, but its repository is gone or no longer lists it.
+        </dd>
+
+        <dt>
+          moved_from <span class="dim">string, omitted unless moved</span>
+        </dt>
+        <dd>
+          Where Git still expects a worktree that was moved by hand.{" "}
+          <code>git worktree repair</code> in the worktree fixes that.
+        </dd>
+
+        <dt>
+          unconfirmed{" "}
+          <span class="dim">string, omitted unless unconfirmed</span>
+        </dt>
+        <dd>
+          Why the repository named in the folder's <code>.git</code> file could
+          not confirm the worktree, such as{" "}
+          <code>gitdir is missing from …</code>.
+        </dd>
+
+        <dt>
+          facts <span class="dim">object, always</span>
+        </dt>
+        <dd>What lopper found inside the worktree, described below.</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>facts</h2>
+      <p class="intro dim">
+        Each field is omitted when lopper does not know it: the check failed,
+        and <code>errors</code> says why, or it did not run. lopper runs no Git
+        checks on orphaned and prunable worktrees. A count of zero is printed as{" "}
+        <code>0</code>, not omitted.
+      </p>
+      <dl>
+        <dt>
+          dirty <span class="dim">integer</span>
+        </dt>
+        <dd>
+          Entries <code>git status</code> lists: changed, staged and untracked.
+          An untracked folder counts once.
+        </dd>
+
+        <dt>
+          unchecked_files <span class="dim">integer</span>
+        </dt>
+        <dd>
+          Files whose assume-unchanged or skip-worktree index flag hides their
+          edits from <code>git status</code>.
+        </dd>
+
+        <dt>
+          unpushed <span class="dim">integer</span>
+        </dt>
+        <dd>
+          Commits on HEAD that are on no remote branch and not in the base
+          branch, as of the last fetch.
+        </dd>
+
+        <dt>
+          merged <span class="dim">string</span>
+        </dt>
+        <dd>
+          <p>
+            Whether the work reached the base branch: <code>origin/HEAD</code>,
+            <code>main</code> or <code>master</code>. Also omitted when the
+            repository has none of them.
+          </p>
+          <ul>
+            <li>
+              <code>"ancestor"</code>: HEAD is in the base branch, by a merge or
+              fast-forward.
+            </li>
+            <li>
+              <code>"content"</code>: the base branch has the same changes,
+              after a squash, rebase or cherry-pick.
+            </li>
+            <li>
+              <code>"none"</code>: the work is not in the base branch.
+            </li>
+          </ul>
+        </dd>
+
+        <dt>
+          upstream_gone <span class="dim">boolean</span>
+        </dt>
+        <dd>
+          Whether the branch tracks an upstream branch that no longer exists,
+          such as one deleted on the remote after a merge, as of the last fetch.
+        </dd>
+
+        <dt>
+          last_commit <span class="dim">string</span>
+        </dt>
+        <dd>
+          Committer date of HEAD in UTC, in RFC 3339, such as{" "}
+          <code>2026-10-28T14:03:11Z</code>. Omitted when lopper could not read
+          it.
+        </dd>
+
+        <dt>
+          size_bytes <span class="dim">integer</span>
+        </dt>
+        <dd>
+          Total size of the regular files in the folder, or <code>0</code> when
+          the folder is gone. Omitted when lopper could not measure the folder.
+        </dd>
+
+        <dt>
+          errors <span class="dim">array of strings</span>
+        </dt>
+        <dd>
+          One entry per failed check, such as{" "}
+          <code>could not read status: …</code>. Omitted when no check failed.
+        </dd>
+      </dl>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .lede {
+    margin-top: 1lh;
+    margin-bottom: 2lh;
+  }
+
+  h2 {
+    margin-bottom: 1lh;
+  }
+
+  .intro {
+    margin-bottom: 1.5lh;
+  }
+
+  dl {
+    margin: 0;
+  }
+
+  dt {
+    font-weight: 700;
+  }
+
+  dt .dim {
+    margin-left: 1ch;
+    font-weight: 400;
+  }
+
+  dt:not(:first-child) {
+    margin-top: 1.5lh;
+  }
+
+  dd {
+    max-width: var(--measure);
+    margin: 0.25lh 0 0 2.5ch;
+    color: var(--dim);
+  }
+
+  dd code {
+    color: var(--fg);
+  }
+
+  ul {
+    margin: 0.5lh 0 0;
+    padding-left: 2ch;
+  }
+</style>

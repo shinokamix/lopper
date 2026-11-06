@@ -11,8 +11,11 @@ exec git -C repo rev-parse --verify -q refs/heads/merged
 
 exec git -C repo worktree add -q -b dirty ../wt-dirty
 cp notes.txt wt-dirty/notes.txt
-! exec lopper rm wt-dirty
+exits 2 lopper rm wt-dirty
 stderr '^wt-dirty: not removed: not safe to delete: 1 uncommitted$'
+exits 1 lopper rm wt-dirty missing
+stderr '^wt-dirty: not removed: not safe to delete'
+stderr '^missing: not removed: no such directory'
 exec lopper rm --force wt-dirty
 
 exec git -C repo worktree add -q -b unpushed ../wt-unpushed
@@ -38,7 +41,7 @@ cd $WORK
 exists wt-here/.git
 
 exec git -C repo worktree add -q -b other ../wt-other
-! exec lopper rm --force repo wt-other
+exits 1 lopper rm --force repo wt-other
 stderr '^repo: not removed: not a linked worktree$'
 stdout '^removed wt-other$'
 stderr '(?i)1 of 2 worktrees not removed'

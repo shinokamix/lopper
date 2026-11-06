@@ -39,11 +39,12 @@ Binaries are also on the [releases page](https://github.com/shinokamix/lopper/re
 ## Usage
 
 ```sh
-lopper              # terminal UI, scans home and temporary directories
-lopper ~/code       # scan a specific directory
-lopper scan --json  # JSON output
-lopper rm ../wt     # remove if safe, --force otherwise
-lopper update       # update to the latest release
+lopper                      # terminal UI, scans home and temporary directories
+lopper ~/code               # scan a specific directory
+lopper scan --json          # JSON output
+lopper scan --safe --paths  # paths of the worktrees safe to delete
+lopper rm ../wt             # remove if safe, --force otherwise
+lopper update               # update to the latest release
 ```
 
 lopper remembers where it found repositories, in `lopper/repos.json`

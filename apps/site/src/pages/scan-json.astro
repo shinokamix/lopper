@@ -12,6 +12,8 @@ const example = `[
       "unchecked_files": 0,
       "unpushed": 0,
       "merged": "content",
+      "upstream_gone": false,
+      "last_commit": "2026-10-28T14:03:11Z",
       "size_bytes": 482113536
     }
   },
@@ -180,6 +182,23 @@ const example = `[
               <code>"none"</code>: the work is not in the base branch.
             </li>
           </ul>
+        </dd>
+
+        <dt>
+          upstream_gone <span class="dim">boolean</span>
+        </dt>
+        <dd>
+          Whether the branch tracks an upstream branch that no longer exists,
+          such as one deleted on the remote after a merge, as of the last fetch.
+        </dd>
+
+        <dt>
+          last_commit <span class="dim">string</span>
+        </dt>
+        <dd>
+          Committer date of HEAD in UTC, in RFC 3339, such as{" "}
+          <code>2026-10-28T14:03:11Z</code>. Omitted when lopper could not read
+          it.
         </dd>
 
         <dt>

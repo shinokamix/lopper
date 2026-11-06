@@ -33,6 +33,7 @@ const commands: [string, string][] = [
   ["lopper scan --json", "print scan results as JSON"],
   ["lopper scan --safe --paths", "print paths of worktrees safe to delete"],
   ["lopper rm ../wt", "remove a worktree if safe"],
+  ["lopper rm --all-safe ~/wt", "remove every safe worktree under ~/wt"],
   ["lopper update", "update to the latest release"],
 ];
 ---
@@ -105,11 +106,18 @@ const commands: [string, string][] = [
         yourself before deleting it. lopper finds them all and shows each one's
         size and status, so you know what's safe to delete.
       </p>
+      <p>
+        lopper is not a worktree manager: it does not create or switch
+        worktrees. It scans your home and temporary folders, or the folders you
+        name, and finds orphaned, moved and damaged worktrees too. It sees work
+        merged by squash, rebase or cherry-pick, and refuses a worktree whose
+        index flags hide edits from Git.
+      </p>
     </section>
 
     <section>
       <h2>commands</h2>
-      <pre><code>{commands.map(([command, note], i) => <>{i > 0 && "\n"}{command.padEnd(20)}<span class="dim"># {note}</span></>)}</code></pre>
+      <pre><code>{commands.map(([command, note], i) => <>{i > 0 && "\n"}{command.padEnd(27)}<span class="dim"># {note}</span></>)}</code></pre>
     </section>
 
     <section>

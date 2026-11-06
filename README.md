@@ -14,6 +14,12 @@ Git lists them one repository at a time, and you have to check each one
 yourself before deleting it. lopper finds them all and shows each one's
 size and status, so you know what's safe to delete.
 
+lopper is not a worktree manager: it does not create or switch
+worktrees. It scans your home and temporary folders, or the folders you
+name, and finds orphaned, moved and damaged worktrees too. It sees work
+merged by squash, rebase or cherry-pick, and refuses a worktree whose
+index flags hide edits from Git.
+
 ## Install
 
 macOS and Linux:
@@ -44,6 +50,7 @@ lopper ~/code               # scan a specific directory
 lopper scan --json          # JSON output
 lopper scan --safe --paths  # paths of the worktrees safe to delete
 lopper rm ../wt             # remove if safe, --force otherwise
+lopper rm --all-safe ~/wt   # remove every safe worktree under ~/wt
 lopper update               # update to the latest release
 ```
 
@@ -52,6 +59,50 @@ under your user cache directory, so that the next scan lists their
 worktrees first and finds the rest while you work. The cache only
 changes how soon worktrees appear, never which, and nothing is removed
 without being checked again. Set `LOPPER_NO_CACHE=1` to scan without it.
+
+Each worktree comes with notes such as "moved by hand" or "not
+confirmed by git". [What the notes mean](https://lopper.dev/notes)
+says what each one means and how to resolve it, and
+[scan --json](https://lopper.dev/scan-json) describes each field
+scripts can read.
+
+## Clean up after agents
+
+`lopper rm --all-safe <folder>` removes every safe worktree under the
+folder and leaves the rest, so it can run unattended. Point it at the
+folder your agents put worktrees in.
+
+In Claude Code, a `SessionEnd` hook in `~/.claude/settings.json` runs
+it when a session ends. The hook starts in the session's folder, which
+may be a worktree, and lopper does not remove the worktree it runs in,
+so the command moves to your home first. These hooks time out after 1.5
+seconds unless they set `timeout`, in seconds:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$HOME\" && lopper rm --all-safe \"$HOME/agent-worktrees\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Or run it every hour from cron, also from your home. Cron starts with
+a short `PATH`, so name the binary in full, here where `install.sh`
+puts it:
+
+```cron
+0 * * * * cd "$HOME" && "$HOME/.local/bin/lopper" rm --all-safe "$HOME/agent-worktrees"
+```
 
 ## FAQ
 

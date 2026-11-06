@@ -95,8 +95,8 @@ tasks:
     preset: utility
 
   bench:
-    description: Compare scan speed with origin/main on generated repositories (pass another base after --)
-    command: sh $workspaceRoot/.github/scripts/bench.sh
+    description: Compare scan speed with origin/main on generated repositories (pass flags or another base after --)
+    command: go run ./cmd/bench
     preset: utility
 
   tidy-check:

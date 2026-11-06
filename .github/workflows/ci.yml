@@ -73,9 +73,9 @@ jobs:
       matrix:
         include:
           - { name: Linux, os: ubuntu-latest, max-slowdown: "20" }
-          - { name: macOS, os: macos-latest, max-slowdown: "off" }
-          - { name: macOS with Apple's git, os: macos-latest, max-slowdown: "off", apple-git: true }
-          - { name: Windows, os: windows-latest, max-slowdown: "off" }
+          - { name: macOS, os: macos-latest, max-slowdown: "0" }
+          - { name: macOS with Apple's git, os: macos-latest, max-slowdown: "0", apple-git: true }
+          - { name: Windows, os: windows-latest, max-slowdown: "0" }
     name: bench (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     defaults:
@@ -89,16 +89,16 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/lopper/tools/go.mod
-          cache-dependency-path: |
-            apps/lopper/go.sum
-            apps/lopper/tools/go.sum
+          cache-dependency-path: apps/lopper/go.sum
       - if: matrix.apple-git
         run: echo /usr/bin >>"$GITHUB_PATH"
-      - run: sh .github/scripts/bench.sh HEAD^1
+      - working-directory: apps/lopper
+        run: |
+          mkdir "$RUNNER_TEMP/bench"
+          go run ./cmd/bench -name "$NAME" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
         env:
-          BENCH_OUT: ${{ runner.temp }}/bench
-          BENCH_NAME: ${{ matrix.name }}
-          BENCH_MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
+          NAME: ${{ matrix.name }}
+          MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
         with:
@@ -120,9 +120,8 @@ jobs:
           pattern: bench-*
           path: ${{ runner.temp }}/bench
       - run: |
-          set -- "$RUNNER_TEMP"/bench/bench-*/report.md
-          [ -f "$1" ] || exit 0
-          for report; do cat "$report"; echo; done >"$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP"/bench/bench-*/report.md >"$RUNNER_TEMP/report.md" 2>/dev/null || true
+          [ -s "$RUNNER_TEMP/report.md" ] || exit 0
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/report.md"
         env:
           GH_TOKEN: ${{ github.token }}

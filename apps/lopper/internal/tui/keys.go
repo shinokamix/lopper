@@ -4,7 +4,7 @@ import "charm.land/bubbles/v2/key"
 
 type keyMap struct {
 	up, down, toggle, remove, quit      key.Binding
-	sort, search, help                  key.Binding
+	sort, search, help, safe            key.Binding
 	done, clear, move                   key.Binding
 	scroll, confirm, stop, rescan, back key.Binding
 	install, later, skip, restart       key.Binding
@@ -15,6 +15,7 @@ func defaultKeys() keyMap {
 		up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		toggle:  key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "select")),
+		safe:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "select safe")),
 		remove:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove")),
 		quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		sort:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),

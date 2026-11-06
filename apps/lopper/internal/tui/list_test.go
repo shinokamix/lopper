@@ -599,3 +599,56 @@ func TestNarrowScreenKeepsEveryLineWithinWidth(t *testing.T) {
 		t.Errorf("narrow row lost its facts or size: %q", row)
 	}
 }
+
+func TestASelectsTheSafeRowsShownAndAgainClears(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	found(a, "done", 0, clean())
+	found(a, "old", 0, clean())
+	found(a, "wip", 0, lopper.Facts{Dirty: new(1), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)})
+
+	typeText(a, "/done")
+	press(a, tea.KeyEnter)
+	press(a, 'a')
+	press(a, tea.KeyEscape)
+	if got := statusLine(plainLines(a)); !strings.Contains(got, "1 selected") {
+		t.Errorf("a with only done shown does not select just done: %q", got)
+	}
+
+	press(a, 'a')
+	if got := statusLine(plainLines(a)); !strings.Contains(got, "2 selected") {
+		t.Errorf("a does not select done and old, leaving the dirty wip: %q", got)
+	}
+
+	press(a, 'a')
+	if got := statusLine(plainLines(a)); strings.Contains(got, "selected") {
+		t.Errorf("a with every safe row selected does not clear the selection: %q", got)
+	}
+}
+
+func TestHeaderSumsTheSafeSizeAsItArrives(t *testing.T) {
+	a := testApp()
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	for _, id := range []lopper.ID{"done", "old", "wip"} {
+		a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: id, Path: "/w/" + string(id), Branch: string(id), Repo: lopper.Repo{Path: "/r/app"}}}})
+	}
+	inspected(a, "done", clean())
+	inspected(a, "old", clean())
+	if h := plainLines(a)[1]; strings.Contains(h, "safe to free") {
+		t.Errorf("header gives a size before any safe worktree is measured: %q", h)
+	}
+
+	measured := func(id lopper.ID, f lopper.Facts, size int64) {
+		f.SizeBytes = &size
+		inspected(a, id, f)
+	}
+	measured("done", clean(), 1_500_000_000)
+	measured("wip", lopper.Facts{Dirty: new(1), UncheckedFiles: new(0), Unpushed: new(0), Merged: new(lopper.MergedFF)}, 9_000_000_000)
+	if h := plainLines(a)[1]; !strings.HasSuffix(strings.TrimSpace(h), "1.5 GB safe to free") {
+		t.Errorf("header does not end with the size of done alone: %q", h)
+	}
+	measured("old", clean(), 600_000_000)
+	if h := plainLines(a)[1]; !strings.HasSuffix(strings.TrimSpace(h), "2.1 GB safe to free") {
+		t.Errorf("header does not add old once it is measured: %q", h)
+	}
+}

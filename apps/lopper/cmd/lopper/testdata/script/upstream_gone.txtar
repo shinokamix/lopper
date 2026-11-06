@@ -1,0 +1,17 @@
+exec git init -q --bare origin.git
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo remote add origin ../origin.git
+exec git -C repo worktree add -q -b feature ../wt
+exec git -C wt commit -q --allow-empty -m work
+exec git -C wt push -q -u origin feature
+
+exec lopper scan --json $WORK
+stdout '"upstream_gone": false'
+
+exec git -C origin.git branch -q -D feature
+exec git -C wt fetch -q --prune
+exec lopper scan --json $WORK
+stdout '"upstream_gone": true'
+stdout '"safe": false'
+! stdout '"safe": true'

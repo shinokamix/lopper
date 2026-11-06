@@ -68,6 +68,7 @@ type Facts struct {
 	Unpushed       *int       // commits neither on a remote nor in base
 	Merged         *MergeKind // how the work reached the base branch, if it did
 	LastCommit     *time.Time // committer date of HEAD in UTC, in years 0 to 9999 as RFC 3339 allows
+	UpstreamGone   *bool      // the branch tracks an upstream branch that no longer exists
 	SizeBytes      *int64
 	Errors         []string
 }

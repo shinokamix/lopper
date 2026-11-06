@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -48,7 +49,10 @@ func (rep report) markdown() string {
 		if r.moreGit() {
 			git += " :x:"
 		}
-		time := fmt.Sprintf("%+.0f%%", r.slowdown())
+		time := "no change"
+		if change := math.Round(r.slowdown()); change != 0 {
+			time = fmt.Sprintf("%+.0f%%", change)
+		}
 		if rep.tooSlow(r) {
 			time += " :x:"
 		}

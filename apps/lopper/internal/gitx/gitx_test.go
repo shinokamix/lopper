@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -291,5 +292,26 @@ func TestErrorMessageIsGitsReason(t *testing.T) {
 		if got := briefly(e).Error(); got != tc.want {
 			t.Errorf("stderr %q: message %q, want %q", tc.stderr, got, tc.want)
 		}
+	}
+}
+
+func TestBinarySkipsXcrunShim(t *testing.T) {
+	if found, err := exec.LookPath("git"); err != nil || runtime.GOOS != "darwin" || found != "/usr/bin/git" {
+		t.Skip("PATH does not lead to the macOS git shim")
+	}
+	got := binary()
+	if !filepath.IsAbs(got) || got == "/usr/bin/git" {
+		t.Fatalf("binary() = %q, want the git that /usr/bin/git starts", got)
+	}
+	shim, err := exec.Command("/usr/bin/git", "version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct, err := exec.Command(got, "version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(direct, shim) {
+		t.Errorf("%s version = %q, /usr/bin/git version = %q", got, direct, shim)
 	}
 }

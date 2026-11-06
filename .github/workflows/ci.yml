@@ -63,13 +63,24 @@ jobs:
 
   # A job of its own, and outside moon ci, because tasks running alongside
   # would skew the times. The checkout is the merge commit, so HEAD^1 is the
-  # base branch.
+  # base branch. macOS and Windows runners are too noisy for a time limit.
+  # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
+  # Apple's /usr/bin/git instead.
   bench:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, os: ubuntu-latest, max-slowdown: "20" }
+          - { name: macOS, os: macos-latest, max-slowdown: "off" }
+          - { name: macOS with Apple's git, os: macos-latest, max-slowdown: "off", apple-git: true }
+          - { name: Windows, os: windows-latest, max-slowdown: "off" }
+    name: bench (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,21 +92,38 @@ jobs:
           cache-dependency-path: |
             apps/lopper/go.sum
             apps/lopper/tools/go.sum
+      - if: matrix.apple-git
+        run: echo /usr/bin >>"$GITHUB_PATH"
       - run: sh .github/scripts/bench.sh HEAD^1
         env:
           BENCH_OUT: ${{ runner.temp }}/bench
+          BENCH_NAME: ${{ matrix.name }}
+          BENCH_MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
         with:
-          name: bench
+          name: bench-${{ strategy.job-index }}
           path: ${{ runner.temp }}/bench
           if-no-files-found: ignore
-      # The token of a pull request from a fork cannot comment. Each run
-      # edits the comment of the run before.
-      - if: (success() || failure()) && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          [ -f "$RUNNER_TEMP/bench/report.md" ] || exit 0
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/bench/report.md"
+
+  # The token of a pull request from a fork cannot comment. Each run edits the
+  # comment of the run before.
+  bench-report:
+    needs: bench
+    if: (success() || failure()) && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bench-*
+          path: ${{ runner.temp }}/bench
+      - run: |
+          set -- "$RUNNER_TEMP"/bench/bench-*/report.md
+          [ -f "$1" ] || exit 0
+          for report; do cat "$report"; echo; done >"$RUNNER_TEMP/report.md"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/report.md"
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Times `lopper scan` built from a base commit and from this checkout on the
 # same generated repositories. It fails when a scan starts more git processes,
-# or is significantly slower by more than BENCH_MAX_SLOWDOWN percent. The two
+# or is significantly slower by more than BENCH_MAX_SLOWDOWN percent, unless
+# that is "off". BENCH_NAME, if set, names the runner in the report. The two
 # builds take turns, so a noisy runner slows both alike. BENCH_OUT receives
 # report.md, for a pull request comment, and the raw base.txt and head.txt,
 # for benchstat.
@@ -9,6 +10,7 @@ set -eu
 base=${1:-$(git merge-base HEAD origin/main)}
 rounds=${BENCH_ROUNDS:-10}
 max_slowdown=${BENCH_MAX_SLOWDOWN:-20}
+name=${BENCH_NAME:+ on $BENCH_NAME}
 
 root=$(git rev-parse --show-toplevel)
 cd "$root/apps/lopper"
@@ -19,6 +21,11 @@ if git diff --quiet "$base" -- "$@" && [ -z "$(git ls-files --others --exclude-s
 fi
 
 work=$(mktemp -d)
+# Git Bash names it /tmp/..., which native Windows programs cannot open.
+if command -v cygpath >/dev/null; then
+	work=$(cygpath -m "$work")
+fi
+exe=$(go env GOEXE)
 trap 'rm -rf "$work"' EXIT
 out=${BENCH_OUT:-$work}
 mkdir -p "$out"
@@ -26,13 +33,13 @@ rm -f "$out/base.txt" "$out/head.txt" "$out/report.md"
 
 mkdir "$work/base"
 git -C "$root" archive "$base" apps/lopper | tar -x -C "$work/base"
-(cd "$work/base/apps/lopper" && go build -o "$work/lopper-base" ./cmd/lopper)
-go build -o "$work/lopper-head" ./cmd/lopper
-go test -c -o "$work/bench.test" ./cmd/lopper
+(cd "$work/base/apps/lopper" && go build -o "$work/lopper-base$exe" ./cmd/lopper)
+go build -o "$work/lopper-head$exe" ./cmd/lopper
+go test -c -o "$work/bench.test$exe" ./cmd/lopper
 
 export LOPPER_BENCH_FIXTURE="$work/fixture"
 bench() {
-	if ! LOPPER_BENCH_BIN="$work/lopper-$1" "$work/bench.test" -test.run '^$' -test.bench . -test.benchtime 1x >"$work/run.txt" 2>&1; then
+	if ! LOPPER_BENCH_BIN="$work/lopper-$1$exe" "$work/bench.test$exe" -test.run '^$' -test.bench . -test.benchtime 1x >"$work/run.txt" 2>&1; then
 		cat "$work/run.txt" >&2
 		return 1
 	fi
@@ -86,7 +93,7 @@ awk -F, -v max="$max_slowdown" -v failures="$work/failures" '
 	unit == "sec/op" {
 		change = $6
 		if (change == "~") change = "not significant"
-		else if (change ~ /^\+/ && change + 0 > max) {
+		else if (max != "off" && change ~ /^\+/ && change + 0 > max) {
 			change = change " :x:"
 			print "time" >failures
 		}
@@ -121,10 +128,13 @@ if [ -n "$failures" ]; then
 	verdict=":x: This change $failures than base."
 else
 	verdict=":white_check_mark: No more git processes, and no significant slowdown over $max_slowdown%."
+	if [ "$max_slowdown" = off ]; then
+		verdict=":white_check_mark: No more git processes. Time is not checked on this runner."
+	fi
 fi
 
 {
-	printf '### Scan speed\n\n%s\n\n' "$verdict"
+	printf "### Scan speed%s\n\n%s\n\n" "$name" "$verdict"
 	printf '| | base %s | this change | Change |\n|---|--:|--:|---|\n' "$(git rev-parse --short "$base")"
 	cat "$work/rows.md"
 	printf '\nTime is the median of %s runs each.\n\n' "$rounds"

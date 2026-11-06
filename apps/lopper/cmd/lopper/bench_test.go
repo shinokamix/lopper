@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -77,10 +79,7 @@ func gitCalls(b *testing.B, bin, root, dir string, worktrees int) int {
 	}
 	tmp := b.TempDir()
 	calls := filepath.Join(tmp, "calls")
-	wrapper := "#!/bin/sh\necho >>\"$LOPPER_BENCH_GIT_CALLS\"\nexec \"$LOPPER_BENCH_GIT\" \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(tmp, "git"), []byte(wrapper), 0o700); err != nil {
-		b.Fatal(err)
-	}
+	copyFile(b, testBinary(b), filepath.Join(tmp, "git"+exe()))
 	scan(b, bin, root, dir, worktrees,
 		"PATH="+tmp+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"LOPPER_BENCH_GIT="+git,
@@ -119,7 +118,7 @@ func lopperBinary(b *testing.B) string {
 	if bin := os.Getenv("LOPPER_BENCH_BIN"); bin != "" {
 		return bin
 	}
-	bin := filepath.Join(b.TempDir(), "lopper")
+	bin := filepath.Join(b.TempDir(), "lopper"+exe())
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		b.Fatalf("go build: %v\n%s", err, out)
 	}
@@ -229,6 +228,58 @@ func files(b *testing.B, dir string, n int) {
 func writeFile(b *testing.B, path, content string) {
 	b.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		b.Fatal(err)
+	}
+}
+
+// countGit runs as git in place of the real one, which LOPPER_BENCH_GIT
+// names, and adds a line to LOPPER_BENCH_GIT_CALLS for each process.
+func countGit() int {
+	log, err := os.OpenFile(os.Getenv("LOPPER_BENCH_GIT_CALLS"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err == nil {
+		_, err = log.WriteString("\n")
+		err = errors.Join(err, log.Close())
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "count git:", err)
+		return 1
+	}
+	cmd := exec.Command(os.Getenv("LOPPER_BENCH_GIT"), os.Args[1:]...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	err = cmd.Run()
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() >= 0 {
+		return exitErr.ExitCode()
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "count git:", err)
+		return 1
+	}
+	return 0
+}
+
+func testBinary(b *testing.B) string {
+	b.Helper()
+	bin, err := os.Executable()
+	if err != nil {
+		b.Fatal(err)
+	}
+	return bin
+}
+
+func exe() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
+
+func copyFile(b *testing.B, from, to string) {
+	b.Helper()
+	data, err := os.ReadFile(from)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := os.WriteFile(to, data, 0o700); err != nil {
 		b.Fatal(err)
 	}
 }

@@ -14,6 +14,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LOPPER_BENCH_GIT") != "" {
+		os.Exit(countGit())
+	}
 	testscript.Main(m, map[string]func(){
 		"lopper": func() { os.Exit(run()) },
 	})

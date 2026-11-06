@@ -99,9 +99,11 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - `moon run bench` times `lopper scan` built from where your branch leaves
   `origin/main` and from your checkout on the same generated repositories, and
   counts the git processes each scan starts. CI runs it on every pull request
-  that changes lopper and fails when a scan starts more git processes or gets
-  significantly more than 20% slower. The raw results are in the `bench`
-  artifact of the run, for `benchstat`.
+  that changes lopper, on Linux, macOS (with Homebrew's and with Apple's git)
+  and Windows, and posts one comment with the results. It fails when a scan
+  starts more git processes anywhere, or gets significantly more than 20%
+  slower on Linux. macOS and Windows runners are too noisy for a time limit.
+  The raw results are in the `bench-*` artifacts of the run, for `benchstat`.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

@@ -69,40 +69,9 @@ scripts can read.
 ## Clean up after agents
 
 `lopper rm --all-safe <folder>` removes every safe worktree under the
-folder and leaves the rest, so it can run unattended. Point it at the
-folder your agents put worktrees in.
-
-In Claude Code, a `SessionEnd` hook in `~/.claude/settings.json` runs
-it when a session ends. The hook starts in the session's folder, which
-may be a worktree, and lopper does not remove the worktree it runs in,
-so the command moves to your home first. These hooks time out after 1.5
-seconds unless they set `timeout`, in seconds:
-
-```json
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"$HOME\" && lopper rm --all-safe \"$HOME/agent-worktrees\"",
-            "timeout": 60
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Or run it every hour from cron, also from your home. Cron starts with
-a short `PATH`, so name the binary in full, here where `install.sh`
-puts it:
-
-```cron
-0 * * * * cd "$HOME" && "$HOME/.local/bin/lopper" rm --all-safe "$HOME/agent-worktrees"
-```
+folder and leaves the rest, so an agent's hook or a scheduler can run
+it unattended. It skips the worktree it runs in, so start it from
+outside, for example from your home.
 
 ## FAQ
 

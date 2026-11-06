@@ -1,6 +1,8 @@
 // Package lopper holds the types every other package shares.
 package lopper
 
+import "time"
+
 // ID identifies a worktree by its absolute, cleaned path.
 type ID string
 
@@ -65,6 +67,7 @@ type Facts struct {
 	UncheckedFiles *int       // files whose index flags hide edits from status
 	Unpushed       *int       // commits neither on a remote nor in base
 	Merged         *MergeKind // how the work reached the base branch, if it did
+	LastCommit     *time.Time // committer date of HEAD in UTC, in years 0 to 9999 as RFC 3339 allows
 	SizeBytes      *int64
 	Errors         []string
 }

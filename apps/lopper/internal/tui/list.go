@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -21,12 +22,24 @@ type list struct {
 	moved      bool
 	selected   map[lopper.ID]bool
 	aliases    []alias
-	bySize     bool
+	order      sortOrder
 	ranks      ranks
 	query      string
 	searching  bool
 	allKeys    bool
 	keysOffset int
+}
+
+type sortOrder int
+
+const (
+	foundOrder sortOrder = iota
+	largestFirst
+	oldestFirst
+)
+
+func (o sortOrder) String() string {
+	return [...]string{largestFirst: "largest first", oldestFirst: "oldest first"}[o]
 }
 
 func newList(aliases []alias) list {
@@ -47,7 +60,7 @@ func (l *list) groups(s *store) []group {
 			out = append(out, group{repo: g.repo, rows: rows, found: g.found})
 		}
 	}
-	if l.bySize {
+	if l.order != foundOrder {
 		l.ranks.sort(out)
 	}
 	return out
@@ -96,14 +109,19 @@ func (l *list) update(msg tea.KeyPressMsg, k keyMap, s *store) {
 
 func (l *list) sort(s *store) {
 	l.pin(s)
-	l.bySize = !l.bySize
+	l.order = (l.order + 1) % (oldestFirst + 1)
 	l.rank(s)
 }
 
 func (l *list) rank(s *store) {
-	if l.bySize {
+	switch l.order {
+	case largestFirst:
 		l.pin(s)
 		l.ranks = sizeRanks(s.groups())
+	case oldestFirst:
+		l.pin(s)
+		l.ranks = ageRanks(s.groups())
+	case foundOrder:
 	}
 }
 
@@ -201,13 +219,22 @@ func (l *list) drop(s *store, id lopper.ID) {
 
 const (
 	rowIndent    = 3
+	ageWidth     = 4
 	sizeWidth    = 9
+	minAgeWidth  = 60
 	minNameWidth = 12
 	maxNameWidth = 40
 )
 
+func tailWidth(width int) int {
+	if width < minAgeWidth {
+		return sizeWidth + 1
+	}
+	return ageWidth + 1 + sizeWidth + 1
+}
+
 func nameWidth(width int) int {
-	room := width - rowIndent - 2 - (sizeWidth + 1) - 1
+	room := width - rowIndent - 2 - tailWidth(width) - 1
 	return min(max(room/3, minNameWidth), maxNameWidth)
 }
 
@@ -235,8 +262,8 @@ func (l *list) header(t theme, s *store, spin string, width int) string {
 	default:
 		status = t.subtle.Render(fmt.Sprintf("%s in %s", plural(found, "worktree"), plural(len(s.groups()), "repository")))
 	}
-	if l.bySize {
-		status = t.subtle.Render("largest first · ") + status
+	if name := l.order.String(); name != "" {
+		status = t.subtle.Render(name+" · ") + status
 	}
 	return spread(left, status+" ", width)
 }
@@ -330,7 +357,7 @@ func (l *list) keysView(h help.Model, k keyMap, width, height int) string {
 	return " " + strings.Join(lines, "\n ")
 }
 
-func (l *list) view(t theme, s *store, spin string, width, height int) string {
+func (l *list) view(t theme, s *store, spin string, now time.Time, width, height int) string {
 	groups := l.groups(s)
 	if len(groups) == 0 {
 		var msg string
@@ -350,7 +377,7 @@ func (l *list) view(t theme, s *store, spin string, width, height int) string {
 	cursor := order[l.current(order)]
 
 	names := nameWidth(width)
-	notes := max(width-rowIndent-2-(sizeWidth+1)-1-names, 0)
+	notes := max(width-rowIndent-2-tailWidth(width)-1-names, 0)
 	var lines []string
 	var top, at int
 	for gi, g := range groups {
@@ -365,7 +392,7 @@ func (l *list) view(t theme, s *store, spin string, width, height int) string {
 					top--
 				}
 			}
-			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, spin, names, notes, width))
+			lines = append(lines, l.rowLine(t, r, r.worktree.ID == cursor, spin, now, names, notes, width))
 		}
 	}
 
@@ -411,7 +438,7 @@ func columns(rows []*row) (names, notes int) {
 	return names, notes
 }
 
-func (l *list) rowLine(t theme, r *row, atCursor bool, spin string, names, notes, width int) string {
+func (l *list) rowLine(t theme, r *row, atCursor bool, spin string, now time.Time, names, notes, width int) string {
 	base, name := lipgloss.NewStyle(), lipgloss.NewStyle()
 	if l.selected[r.worktree.ID] {
 		base, name = t.picked, t.selected
@@ -424,26 +451,30 @@ func (l *list) rowLine(t theme, r *row, atCursor bool, spin string, names, notes
 			base = t.pickedCursor
 		}
 	}
-	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, spin, names, notes, width)
+	return rowLine(t, r, base.Render(strings.Repeat(" ", rowIndent)), base, name, spin, now, names, notes, width)
 }
 
-func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, spin string, names, notes, width int) string {
+func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, spin string, now time.Time, names, notes, width int) string {
 	// A styled piece ends in a reset that clears the background, so every piece
 	// renders on base.
 	plain := lipgloss.NewStyle()
 	seg := func(st lipgloss.Style, s string) string { return st.Inherit(base).Render(s) }
 
+	age := ""
+	if width >= minAgeWidth {
+		age = fmt.Sprintf("%*s ", ageWidth, ageText(r, now))
+	}
 	size := fmt.Sprintf("%*s ", sizeWidth, sizeText([]*row{r}, spin))
 	sizeStyle := name
 	if r.facts.SizeBytes == nil || *r.facts.SizeBytes < 1_000_000 {
 		sizeStyle = sizeStyle.Faint(true)
 	}
 	indent := ansi.StringWidth(lead)
-	room := width - indent - 2 - ansi.StringWidth(size) - 1
+	room := width - indent - 2 - ansi.StringWidth(age+size) - 1
 	labelW := max(min(notes, max(room-names, room-minNameWidth)), 0)
 	nameW := max(min(names, room-labelW), 0)
 	branch := fit(r.worktree.BranchName(), nameW)
-	gap := max(width-indent-nameW-2-labelW-ansi.StringWidth(size), 1)
+	gap := max(width-indent-nameW-2-labelW-ansi.StringWidth(age+size), 1)
 	var b strings.Builder
 	b.WriteString(lead + seg(name, branch) + seg(plain, "  "))
 	shown, hidden := fitNotes(facts(r), labelW)
@@ -462,7 +493,7 @@ func rowLine(t theme, r *row, lead string, base, name lipgloss.Style, spin strin
 	label = ansi.Truncate(label, labelW, "…")
 	b.WriteString(label)
 	left := labelW - ansi.StringWidth(label)
-	b.WriteString(seg(plain, strings.Repeat(" ", left+gap)) + seg(sizeStyle, size))
+	b.WriteString(seg(plain, strings.Repeat(" ", left+gap)) + seg(name.Faint(true), age) + seg(sizeStyle, size))
 	return b.String()
 }
 

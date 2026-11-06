@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/spinner"
@@ -14,8 +15,10 @@ import (
 	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
 
+var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
 func testApp() *app {
-	return &app{store: newStore(), keys: defaultKeys(), theme: newTheme(true), help: help.New(), spin: spinner.New(), list: newList([]alias{{"/home/me", "~"}})}
+	return &app{now: func() time.Time { return testNow }, store: newStore(), keys: defaultKeys(), theme: newTheme(true), help: help.New(), spin: spinner.New(), list: newList([]alias{{"/home/me", "~"}})}
 }
 
 func press(a *app, code rune) tea.Cmd {

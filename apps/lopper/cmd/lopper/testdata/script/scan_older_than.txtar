@@ -1,0 +1,37 @@
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+
+exec git -C repo worktree add -q -b stale ../wt-stale
+env GIT_COMMITTER_DATE=2020-01-02T03:04:05+02:00
+exec git -C wt-stale commit -q --allow-empty -m old
+env GIT_COMMITTER_DATE=
+
+exec git -C repo worktree add -q -b fresh ../wt-fresh
+exec git -C wt-fresh commit -q --allow-empty -m new
+
+exec git -C repo worktree add -q -b gone ../wt-gone
+rm wt-gone
+
+exec lopper scan --json $WORK
+stdout '"last_commit": "2020-01-02T01:04:05Z"'
+
+exec lopper scan --older-than 30d $WORK
+stdout '\sstale\s'
+! stdout '\sfresh\s'
+! stdout '\sgone\s'
+! stderr .
+
+exec lopper scan --json --older-than 8w $WORK
+stdout 'wt-stale'
+! stdout 'wt-fresh'
+! stdout 'wt-gone'
+
+exec lopper scan --older-than 100000d $WORK
+! stdout .
+
+! exec lopper scan --older-than 30 $WORK
+stderr '(?i)whole number of hours, days or weeks'
+! stdout .
+
+! exec lopper scan --older-than 1mo $WORK
+stderr '(?i)whole number of hours, days or weeks'

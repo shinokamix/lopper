@@ -1,0 +1,14 @@
+env GIT_COMMITTER_DATE=2020-01-02T03:04:05Z
+exec git init -q repo
+exec git -C repo commit -q --allow-empty -m init
+exec git -C repo worktree add -q -b stale ../wt-stale
+env GIT_COMMITTER_DATE=
+exec git -C repo symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/deleted
+
+exec lopper scan --json $WORK/wt-stale
+stdout '"last_commit": "2020-01-02T03:04:05Z"'
+stdout '"could not compare with '
+! stdout '"merged"'
+
+exec lopper scan --older-than 30d $WORK/wt-stale
+stdout '\sstale\s'

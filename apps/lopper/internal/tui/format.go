@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -116,4 +117,29 @@ func formatBytes(n int64) string {
 	}
 	prefixes := [...]string{"k", "M", "G", "T", "P", "E"}
 	return fmt.Sprintf("%.1f %sB", float64(n)/float64(div), prefixes[exp])
+}
+
+func ageText(r *row, now time.Time) string {
+	if r.facts.LastCommit == nil {
+		return ""
+	}
+	return formatAge(now.Sub(*r.facts.LastCommit))
+}
+
+func formatAge(d time.Duration) string {
+	const day = 24 * time.Hour
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	case d < day:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d < 30*day:
+		return fmt.Sprintf("%dd", d/day)
+	case d < 365*day:
+		return fmt.Sprintf("%dmo", d/(30*day))
+	default:
+		return fmt.Sprintf("%dy", d/(365*day))
+	}
 }

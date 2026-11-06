@@ -128,7 +128,7 @@ func rowsOf(items []*item) []*row {
 	return out
 }
 
-func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, height int) string {
+func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, now time.Time, width, height int) string {
 	if rm.phase == confirming {
 		rm.sort()
 	}
@@ -147,7 +147,7 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, width, hei
 	}
 	head := spread(title, t.subtle.Render(note)+" ", width)
 
-	ls := rm.listing(t, spin, width)
+	ls := rm.listing(t, spin, now, width)
 	body := max(height-4, 1)
 	shown, scrolls := ls.window(t, &rm.offset, rm.phase == removing, rm.next, body)
 
@@ -172,7 +172,7 @@ type listing struct {
 	head   []int
 }
 
-func (rm *removal) listing(t theme, spin string, width int) listing {
+func (rm *removal) listing(t theme, spin string, now time.Time, width int) listing {
 	names, notes := columns(rowsOf(rm.items))
 	repoW := 0
 	for _, it := range rm.items {
@@ -210,7 +210,7 @@ func (rm *removal) listing(t theme, spin string, width int) listing {
 			mark = spin
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		add(rowLine(t, it.row, lead, plain, plain, spin, names, notes, width), i, head)
+		add(rowLine(t, it.row, lead, plain, plain, spin, now, names, notes, width), i, head)
 	}
 	return ls
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/charlievieth/fastwalk"
 
@@ -52,11 +53,27 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 	} else {
 		f.Unpushed = &n
 	}
-	if base := wt.Repo.DefaultBranch; base != "" {
-		if kind, err := in.mergeKind(ctx, wt.Path, base); err != nil {
-			fail("compare with "+base, err)
+	base := wt.Repo.DefaultBranch
+	tips, err := in.tips(ctx, wt.Path, base)
+	if err != nil && base != "" {
+		fail("compare with "+base, err)
+		base = ""
+		tips, err = in.tips(ctx, wt.Path, base)
+	}
+	if err != nil {
+		fail("read the last commit", err)
+	} else {
+		if date, err := commitDate(tips.headTime); err != nil {
+			fail("read the last commit date", err)
 		} else {
-			f.Merged = &kind
+			f.LastCommit = &date
+		}
+		if base != "" {
+			if kind, err := in.mergeKind(ctx, wt.Path, tips.base, tips.head); err != nil {
+				fail("compare with "+base, err)
+			} else {
+				f.Merged = &kind
+			}
 		}
 	}
 	// git worktree remove checks status but not index flags, so they are
@@ -67,6 +84,43 @@ func (in Inspector) Quick(ctx context.Context, wt lopper.Worktree) lopper.Facts 
 		f.UncheckedFiles = &n
 	}
 	return f
+}
+
+type tips struct {
+	head, base, headTime string
+}
+
+func (in Inspector) tips(ctx context.Context, dir, base string) (tips, error) {
+	args := []string{"log", "--no-walk=unsorted", "--no-show-signature", "--format=%H %ct", "--end-of-options", "HEAD^{commit}"}
+	if base != "" {
+		args = append(args, base+"^{commit}")
+	}
+	out, err := in.Git.Run(ctx, dir, append(args, "--")...)
+	if err != nil {
+		return tips{}, err
+	}
+	fields := strings.Fields(out)
+	// git log --no-walk lists a commit once, so base equal to HEAD gives one line.
+	if len(fields) != 2 && (base == "" || len(fields) != 4) {
+		return tips{}, fmt.Errorf("expected HEAD and base commits, got %q", out)
+	}
+	t := tips{head: fields[0], base: fields[0], headTime: fields[1]}
+	if len(fields) == 4 {
+		t.base = fields[2]
+	}
+	return t, nil
+}
+
+func commitDate(unix string) (time.Time, error) {
+	sec, err := strconv.ParseInt(unix, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	date := time.Unix(sec, 0).UTC()
+	if y := date.Year(); y < 0 || y > 9999 {
+		return time.Time{}, fmt.Errorf("year %d is outside RFC 3339", y)
+	}
+	return date, nil
 }
 
 // uncheckedFiles counts files whose index flags hide edits. Assume-unchanged

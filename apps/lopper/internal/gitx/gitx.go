@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // ErrGitNotFound is returned by Check when PATH has no git binary.
@@ -24,10 +26,10 @@ var minVersion = [2]int{2, 36}
 
 // Check reports an error unless PATH has a git of at least minVersion.
 func Check(ctx context.Context) error {
-	out, err := exec.CommandContext(ctx, "git", "version").Output()
-	if errors.Is(err, exec.ErrNotFound) {
+	if _, err := exec.LookPath("git"); err != nil {
 		return ErrGitNotFound
 	}
+	out, err := exec.CommandContext(ctx, binary(), "version").Output()
 	if err != nil {
 		return fmt.Errorf("git version: %w", err)
 	}
@@ -211,7 +213,7 @@ func worktreeArg(dir string, args []string) string {
 
 func run(ctx context.Context, dir string, env []string, stdin string, args ...string) (string, error) {
 	full := append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := exec.CommandContext(ctx, binary(), full...)
 	cmd.Env = env
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
@@ -464,4 +466,31 @@ func DefaultBranch(ctx context.Context, r Runner, dir string) string {
 		}
 	}
 	return ""
+}
+
+// binary is the git that PATH names. On macOS /usr/bin/git is a shim that
+// asks xcrun for the Command Line Tools or Xcode git each time it starts,
+// which costs over 100 ms per process. binary asks xcrun once, as the shim
+// does, and runs that git directly.
+var binary = sync.OnceValue(findGit)
+
+func findGit() string {
+	found, err := exec.LookPath("git")
+	if err != nil || runtime.GOOS != "darwin" || found != "/usr/bin/git" {
+		return "git"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/xcrun", "--find", "git").Output()
+	if err != nil {
+		return "git"
+	}
+	direct := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(direct) {
+		return "git"
+	}
+	if info, err := os.Stat(direct); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return "git"
+	}
+	return direct
 }

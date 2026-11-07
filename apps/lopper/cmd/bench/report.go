@@ -1,9 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strings"
+	"time"
 )
 
 type report struct {
@@ -14,10 +18,43 @@ type report struct {
 	results     []result
 }
 
-func (r result) moreGit() bool { return r.git[1] > r.git[0] }
+type result struct {
+	name  string
+	git   [2]gitStats
+	times [2][]time.Duration
+}
+
+type gitStats map[string]gitCommand
+
+type gitCommand struct {
+	processes int
+	time      time.Duration
+}
+
+func (s gitStats) total() gitCommand {
+	var all gitCommand
+	for _, c := range s {
+		all.processes += c.processes
+		all.time += c.time
+	}
+	return all
+}
+
+func (c gitCommand) String() string { return fmt.Sprintf("%d in %s", c.processes, inMs(c.time)) }
+
+func (r result) moreGit() bool { return r.git[1].total().processes > r.git[0].total().processes }
+
+func (r result) median(i int) time.Duration {
+	sorted := slices.Sorted(slices.Values(r.times[i]))
+	n := len(sorted)
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2
+}
 
 func (r result) slowdown() float64 {
-	return 100 * (float64(r.time[1])/float64(r.time[0]) - 1)
+	return 100 * (float64(r.median(1))/float64(r.median(0)) - 1)
 }
 
 func (rep report) tooSlow(r result) bool {
@@ -42,26 +79,65 @@ func (rep report) markdown() string {
 	fmt.Fprintf(&b, "### %s\n\n%s\n\n", title, rep.verdict())
 	fmt.Fprintf(&b, "| | base %s | this change | Change |\n|---|--:|--:|---|\n", rep.base)
 	for _, r := range rep.results {
+		before, after := r.git[0].total().processes, r.git[1].total().processes
 		git := "no change"
-		if r.git[1] != r.git[0] {
-			git = fmt.Sprintf("%+d", r.git[1]-r.git[0])
+		if after != before {
+			git = fmt.Sprintf("%+d", after-before)
 		}
 		if r.moreGit() {
 			git += " :x:"
 		}
-		time := "no change"
+		took := "no change"
 		if change := math.Round(r.slowdown()); change != 0 {
-			time = fmt.Sprintf("%+.0f%%", change)
+			took = fmt.Sprintf("%+.0f%%", change)
 		}
 		if rep.tooSlow(r) {
-			time += " :x:"
+			took += " :x:"
 		}
-		fmt.Fprintf(&b, "| %s: git processes | %d | %d | %s |\n", r.name, r.git[0], r.git[1], git)
-		fmt.Fprintf(&b, "| %s: time | %d ms | %d ms | %s |\n", r.name, r.time[0].Milliseconds(), r.time[1].Milliseconds(), time)
+		fmt.Fprintf(&b, "| %s: git processes | %d | %d | %s |\n", r.name, before, after, git)
+		fmt.Fprintf(&b, "| %s: time | %s | %s | %s |\n", r.name, inMs(r.median(0)), inMs(r.median(1)), took)
 	}
-	fmt.Fprintf(&b, "\nTime is the median of %d runs each.\n", rep.rounds)
+	fmt.Fprintf(&b, "\nTime is the median of %d runs each.\n\n<details><summary>Where the time goes</summary>\n\n", rep.rounds)
+	for _, r := range rep.results {
+		fmt.Fprintf(&b, "| %s | base | this change |\n|---|--:|--:|\n", r.name)
+		fmt.Fprintf(&b, "| scan, fastest to slowest | %s | %s |\n", r.spread(0), r.spread(1))
+		fmt.Fprintf(&b, "| git, all commands | %s | %s |\n", r.git[0].total(), r.git[1].total())
+		for _, name := range r.commands() {
+			fmt.Fprintf(&b, "| git %s | %s | %s |\n", name, r.git[0].describe(name), r.git[1].describe(name))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("A git row is how many processes ran that command and how long they ran in total. They can run at the same time, so the total can be longer than the scan. It starts when git does, so it leaves out what runs before, such as the xcrun shim of /usr/bin/git on macOS.\n\n</details>\n")
 	return b.String()
 }
+
+func (r result) spread(i int) string {
+	return fmt.Sprintf("%d–%s", slices.Min(r.times[i]).Milliseconds(), inMs(slices.Max(r.times[i])))
+}
+
+func (r result) commands() []string {
+	longest := func(name string) time.Duration { return max(r.git[0][name].time, r.git[1][name].time) }
+	names := slices.Collect(maps.Keys(r.git[0]))
+	for name := range r.git[1] {
+		if _, ok := r.git[0][name]; !ok {
+			names = append(names, name)
+		}
+	}
+	slices.SortFunc(names, func(a, b string) int {
+		return cmp.Or(cmp.Compare(longest(b), longest(a)), cmp.Compare(a, b))
+	})
+	return names
+}
+
+func (s gitStats) describe(name string) string {
+	c, ok := s[name]
+	if !ok {
+		return "none"
+	}
+	return c.String()
+}
+
+func inMs(d time.Duration) string { return fmt.Sprintf("%d ms", d.Milliseconds()) }
 
 func (rep report) verdict() string {
 	var moreGit, tooSlow bool

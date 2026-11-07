@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,50 +142,83 @@ type scanCase struct {
 	worktrees int
 }
 
-type result struct {
-	name string
-	git  [2]int
-	time [2]time.Duration
-}
-
 func measure(c scanCase, root string, bins [2]string, rounds int) (result, error) {
 	r := result{name: c.name}
 	for i, bin := range bins {
-		n, err := gitProcesses(bin, root, c)
+		g, err := traceGit(bin, root, c)
 		if err != nil {
 			return r, err
 		}
-		r.git[i] = n
+		r.git[i] = g
 	}
-	var times [2][]time.Duration
 	for range rounds {
 		for i, bin := range bins {
 			d, err := scan(bin, root, c)
 			if err != nil {
 				return r, err
 			}
-			times[i] = append(times[i], d)
+			r.times[i] = append(r.times[i], d)
 		}
-	}
-	for i := range bins {
-		r.time[i] = median(times[i])
 	}
 	return r, nil
 }
 
-// gitProcesses relies on git writing one trace file per process when
-// GIT_TRACE2_EVENT names a directory.
-func gitProcesses(bin, root string, c scanCase) (int, error) {
+// traceGit relies on git writing one trace file per process when
+// GIT_TRACE2_EVENT names a directory. The file holds the command name in a
+// cmd_name event and the seconds since the process started in each t_abs.
+func traceGit(bin, root string, c scanCase) (gitStats, error) {
 	traces, err := os.MkdirTemp("", "lopper-bench-trace-")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer os.RemoveAll(traces)
 	if _, err := scan(bin, root, c, "GIT_TRACE2_EVENT="+traces); err != nil {
-		return 0, err
+		return nil, err
 	}
 	entries, err := os.ReadDir(traces)
-	return len(entries), err
+	if err != nil {
+		return nil, err
+	}
+	stats := gitStats{}
+	for _, e := range entries {
+		name, ran, err := readTrace(filepath.Join(traces, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		cmd := stats[name]
+		cmd.processes++
+		cmd.time += ran
+		stats[name] = cmd
+	}
+	return stats, nil
+}
+
+func readTrace(path string) (string, time.Duration, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	name, seconds := "unknown", 0.0
+	for dec := json.NewDecoder(f); ; {
+		var event struct {
+			Event string  `json:"event"`
+			Name  string  `json:"name"`
+			TAbs  float64 `json:"t_abs"`
+		}
+		err := dec.Decode(&event)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", 0, fmt.Errorf("%s: %w", path, err)
+		}
+		if event.Event == "cmd_name" {
+			name = event.Name
+		}
+		seconds = max(seconds, event.TAbs)
+	}
+	return name, time.Duration(seconds * float64(time.Second)), nil
 }
 
 func scan(bin, root string, c scanCase, env ...string) (time.Duration, error) {
@@ -220,15 +254,6 @@ func checkScan(out []byte, want int) error {
 		}
 	}
 	return nil
-}
-
-func median(times []time.Duration) time.Duration {
-	sorted := slices.Sorted(slices.Values(times))
-	n := len(sorted)
-	if n%2 == 1 {
-		return sorted[n/2]
-	}
-	return (sorted[n/2-1] + sorted[n/2]) / 2
 }
 
 func git(args ...string) (string, error) {

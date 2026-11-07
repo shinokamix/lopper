@@ -107,7 +107,7 @@ func (rep report) markdown() string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("A git row is how many processes ran that command and how long they ran in total. They can run at the same time, so the total can be longer than the scan. It starts when git does, so it leaves out what runs before, such as the xcrun shim of /usr/bin/git on macOS.\n\n</details>\n")
+	b.WriteString("A git row is how many processes ran that command and how long they ran in total. They can run at the same time, so the total can be longer than the scan. It starts when git does, so it leaves out what runs before, such as the xcrun shim of /usr/bin/git on macOS.\n\n</details>\n\n")
 	return b.String()
 }
 

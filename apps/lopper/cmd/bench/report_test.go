@@ -82,3 +82,17 @@ func TestReadTraceOfRealGit(t *testing.T) {
 		t.Errorf("readTrace = %q, %v; want version and its run time", name, ran)
 	}
 }
+
+func TestReportsJoinIntoOneComment(t *testing.T) {
+	r := result{
+		name:  "walk",
+		git:   [2]gitStats{{"version": {processes: 1}}, {"version": {processes: 1}}},
+		times: [2][]time.Duration{{100 * ms}, {100 * ms}},
+	}
+	linux := report{runner: "Linux", maxSlowdown: 20, results: []result{r}}.markdown()
+	macOS := report{runner: "macOS", results: []result{r}}.markdown()
+	want := "</details>\n\n### Scan speed on macOS"
+	if !strings.Contains(linux+macOS, want) {
+		t.Errorf("the second report's heading does not start after a blank line, so GitHub shows it inside the HTML block:\n%s", linux+macOS)
+	}
+}

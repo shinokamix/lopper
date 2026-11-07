@@ -99,7 +99,8 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - `moon run fuzz` fuzzes the `git worktree list` parser.
 - `moon run bench` times `lopper scan` built from where your branch leaves
   `origin/main` and from your checkout on the same generated repositories, and
-  counts the git processes each scan starts. CI runs it on every pull request
+  counts the git processes each scan starts. When both builds are the same
+  binary, it says there is nothing to compare instead. CI runs it on every pull request
   that changes lopper, on Linux, macOS (with Homebrew's and with Apple's git)
   and Windows, and posts one comment with the results: the median scan time,
   its spread, and how many processes each git command ran and for how long.

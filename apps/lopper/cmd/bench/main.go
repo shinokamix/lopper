@@ -51,14 +51,6 @@ func run(base string, rep report) error {
 	if err != nil {
 		return err
 	}
-	changed, err := lopperChanged(base)
-	if err != nil {
-		return err
-	}
-	if !changed {
-		fmt.Fprintf(os.Stderr, "lopper is the same as in %s: nothing to compare\n", base)
-		return nil
-	}
 	if rep.base, err = git("rev-parse", "--short", base); err != nil {
 		return err
 	}
@@ -77,6 +69,14 @@ func run(base string, rep report) error {
 	headBin, err := build(".", filepath.Join(work, "head"))
 	if err != nil {
 		return err
+	}
+	same, err := sameFile(baseBin, headBin)
+	if err != nil {
+		return err
+	}
+	if same {
+		fmt.Print(rep.nothingToCompare())
+		return nil
 	}
 	fmt.Fprintln(os.Stderr, "generating repositories")
 	root := filepath.Join(work, "fixture")
@@ -99,20 +99,6 @@ func run(base string, rep report) error {
 	return nil
 }
 
-var lopperSources = []string{"cmd", "internal", "go.mod", "go.sum"}
-
-func lopperChanged(base string) (bool, error) {
-	_, err := git(append([]string{"diff", "--quiet", base, "--"}, lopperSources...)...)
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() == 1 {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	untracked, err := git(append([]string{"ls-files", "--others", "--exclude-standard", "--"}, lopperSources...)...)
-	return untracked != "", err
-}
-
 func buildBase(work, base string) (string, error) {
 	src := filepath.Join(work, "src")
 	if _, err := git("worktree", "add", "--quiet", "--detach", src, base); err != nil {
@@ -128,12 +114,25 @@ func buildBase(work, base string) (string, error) {
 
 func build(module, out string) (string, error) {
 	into := out + string(filepath.Separator)
-	cmd := exec.Command("go", "build", "-o", into, "./cmd/lopper")
+	cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-o", into, "./cmd/lopper")
 	cmd.Dir = module
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("go build in %s: %w\n%s", module, err, out)
 	}
-	return filepath.Join(out, "lopper"), nil
+	built, err := os.ReadDir(out)
+	if err != nil || len(built) != 1 {
+		return "", fmt.Errorf("go build in %s left %v in %s: %w", module, built, out, err)
+	}
+	return filepath.Join(out, built[0].Name()), nil
+}
+
+func sameFile(a, b string) (bool, error) {
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false, err
+	}
+	y, err := os.ReadFile(b)
+	return bytes.Equal(x, y), err
 }
 
 type scanCase struct {

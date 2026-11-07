@@ -70,13 +70,20 @@ func (rep report) failed() bool {
 	return false
 }
 
+func (rep report) title() string {
+	if rep.runner == "" {
+		return "### Scan speed\n\n"
+	}
+	return "### Scan speed on " + rep.runner + "\n\n"
+}
+
+func (rep report) nothingToCompare() string {
+	return rep.title() + "lopper builds the same from base " + rep.base + " and from this change, so there is nothing to compare.\n\n"
+}
+
 func (rep report) markdown() string {
 	var b strings.Builder
-	title := "Scan speed"
-	if rep.runner != "" {
-		title += " on " + rep.runner
-	}
-	fmt.Fprintf(&b, "### %s\n\n%s\n\n", title, rep.verdict())
+	fmt.Fprintf(&b, "%s%s\n\n", rep.title(), rep.verdict())
 	fmt.Fprintf(&b, "| | base %s | this change | Change |\n|---|--:|--:|---|\n", rep.base)
 	for _, r := range rep.results {
 		before, after := r.git[0].total().processes, r.git[1].total().processes

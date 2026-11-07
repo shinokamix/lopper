@@ -1,3 +1,8 @@
+// Command bench times `lopper scan` built from a base commit and from this
+// checkout, on the same generated repositories, and counts the git processes
+// each scan starts. It prints a Markdown report and exits with 1 when a scan
+// starts more git processes, or when its median time grows by more than
+// -max-slowdown percent.
 package main
 
 import (

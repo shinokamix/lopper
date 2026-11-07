@@ -100,13 +100,13 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - `moon run bench` times `lopper scan` built from where your branch leaves
   `origin/main` and from your checkout on the same generated repositories, and
   counts the git processes each scan starts. When both builds are the same
-  binary, it says there is nothing to compare instead. CI runs it on every pull request
-  that changes lopper, on Linux, macOS (with Homebrew's and with Apple's git)
-  and Windows, and posts one comment with the results: the median scan time,
-  its spread, and how many processes each git command ran and for how long.
-  It fails when a scan starts more git processes anywhere, or when its median
-  time grows by more than 20% on Linux. macOS and Windows runners are too noisy
-  for a time limit.
+  binary, it says there is nothing to compare instead. CI runs it on every pull
+  request that changes lopper, on Linux, macOS (with Homebrew's and with
+  Apple's git) and Windows, and posts one comment with the results: the median
+  scan time, its spread, and how many processes each git command ran and for
+  how long. It fails when a scan starts more git processes anywhere, or when
+  its median time grows by more than 20% on Linux. macOS and Windows runners
+  are too noisy for a time limit.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

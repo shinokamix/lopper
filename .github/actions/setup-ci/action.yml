@@ -1,12 +1,19 @@
 name: Set up Moon
-description: Install proto, Moon, Go, Node and pnpm, and cache the toolchain and Go downloads and builds
+description: Install proto, Moon, Go, Node and pnpm, and restore the toolchain and Go caches. Moon's step saves the toolchain on main by itself. A job that should save the Go caches does it with the cache-path and cache-key outputs, after its tasks ran.
 inputs:
   cache:
-    description: Restore and save the toolchain and Go caches
+    description: Restore the toolchain and Go caches
     default: 'true'
   setup:
-    description: Install every toolchain with `moon setup`. Without it, Moon installs only the ones its tasks need, so turn it off only with the cache off.
+    description: Install every toolchain with `moon setup`. Without it, Moon installs only the ones its tasks need, and the toolchain cache saved on main holds only those, so turn it off only in a job that is alone on its runner OS, or with the cache off.
     default: 'true'
+outputs:
+  cache-path:
+    description: The Go module, build and lint caches
+    value: ${{ steps.go-cache.outputs.path }}
+  cache-key:
+    description: A key no earlier run used, so each save on main is a new cache that later runs restore by prefix
+    value: ${{ steps.go-cache.outputs.key }}
 runs:
   using: composite
   steps:
@@ -16,13 +23,30 @@ runs:
         auto-setup: ${{ inputs.setup }}
         cache: ${{ inputs.cache }}
         cache-base: main
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - id: go-cache
+      if: inputs.cache == 'true'
+      shell: bash
+      run: |
+        prefix="go-$RUNNER_OS-$RUNNER_ARCH-"
+        {
+          echo "prefix=$prefix"
+          echo "key=$prefix$DEPS-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "deps=$prefix$DEPS-"
+          echo 'path<<EOF'
+          echo '~/go/pkg/mod'
+          echo '~/.cache/go-build'
+          echo '~/Library/Caches/go-build'
+          echo '~/AppData/Local/go-build'
+          echo '~/.cache/golangci-lint'
+          echo EOF
+        } >>"$GITHUB_OUTPUT"
+      env:
+        DEPS: ${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.moon/toolchains.yml') }}
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.cache == 'true'
       with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-          ~/Library/Caches/go-build
-          ~/AppData/Local/go-build
-          ~/.cache/golangci-lint
-        key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.moon/toolchains.yml') }}
+        path: ${{ steps.go-cache.outputs.path }}
+        key: ${{ steps.go-cache.outputs.key }}
+        restore-keys: |
+          ${{ steps.go-cache.outputs.deps }}
+          ${{ steps.go-cache.outputs.prefix }}

@@ -12,17 +12,46 @@ concurrency:
   cancel-in-progress: true
 
 # `moon ci` diffs against main, so checkouts fetch the full history without file
-# contents.
+# contents. On main every task runs and the Go caches are saved, so a pull
+# request restores caches that hold everything its tasks need.
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.diff.outputs.go }}
+      install: ${{ steps.diff.outputs.install }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: diff
+        run: |
+          changed() {
+            if [ "$GITHUB_EVENT_NAME" != pull_request ] || git diff --name-only HEAD^1 HEAD | grep -qE "$1"; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          {
+            echo "go=$(changed '^(apps/lopper/|\.moon/|\.prototools$|\.github/)')"
+            echo "install=$(changed '^(install\.(sh|ps1)$|\.github/scripts/test-install\.|\.github/workflows/ci\.yml$)')"
+          } >>"$GITHUB_OUTPUT"
+
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
-      - uses: $/.github/actions/setup-ci
+      - id: setup
+        uses: $/.github/actions/setup-ci
       - id: pnpm
         # The assignment fails the step when pnpm is missing, and echo would not.
         run: |
@@ -33,7 +62,14 @@ jobs:
           path: ${{ steps.pnpm.outputs.store }}
           key: pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-${{ runner.arch }}-
-      - run: moon ci --summary minimal
+      - run: moon ci --summary minimal ${FORCE:+--force}
+        env:
+          FORCE: ${{ github.event_name == 'push' && '1' || '' }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push'
+        with:
+          path: ${{ steps.setup.outputs.cache-path }}
+          key: ${{ steps.setup.outputs.cache-key }}
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
         if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
         with:
@@ -41,19 +77,35 @@ jobs:
           skip-comment: true
 
   test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
-      - uses: $/.github/actions/setup-ci
-      - run: moon ci --summary minimal :test
+      - id: setup
+        uses: $/.github/actions/setup-ci
+        with:
+          setup: false
+      - run: moon ci --summary minimal ${FORCE:+--force} lopper:test
+        env:
+          FORCE: ${{ github.event_name == 'push' && '1' || '' }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push'
+        with:
+          path: ${{ steps.setup.outputs.cache-path }}
+          key: ${{ steps.setup.outputs.cache-key }}
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
         if: (success() || failure()) && hashFiles('.moon/cache/ciReport.json') != ''
         with:
@@ -67,17 +119,19 @@ jobs:
   # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
   # Apple's /usr/bin/git instead.
   bench:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: Linux, os: ubuntu-latest, max-slowdown: "20" }
-          - { name: macOS, os: macos-latest, max-slowdown: "0" }
-          - { name: macOS with Apple's git, os: macos-latest, max-slowdown: "0", apple-git: true }
-          - { name: Windows, os: windows-latest, max-slowdown: "0" }
+          - { name: Linux, os: ubuntu-latest, rounds: "10", max-slowdown: "20" }
+          - { name: macOS, os: macos-latest, rounds: "3", max-slowdown: "0" }
+          - { name: macOS with Apple's git, os: macos-latest, rounds: "3", max-slowdown: "0", apple-git: true }
+          - { name: Windows, os: windows-latest, rounds: "3", max-slowdown: "0" }
     name: bench (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -95,9 +149,10 @@ jobs:
       - working-directory: apps/lopper
         run: |
           mkdir "$RUNNER_TEMP/bench"
-          go run ./cmd/bench -name "$NAME" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
+          go run ./cmd/bench -name "$NAME" -rounds "$ROUNDS" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
         env:
           NAME: ${{ matrix.name }}
+          ROUNDS: ${{ matrix.rounds }}
           MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
@@ -112,6 +167,7 @@ jobs:
     needs: bench
     if: (success() || failure()) && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
     steps:
@@ -128,8 +184,10 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
 
   release-snapshot:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -145,12 +203,14 @@ jobs:
           args: release --config apps/lopper/.goreleaser.yaml --snapshot --clean
 
   install:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.install == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -166,3 +226,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: .github/scripts/test-install.ps1
+
+  # A skipped job counts as passed, so this is the one check a branch needs.
+  ci-ok:
+    needs: [changes, check, test, bench, release-snapshot, install]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "$FAILED" = false
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}

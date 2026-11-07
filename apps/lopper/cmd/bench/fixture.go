@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const (
@@ -43,15 +45,32 @@ type fixture struct {
 func makeFixture(root string) error {
 	f := &fixture{root: root}
 	f.write(filepath.Join(root, ".gitconfig"), "[user]\n\tname = lopper\n\temail = bench@lopper.invalid\n[init]\n\tdefaultBranch = main\n")
+	if f.err != nil {
+		return f.err
+	}
+	var wg sync.WaitGroup
+	errs := make([]error, walkDirs+repos)
+	inParallel := func(i int, build func(f *fixture)) {
+		wg.Go(func() {
+			f := &fixture{root: root}
+			build(f)
+			errs[i] = f.err
+		})
+	}
 	for i := range walkDirs {
-		for j := range walkSubdirs {
-			f.files(filepath.Join(root, "walk", fmt.Sprintf("d%03d", i), fmt.Sprintf("s%02d", j)), walkFiles)
-		}
+		inParallel(i, func(f *fixture) {
+			for j := range walkSubdirs {
+				f.files(filepath.Join(root, "walk", fmt.Sprintf("d%03d", i), fmt.Sprintf("s%02d", j)), walkFiles)
+			}
+		})
 	}
 	for i := range repos {
-		f.repo(filepath.Join(root, "worktrees", fmt.Sprintf("repo%02d", i)))
+		inParallel(walkDirs+i, func(f *fixture) {
+			f.repo(filepath.Join(root, "worktrees", fmt.Sprintf("repo%02d", i)))
+		})
 	}
-	return f.err
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 func (f *fixture) repo(dir string) {

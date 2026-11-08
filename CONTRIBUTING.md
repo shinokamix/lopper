@@ -130,6 +130,15 @@ branch names.
 Fill in the PR template, and keep one concern per PR: if the description needs
 the word "also", split it.
 
+A PR that changes what the TUI or the CLI shows puts before and after
+screenshots in its description. To attach them from the terminal, reference the
+local files in the body and pass each with `--attach` (GitHub CLI 2.99 or
+later); `gh` uploads them and rewrites the paths:
+
+```
+gh pr edit --body-file body.md --attach before.png --attach after.png
+```
+
 AI tools are fine, but you are the author: review every line and test it
 yourself. If an agent wrote a meaningful part, end the description with one
 plain line such as `Model: Claude Opus 5.5 (Claude Code)` instead of the tool's

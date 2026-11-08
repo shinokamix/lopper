@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -18,15 +19,6 @@ import (
 type remover struct {
 	calls []string
 	fail  map[lopper.ID]error
-	sizes map[lopper.ID]int64
-}
-
-func (r *remover) measure(_ context.Context, wt lopper.Worktree) *int64 {
-	r.calls = append(r.calls, "measure "+string(wt.ID))
-	if size, ok := r.sizes[wt.ID]; ok {
-		return &size
-	}
-	return nil
 }
 
 func (r *remover) remove(_ context.Context, wt lopper.Worktree, force bool) error {
@@ -41,7 +33,7 @@ func (r *remover) remove(_ context.Context, wt lopper.Worktree, force bool) erro
 func removalApp(t *testing.T) (*app, *remover) {
 	a := testApp()
 	rm := &remover{}
-	a.ctx, a.remove, a.measure = t.Context(), rm.remove, rm.measure
+	a.ctx, a.remove = t.Context(), rm.remove
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	return a, rm
 }
@@ -81,7 +73,7 @@ func TestRemoveAsksOnceThenRemovesSelected(t *testing.T) {
 	if want := []string{"clean", "wip forced"}; !slices.Equal(rm.calls, want) {
 		t.Errorf("removed %v, want %v", rm.calls, want)
 	}
-	if v := view(a); !strings.Contains(v, "3.0 GB freed") || !strings.Contains(v, "2 worktrees removed") ||
+	if v := view(a); !strings.Contains(v, "2 worktrees removed · 3.0 GB") || strings.Contains(v, "freed") ||
 		strings.Contains(v, "not removed") {
 		t.Errorf("summary does not tell what was removed:\n%s", v)
 	}
@@ -160,22 +152,59 @@ func TestConfirmationWaitsForChecks(t *testing.T) {
 	}
 }
 
-func TestRemovalMeasuresWhatScanHadNot(t *testing.T) {
-	a, rm := removalApp(t)
-	found(a, "known", 1_000_000, clean())
-	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "new", Path: "/r/new", Branch: "new", Repo: lopper.Repo{Path: "/r"}}}})
-	inspected(a, "new", clean())
-	rm.sizes = map[lopper.ID]int64{"new": 4_000_000}
+func TestRemovalShowsWhichOneAndForHowLong(t *testing.T) {
+	a, _ := removalApp(t)
+	found(a, "first", 2_000_000, clean())
+	found(a, "second", 3_000_000, clean())
 	press(a, ' ')
 	press(a, ' ')
 
 	press(a, 'd')
-	settle(a, press(a, tea.KeyEnter))
-	if want := []string{"known", "measure new", "new"}; !slices.Equal(rm.calls, want) {
-		t.Errorf("calls %v, want %v: only the unmeasured one, and before it is removed", rm.calls, want)
+	press(a, tea.KeyEnter)
+	a.now = func() time.Time { return testNow.Add(80 * time.Second) }
+	lines := plainLines(a)
+	if head := lines[lineWith(t, lines, "Removing")]; !strings.Contains(head, "Removing 1 of 2 worktrees · 5.0 MB") {
+		t.Errorf("header does not count which worktree is being removed: %q", head)
 	}
-	if v := view(a); !strings.Contains(v, "5.0 MB freed") {
-		t.Errorf("summary does not count the size measured at removal:\n%s", v)
+	if row := lines[lineWith(t, lines, "first")]; !strings.Contains(row, "removing… 1m 20s") {
+		t.Errorf("row being removed does not say for how long: %q", row)
+	}
+	if row := lines[lineWith(t, lines, "second")]; strings.Contains(row, "removing…") {
+		t.Errorf("row waiting its turn says it is being removed: %q", row)
+	}
+
+	_, removing := a.Update(removedMsg{i: 0})
+	a.now = func() time.Time { return testNow.Add(85 * time.Second) }
+	lines = plainLines(a)
+	if head := lines[lineWith(t, lines, "Removing")]; !strings.Contains(head, "Removing 2 of 2 worktrees") {
+		t.Errorf("header does not move on to the next worktree: %q", head)
+	}
+	if row := lines[lineWith(t, lines, "second")]; !strings.Contains(row, "removing… 5s") {
+		t.Errorf("next row does not count its own time: %q", row)
+	}
+	settle(a, removing)
+}
+
+func TestRemovalNamesNoSizeItDoesNotKnow(t *testing.T) {
+	a, rm := removalApp(t)
+	found(a, "known", 1_000_000, clean())
+	a.Update(eventMsg{ev: engine.WorktreeFound{Worktree: lopper.Worktree{ID: "new", Path: "/r/new", Branch: "new", Repo: lopper.Repo{Path: "/r"}}}})
+	inspected(a, "new", clean())
+	press(a, ' ')
+	press(a, ' ')
+
+	press(a, 'd')
+	removing := press(a, tea.KeyEnter)
+	lines := plainLines(a)
+	if head := lines[lineWith(t, lines, "Removing")]; strings.Contains(head, "·") {
+		t.Errorf("header names a size while one worktree was never measured: %q", head)
+	}
+	settle(a, removing)
+	if want := []string{"known", "new"}; !slices.Equal(rm.calls, want) {
+		t.Errorf("removed %v, want %v", rm.calls, want)
+	}
+	if v := view(a); !strings.Contains(v, "2 worktrees removed") || strings.Contains(v, "MB") {
+		t.Errorf("summary does not name the count alone when a size is unknown:\n%s", v)
 	}
 }
 
@@ -332,6 +361,26 @@ func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {
 	}
 	if want := []string{"one"}; !quit || !slices.Equal(rm.calls, want) {
 		t.Errorf("quit %v after removing %v, want to quit after %v", quit, rm.calls, want)
+	}
+	if v := view(a); strings.Contains(v, "removing…") || !strings.Contains(v, "1 worktree removed") {
+		t.Errorf("last screen before quitting says something is still being removed:\n%s", v)
+	}
+}
+
+func TestQuitWhileRemovingTheLastOneShowsWhatWasRemoved(t *testing.T) {
+	a, _ := removalApp(t)
+	found(a, "only", 2000, clean())
+	press(a, 'd')
+
+	removing := press(a, tea.KeyEnter)
+	press(a, 'q')
+	for _, c := range removing().(tea.BatchMsg) {
+		if msg, ok := c().(removedMsg); ok {
+			a.Update(msg)
+		}
+	}
+	if v := view(a); !strings.Contains(v, "1 worktree removed") {
+		t.Errorf("last screen before quitting does not show the removal:\n%s", v)
 	}
 }
 

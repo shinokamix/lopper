@@ -12,6 +12,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/shinokamix/lopper/apps/lopper/internal/inspect"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
 	"github.com/shinokamix/lopper/apps/lopper/internal/verdict"
 )
@@ -194,4 +195,48 @@ func TestBudget(t *testing.T) {
 func (e *Engine) withGit(g fakeGit) *Engine {
 	e.git = g
 	return e
+}
+
+func TestScanSizesWorktreesAsInspectDoes(t *testing.T) {
+	repo, wt := gitRepo(t)
+	nested := filepath.Join(wt, "nested")
+	git(t, repo, "worktree", "add", "-q", "-b", "nested", nested)
+	git(t, wt, "init", "-q", "vendor")
+	for path, size := range map[string]int{filepath.Join(wt, "a.bin"): 1000, filepath.Join(nested, "b.bin"): 300, filepath.Join(wt, "vendor", "c.bin"): 50} {
+		if err := os.WriteFile(path, make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "d.bin"), make([]byte, 7000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{"outside": outside, "d.bin": filepath.Join(outside, "d.bin")} {
+		if err := os.Symlink(target, filepath.Join(wt, link)); err != nil {
+			t.Log("no symlink:", err)
+		}
+	}
+
+	resolved := func(p string) string {
+		r, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	wt, nested = resolved(wt), resolved(nested)
+	for _, root := range []string{filepath.Dir(repo), repo} {
+		sizes := map[string]int64{}
+		for ev := range New().Scan(t.Context(), Options{Roots: []string{root}}) {
+			if ev, ok := ev.(FactsUpdated); ok && ev.Final && ev.Facts.SizeBytes != nil {
+				sizes[string(ev.ID)] = *ev.Facts.SizeBytes
+			}
+		}
+		for _, path := range []string{wt, nested} {
+			want := inspect.Inspector{Git: New().git}.Slow(t.Context(), lopper.Worktree{Path: path}, lopper.Facts{}).SizeBytes
+			if got, ok := sizes[path]; !ok || got != *want {
+				t.Errorf("root %s: size of %s = %d (reported %v), want %d as inspect counts it", root, path, got, ok, *want)
+			}
+		}
+	}
 }

@@ -89,15 +89,34 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 	found := make(chan lopper.Worktree, 256)
 	insp := inspect.Inspector{Git: e.git}
 	listers, n := budget(opts.Concurrency)
+	sizes := discovery.NewSizes()
+	walks := make(chan struct{}, n)
+	sized := func(wt lopper.Worktree, f lopper.Facts) lopper.Facts {
+		if wt.State != lopper.StateGone {
+			if size, ok := sizes.Wait(ctx, wt.Path); ok {
+				f.SizeBytes = &size
+				return f
+			}
+		}
+		select {
+		case walks <- struct{}{}:
+			defer func() { <-walks }()
+		case <-ctx.Done():
+			return f
+		}
+		return insp.Slow(ctx, wt, f)
+	}
 
-	var workers sync.WaitGroup
+	var workers, sizing sync.WaitGroup
 	for range n {
 		workers.Go(func() {
 			for wt := range found {
 				f := insp.Quick(ctx, wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f)})
-				f = insp.Slow(ctx, wt, f)
-				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
+				sizing.Go(func() {
+					f := sized(wt, f)
+					send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
+				})
 			}
 		})
 	}
@@ -108,6 +127,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 			Listers: listers,
 			Known:   opts.Known,
 			Met:     opts.Remember,
+			Sizes:   sizes,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			if send[Event](ctx, events, WorktreeFound{Worktree: wt}) {
@@ -116,6 +136,7 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		})
 		close(found)
 		workers.Wait()
+		sizing.Wait()
 		done := ScanDone{Err: err}
 		select {
 		case events <- done:

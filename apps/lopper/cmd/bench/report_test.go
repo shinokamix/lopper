@@ -96,3 +96,21 @@ func TestReportsJoinIntoOneComment(t *testing.T) {
 		t.Errorf("the second report's heading does not start after a blank line, so GitHub shows it inside the HTML block:\n%s", linux+macOS)
 	}
 }
+
+func TestReportMarksChangesWithinNoise(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		times [2][]time.Duration
+		want  string
+	}{
+		{"runs overlap", [2][]time.Duration{{60 * ms, 65 * ms, 140 * ms}, {62 * ms, 70 * ms, 80 * ms}}, "| walk: time | 65 ms | 70 ms | +8%, within noise |"},
+		{"runs apart", [2][]time.Duration{{60 * ms, 65 * ms, 66 * ms}, {75 * ms, 78 * ms, 80 * ms}}, "| walk: time | 65 ms | 78 ms | +20% |"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := result{name: "walk", times: tc.times}
+			if got := (report{results: []result{r}}).markdown(); !strings.Contains(got, tc.want) {
+				t.Errorf("report lacks %q:\n%s", tc.want, got)
+			}
+		})
+	}
+}

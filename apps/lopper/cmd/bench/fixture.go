@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	walkDirs    = 300
-	walkSubdirs = 10
-	walkFiles   = 10
+	walkDirs    = 1000
+	walkSubdirs = 30
+	walkFiles   = 3
 	repos       = 12
 	depDirs     = 40
 	depFiles    = 25

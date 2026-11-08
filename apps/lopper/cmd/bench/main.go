@@ -150,8 +150,10 @@ func measure(c scanCase, root string, bins [2]string, rounds int) (result, error
 		}
 		r.git[i] = g
 	}
-	for range rounds {
-		for i, bin := range bins {
+	for round := range rounds {
+		for k := range bins {
+			i := (k + round) % len(bins)
+			bin := bins[i]
 			d, err := scan(bin, root, c)
 			if err != nil {
 				return r, err

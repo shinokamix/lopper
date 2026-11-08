@@ -53,6 +53,10 @@ func (r result) median(i int) time.Duration {
 	return (sorted[n/2-1] + sorted[n/2]) / 2
 }
 
+func (r result) overlaps() bool {
+	return slices.Max(r.times[0]) >= slices.Min(r.times[1]) && slices.Max(r.times[1]) >= slices.Min(r.times[0])
+}
+
 func (r result) slowdown() float64 {
 	return 100 * (float64(r.median(1))/float64(r.median(0)) - 1)
 }
@@ -97,6 +101,9 @@ func (rep report) markdown() string {
 		took := "no change"
 		if change := math.Round(r.slowdown()); change != 0 {
 			took = fmt.Sprintf("%+.0f%%", change)
+			if r.overlaps() {
+				took += ", within noise"
+			}
 		}
 		if rep.tooSlow(r) {
 			took += " :x:"
@@ -104,7 +111,7 @@ func (rep report) markdown() string {
 		fmt.Fprintf(&b, "| %s: git processes | %d | %d | %s |\n", r.name, before, after, git)
 		fmt.Fprintf(&b, "| %s: time | %s | %s | %s |\n", r.name, inMs(r.median(0)), inMs(r.median(1)), took)
 	}
-	fmt.Fprintf(&b, "\nTime is the median of %d runs each.\n\n<details><summary>Where the time goes</summary>\n\n", rep.rounds)
+	fmt.Fprintf(&b, "\nTime is the median of %d runs each. A change is within noise when the fastest and slowest runs of the two builds overlap.\n\n<details><summary>Where the time goes</summary>\n\n", rep.rounds)
 	for _, r := range rep.results {
 		fmt.Fprintf(&b, "| %s | base | this change |\n|---|--:|--:|\n", r.name)
 		fmt.Fprintf(&b, "| scan, fastest to slowest | %s | %s |\n", r.spread(0), r.spread(1))

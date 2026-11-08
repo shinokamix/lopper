@@ -125,10 +125,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: Linux, os: ubuntu-latest, rounds: "10", max-slowdown: "20" }
-          - { name: macOS, os: macos-latest, rounds: "3", max-slowdown: "0" }
-          - { name: macOS with Apple's git, os: macos-latest, rounds: "3", max-slowdown: "0", apple-git: true }
-          - { name: Windows, os: windows-latest, rounds: "3", max-slowdown: "0" }
+          - { name: Linux, os: ubuntu-latest, max-slowdown: "20" }
+          - { name: macOS, os: macos-latest, max-slowdown: "0" }
+          - { name: macOS with Apple's git, os: macos-latest, max-slowdown: "0", apple-git: true }
+          - { name: Windows, os: windows-latest, max-slowdown: "0" }
     name: bench (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -149,10 +149,9 @@ jobs:
       - working-directory: apps/lopper
         run: |
           mkdir "$RUNNER_TEMP/bench"
-          go run ./cmd/bench -name "$NAME" -rounds "$ROUNDS" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
+          go run ./cmd/bench -name "$NAME" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
         env:
           NAME: ${{ matrix.name }}
-          ROUNDS: ${{ matrix.rounds }}
           MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()

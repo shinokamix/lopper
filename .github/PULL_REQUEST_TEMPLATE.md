@@ -28,7 +28,8 @@ reviewer who hasn't worked in this part of the codebase.
 
 <!--
 What did you actually run by hand, and what did you see? Terminal output or a
-screenshot/GIF of the TUI is best; show before and after if output changed.
+screenshot/GIF of the TUI is best. If what lopper shows changed, show before and
+after; an AI agent attaches screenshots with `gh pr edit --attach`.
 
 If this changes which worktrees lopper treats as safe to delete, name the
 `verdict` test or testscript that covers it.

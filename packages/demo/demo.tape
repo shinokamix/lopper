@@ -45,5 +45,5 @@ Type "d"
 Sleep 3.5s
 Enter
 
-Wait+Screen@20s /freed/
+Wait+Screen@20s /worktrees? removed/
 Sleep 5.5s

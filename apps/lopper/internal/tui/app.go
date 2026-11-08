@@ -305,14 +305,14 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 		a.list.drop(a.store, it.row.worktree.ID)
 	}
 	rm.next++
-	switch {
-	case rm.quitting:
-		return tea.Quit
-	case rm.next == len(rm.items):
-		rm.phase, rm.offset = finished, 0
-		return nil
+	if rm.next < len(rm.items) && !rm.quitting {
+		return a.removeNext()
 	}
-	return a.removeNext()
+	rm.phase, rm.offset = finished, 0
+	if rm.quitting {
+		return tea.Quit
+	}
+	return nil
 }
 
 const (

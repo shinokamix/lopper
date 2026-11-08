@@ -352,6 +352,26 @@ func TestQuitWhileRemovingStopsAfterCurrent(t *testing.T) {
 	if want := []string{"one"}; !quit || !slices.Equal(rm.calls, want) {
 		t.Errorf("quit %v after removing %v, want to quit after %v", quit, rm.calls, want)
 	}
+	if v := view(a); strings.Contains(v, "removing…") || !strings.Contains(v, "1 worktree removed") {
+		t.Errorf("last screen before quitting says something is still being removed:\n%s", v)
+	}
+}
+
+func TestQuitWhileRemovingTheLastOneShowsWhatWasRemoved(t *testing.T) {
+	a, _ := removalApp(t)
+	found(a, "only", 2000, clean())
+	press(a, 'd')
+
+	removing := press(a, tea.KeyEnter)
+	press(a, 'q')
+	for _, c := range removing().(tea.BatchMsg) {
+		if msg, ok := c().(removedMsg); ok {
+			a.Update(msg)
+		}
+	}
+	if v := view(a); !strings.Contains(v, "1 worktree removed") {
+		t.Errorf("last screen before quitting does not show the removal:\n%s", v)
+	}
 }
 
 func TestScanAgainDropsOldScan(t *testing.T) {

@@ -33,7 +33,6 @@ type app struct {
 	ctx      context.Context
 	scan     func(context.Context) <-chan engine.Event
 	remove   func(ctx context.Context, wt lopper.Worktree, force bool) error
-	measure  func(context.Context, lopper.Worktree) *int64
 	now      func() time.Time
 	updates  Updates
 	offer    *offer
@@ -58,7 +57,6 @@ type app struct {
 type Engine interface {
 	Scan(ctx context.Context, opts engine.Options) <-chan engine.Event
 	Remove(ctx context.Context, wt lopper.Worktree, force bool) error
-	Measure(ctx context.Context, wt lopper.Worktree) *int64
 }
 
 // Run offers any newer release, then scans and shows the results.
@@ -70,7 +68,6 @@ func Run(ctx context.Context, eng Engine, opts engine.Options, updates Updates) 
 		ctx:     ctx,
 		scan:    func(ctx context.Context) <-chan engine.Event { return eng.Scan(ctx, opts) },
 		remove:  eng.Remove,
-		measure: eng.Measure,
 		now:     time.Now,
 		updates: updates,
 		store:   newStore(),
@@ -150,15 +147,11 @@ func (a *app) nextRank() tea.Cmd {
 }
 
 func (a *app) removeNext() tea.Cmd {
-	ctx, remove, measure, i := a.ctx, a.remove, a.measure, a.removal.next
-	it := a.removal.items[i]
-	wt, force, size := it.row.worktree, it.force(), it.row.facts.SizeBytes
-	return func() tea.Msg {
-		if size == nil {
-			size = measure(ctx, wt)
-		}
-		return removedMsg{i: i, size: size, err: remove(ctx, wt, force)}
-	}
+	ctx, remove, rm := a.ctx, a.remove, a.removal
+	i := rm.next
+	wt, force := rm.items[i].row.worktree, rm.items[i].force()
+	rm.started = a.now()
+	return func() tea.Msg { return removedMsg{i: i, err: remove(ctx, wt, force)} }
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -191,11 +184,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.offer.phase, a.offer.err = installed, msg.err
 		if msg.err != nil {
 			a.offer.phase = offered
-		}
-	case frameMsg:
-		if rm := msg.rm; rm == a.removal && rm.frame < frames {
-			rm.frame++
-			return a, rm.nextFrame()
 		}
 	case spinner.TickMsg:
 		busy := (a.offer != nil && a.offer.phase == installing) ||
@@ -312,7 +300,7 @@ func (a *app) removalKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) removed(msg removedMsg) tea.Cmd {
 	rm := a.removal
 	it := rm.items[msg.i]
-	it.done, it.err, it.row.facts.SizeBytes = true, msg.err, msg.size
+	it.done, it.err = true, msg.err
 	if it.removed() {
 		a.list.drop(a.store, it.row.worktree.ID)
 	}
@@ -322,7 +310,7 @@ func (a *app) removed(msg removedMsg) tea.Cmd {
 		return tea.Quit
 	case rm.next == len(rm.items):
 		rm.phase, rm.offset = finished, 0
-		return rm.nextFrame()
+		return nil
 	}
 	return a.removeNext()
 }

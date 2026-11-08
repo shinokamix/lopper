@@ -126,6 +126,17 @@ func ageText(r *row, now time.Time) string {
 	return formatAge(now.Sub(*r.facts.LastCommit))
 }
 
+func formatElapsed(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", d/time.Second)
+	case d < time.Hour:
+		return fmt.Sprintf("%dm %ds", d/time.Minute, d%time.Minute/time.Second)
+	default:
+		return fmt.Sprintf("%dh %dm", d/time.Hour, d%time.Hour/time.Minute)
+	}
+}
+
 func formatAge(d time.Duration) string {
 	const day = 24 * time.Hour
 	switch {

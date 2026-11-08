@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/help"
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -23,7 +22,7 @@ type removal struct {
 	phase    phase
 	next     int
 	quitting bool
-	frame    int
+	started  time.Time
 	offset   int
 }
 
@@ -42,28 +41,8 @@ type item struct {
 }
 
 type removedMsg struct {
-	i    int
-	size *int64
-	err  error
-}
-
-const (
-	frames    = 48
-	frameTime = 25 * time.Millisecond
-)
-
-type frameMsg struct{ rm *removal }
-
-func (rm *removal) nextFrame() tea.Cmd {
-	return tea.Tick(frameTime, func(time.Time) tea.Msg { return frameMsg{rm} })
-}
-
-func (rm *removal) counted(n int64) int64 {
-	if rm.frame >= frames {
-		return n
-	}
-	left := 1 - float64(rm.frame)/frames
-	return int64(float64(n) * (1 - left*left*left))
+	i   int
+	err error
 }
 
 func newRemoval(rows []*row) *removal {
@@ -108,6 +87,7 @@ func (rm *removal) confirm() {
 	rm.sort()
 	for _, it := range rm.items {
 		seen := *it.row
+		seen.final = true
 		it.row = &seen
 	}
 	rm.phase = removing
@@ -132,12 +112,21 @@ func (rm *removal) view(t theme, h help.Model, k keyMap, spin string, now time.T
 	if rm.phase == confirming {
 		rm.sort()
 	}
-	verb := "Remove"
+	rows := rowsOf(rm.items)
+	heading, size := "Remove "+plural(len(rm.items), "worktree"), sizeText(rows, spin)
 	if rm.phase == removing {
-		verb = "Removing"
+		heading = "Removing " + plural(len(rm.items), "worktree")
+		if len(rm.items) > 1 {
+			heading = fmt.Sprintf("Removing %d of %s", rm.next+1, plural(len(rm.items), "worktree"))
+		}
+		if totalSize(rows) == nil {
+			size = ""
+		}
 	}
-	title := " " + t.title.Render(verb+" "+plural(len(rm.items), "worktree")) +
-		t.subtle.Render(" · "+sizeText(rowsOf(rm.items), spin))
+	title := " " + t.title.Render(heading)
+	if size != "" {
+		title += t.subtle.Render(" · " + size)
+	}
 	var note string
 	switch {
 	case rm.quitting:
@@ -173,7 +162,13 @@ type listing struct {
 }
 
 func (rm *removal) listing(t theme, spin string, now time.Time, width int) listing {
-	names, notes := columns(rowsOf(rm.items))
+	rows := rowsOf(rm.items)
+	if rm.phase == removing {
+		current := *rows[rm.next]
+		current.verdict.Notes = []lopper.Note{{Text: "removing… " + formatElapsed(now.Sub(rm.started))}}
+		rows[rm.next] = &current
+	}
+	names, notes := columns(rows)
 	repoW := 0
 	for _, it := range rm.items {
 		repoW = max(repoW, ansi.StringWidth(repoLabel(it.row.worktree.Repo)))
@@ -210,7 +205,7 @@ func (rm *removal) listing(t theme, spin string, now time.Time, width int) listi
 			mark = spin
 		}
 		lead := " " + mark + " " + t.subtle.Render(fit(repoLabel(it.row.worktree.Repo), repoW)) + "  "
-		add(rowLine(t, it.row, lead, plain, plain, spin, now, names, notes, width), i, head)
+		add(rowLine(t, rows[i], lead, plain, plain, spin, now, names, notes, width), i, head)
 	}
 	return ls
 }
@@ -301,9 +296,7 @@ func (rm *removal) summary(t theme, h help.Model, k keyMap, width, height int) s
 	case len(removed) == 0:
 		lines = append(lines, t.title.Render("nothing removed"))
 	case size != nil:
-		total := formatBytes(*size)
-		now := fmt.Sprintf("%*s", len(total), formatBytes(rm.counted(*size)))
-		lines = append(lines, t.title.Render(now+" freed"), t.subtle.Render(count))
+		lines = append(lines, t.title.Render(count)+t.subtle.Render(" · "+formatBytes(*size)))
 	default:
 		lines = append(lines, t.title.Render(count))
 	}

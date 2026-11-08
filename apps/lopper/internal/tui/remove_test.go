@@ -160,7 +160,7 @@ func TestRemovalShowsWhichOneAndForHowLong(t *testing.T) {
 	press(a, ' ')
 
 	press(a, 'd')
-	removing := press(a, tea.KeyEnter)
+	press(a, tea.KeyEnter)
 	a.now = func() time.Time { return testNow.Add(80 * time.Second) }
 	lines := plainLines(a)
 	if head := lines[lineWith(t, lines, "Removing")]; !strings.Contains(head, "Removing 1 of 2 worktrees · 5.0 MB") {
@@ -171,6 +171,16 @@ func TestRemovalShowsWhichOneAndForHowLong(t *testing.T) {
 	}
 	if row := lines[lineWith(t, lines, "second")]; strings.Contains(row, "removing…") {
 		t.Errorf("row waiting its turn says it is being removed: %q", row)
+	}
+
+	_, removing := a.Update(removedMsg{i: 0})
+	a.now = func() time.Time { return testNow.Add(85 * time.Second) }
+	lines = plainLines(a)
+	if head := lines[lineWith(t, lines, "Removing")]; !strings.Contains(head, "Removing 2 of 2 worktrees") {
+		t.Errorf("header does not move on to the next worktree: %q", head)
+	}
+	if row := lines[lineWith(t, lines, "second")]; !strings.Contains(row, "removing… 5s") {
+		t.Errorf("next row does not count its own time: %q", row)
 	}
 	settle(a, removing)
 }

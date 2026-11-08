@@ -30,6 +30,9 @@ type Options struct {
 	// later scan's Known. Scan calls it only after a walk that neither failed
 	// nor was cancelled.
 	Met func(places []string)
+	// Sizes, if set, receives the size of each directory with a .git file that
+	// the walk searches and reads in full, linked worktrees among them.
+	Sizes *Sizes
 }
 
 // Scan walks opts.Roots and calls emit, possibly concurrently, for every
@@ -87,6 +90,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 			}
 			candidates[realPath(dir)] = orphan{lopper.Worktree{Path: filepath.Clean(dir)}, gf}
 		})
+	if opts.Sizes != nil {
+		opts.Sizes.end()
+	}
 	close(gitDirs)
 	wg.Wait()
 	if err == nil && ctx.Err() == nil && opts.Met != nil {

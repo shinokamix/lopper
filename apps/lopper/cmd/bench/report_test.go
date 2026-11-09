@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,24 +16,25 @@ func TestReportFails(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		git         [2]int
-		times       [2][]time.Duration
+		wall        runs
 		maxSlowdown float64
 		want        bool
 	}{
-		{"same", [2]int{10, 10}, [2][]time.Duration{{100 * ms}, {100 * ms}}, 20, false},
-		{"one more git process", [2]int{10, 11}, [2][]time.Duration{{100 * ms}, {100 * ms}}, 20, true},
-		{"fewer git processes", [2]int{10, 9}, [2][]time.Duration{{100 * ms}, {100 * ms}}, 20, false},
-		{"slower within the limit", [2]int{10, 10}, [2][]time.Duration{{100 * ms}, {119 * ms}}, 20, false},
-		{"slower past the limit", [2]int{10, 10}, [2][]time.Duration{{100 * ms}, {121 * ms}}, 20, true},
-		{"one slow run of three", [2]int{10, 10}, [2][]time.Duration{{100 * ms, 100 * ms, 100 * ms}, {100 * ms, 300 * ms, 105 * ms}}, 20, false},
-		{"slower with time unchecked", [2]int{10, 10}, [2][]time.Duration{{100 * ms}, {300 * ms}}, 0, false},
-		{"more git with time unchecked", [2]int{10, 11}, [2][]time.Duration{{100 * ms}, {100 * ms}}, 0, true},
+		{"same", [2]int{10, 10}, runs{around(100), around(100)}, 20, false},
+		{"one more git process", [2]int{10, 11}, runs{around(100), around(100)}, 20, true},
+		{"fewer git processes", [2]int{10, 9}, runs{around(100), around(100)}, 20, false},
+		{"slower within the limit", [2]int{10, 10}, runs{around(100), around(119)}, 20, false},
+		{"slower past the limit", [2]int{10, 10}, runs{around(100), around(122)}, 20, true},
+		{"slower past the limit, within noise", [2]int{10, 10}, runs{{60 * ms, 100 * ms, 140 * ms, 180 * ms, 220 * ms}, {80 * ms, 120 * ms, 175 * ms, 200 * ms, 230 * ms}}, 20, false},
+		{"slower with time unchecked", [2]int{10, 10}, runs{around(100), around(300)}, 0, false},
+		{"more git with time unchecked", [2]int{10, 11}, runs{around(100), around(100)}, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := result{
-				name:  "worktrees",
-				git:   [2]gitStats{{"status": {processes: tc.git[0]}}, {"status": {processes: tc.git[1]}}},
-				times: tc.times,
+				name: "worktrees",
+				git:  [2]gitStats{{"status": {processes: tc.git[0]}}, {"status": {processes: tc.git[1]}}},
+				wall: tc.wall,
+				cpu:  tc.wall,
 			}
 			rep := report{maxSlowdown: tc.maxSlowdown, results: []result{r}}
 			if got := rep.failed(); got != tc.want {
@@ -49,7 +51,8 @@ func TestReportShowsEachGitCommand(t *testing.T) {
 			{"status": {processes: 48, time: 900 * ms}},
 			{"status": {processes: 48, time: 800 * ms}, "log": {processes: 12, time: 300 * ms}},
 		},
-		times: [2][]time.Duration{{1000 * ms, 1200 * ms}, {1100 * ms, 1300 * ms}},
+		wall: runs{{1000 * ms, 1200 * ms}, {1100 * ms, 1300 * ms}},
+		cpu:  runs{{400 * ms, 500 * ms}, {400 * ms, 500 * ms}},
 	}
 	got := report{maxSlowdown: 20, results: []result{r}}.markdown()
 	for _, want := range []string{
@@ -85,9 +88,10 @@ func TestReadTraceOfRealGit(t *testing.T) {
 
 func TestReportsJoinIntoOneComment(t *testing.T) {
 	r := result{
-		name:  "walk",
-		git:   [2]gitStats{{"version": {processes: 1}}, {"version": {processes: 1}}},
-		times: [2][]time.Duration{{100 * ms}, {100 * ms}},
+		name: "walk",
+		git:  [2]gitStats{{"version": {processes: 1}}, {"version": {processes: 1}}},
+		wall: runs{{100 * ms}, {100 * ms}},
+		cpu:  runs{{50 * ms}, {50 * ms}},
 	}
 	linux := report{runner: "Linux", maxSlowdown: 20, results: []result{r}}.markdown()
 	macOS := report{runner: "macOS", results: []result{r}}.markdown()
@@ -97,20 +101,40 @@ func TestReportsJoinIntoOneComment(t *testing.T) {
 	}
 }
 
+func around(center time.Duration) []time.Duration {
+	c := center * ms
+	return []time.Duration{c - 2*ms, c - ms, c, c + ms, c + 2*ms}
+}
+
 func TestReportMarksChangesWithinNoise(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		times [2][]time.Duration
-		want  string
-	}{
-		{"runs overlap", [2][]time.Duration{{60 * ms, 65 * ms, 140 * ms}, {62 * ms, 70 * ms, 80 * ms}}, "| walk: time | 65 ms | 70 ms | +8%, within noise |"},
-		{"runs apart", [2][]time.Duration{{60 * ms, 65 * ms, 66 * ms}, {75 * ms, 78 * ms, 80 * ms}}, "| walk: time | 65 ms | 78 ms | +20% |"},
+	r := result{
+		name: "walk",
+		wall: runs{around(65), around(78)},
+		cpu:  runs{{60 * ms, 64 * ms, 66 * ms, 70 * ms, 140 * ms}, {62 * ms, 65 * ms, 68 * ms, 72 * ms, 80 * ms}},
+	}
+	got := report{results: []result{r}}.markdown()
+	for _, want := range []string{
+		"| walk: time | 65 ms | 78 ms | +20% |",
+		"| walk: CPU time | 66 ms | 68 ms | +3%, within noise |",
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := result{name: "walk", times: tc.times}
-			if got := (report{results: []result{r}}).markdown(); !strings.Contains(got, tc.want) {
-				t.Errorf("report lacks %q:\n%s", tc.want, got)
-			}
-		})
+		if !strings.Contains(got, want) {
+			t.Errorf("report lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestMannWhitneyP(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b []time.Duration
+		want float64
+	}{
+		{"apart", around(3), around(8), 0.0122},
+		{"interleaved", []time.Duration{1, 3, 5, 7, 9}, []time.Duration{2, 4, 6, 8, 10}, 0.6761},
+		{"all tied", []time.Duration{5, 5, 5}, []time.Duration{5, 5, 5}, 1},
+	} {
+		if got := mannWhitneyP(tc.a, tc.b); math.Abs(got-tc.want) > 0.0005 {
+			t.Errorf("%s: p = %.4f, want %.4f", tc.name, got, tc.want)
+		}
 	}
 }

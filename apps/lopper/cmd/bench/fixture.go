@@ -17,6 +17,8 @@ const (
 	repos       = 12
 	depDirs     = 40
 	depFiles    = 25
+	bigDepDirs  = 500
+	bigDepFiles = 20
 )
 
 var linked = []string{"merged", "dirty", "unpushed", "squashed"}
@@ -25,6 +27,7 @@ func cases(root string) []scanCase {
 	return []scanCase{
 		{name: "walk", dir: filepath.Join(root, "walk")},
 		{name: "worktrees", dir: filepath.Join(root, "worktrees"), worktrees: repos * len(linked)},
+		{name: "big worktrees", dir: filepath.Join(root, "big"), worktrees: len(linked)},
 	}
 }
 
@@ -49,7 +52,7 @@ func makeFixture(root string) error {
 		return f.err
 	}
 	var wg sync.WaitGroup
-	errs := make([]error, walkDirs+repos)
+	errs := make([]error, walkDirs+repos+1)
 	inParallel := func(i int, build func(f *fixture)) {
 		wg.Go(func() {
 			f := &fixture{root: root}
@@ -66,14 +69,17 @@ func makeFixture(root string) error {
 	}
 	for i := range repos {
 		inParallel(walkDirs+i, func(f *fixture) {
-			f.repo(filepath.Join(root, "worktrees", fmt.Sprintf("repo%02d", i)))
+			f.repo(filepath.Join(root, "worktrees", fmt.Sprintf("repo%02d", i)), depDirs, depFiles)
 		})
 	}
+	inParallel(walkDirs+repos, func(f *fixture) {
+		f.repo(filepath.Join(root, "big", "repo"), bigDepDirs, bigDepFiles)
+	})
 	wg.Wait()
 	return errors.Join(errs...)
 }
 
-func (f *fixture) repo(dir string) {
+func (f *fixture) repo(dir string, deps, files int) {
 	lines := make([]string, 100)
 	for i := range lines {
 		lines[i] = fmt.Sprintf("line %d", i)
@@ -109,8 +115,8 @@ func (f *fixture) repo(dir string) {
 		checkouts = append(checkouts, path(kind))
 	}
 	for _, checkout := range checkouts {
-		for k := range depDirs {
-			f.files(filepath.Join(checkout, "node_modules", fmt.Sprintf("pkg%02d", k)), depFiles)
+		for k := range deps {
+			f.files(filepath.Join(checkout, "node_modules", fmt.Sprintf("pkg%03d", k)), files)
 		}
 	}
 }

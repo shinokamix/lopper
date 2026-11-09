@@ -154,11 +154,12 @@ func measure(c scanCase, root string, bins [2]string, rounds int) (result, error
 		for k := range bins {
 			i := (k + round) % len(bins)
 			bin := bins[i]
-			d, err := scan(bin, root, c)
+			wall, cpu, err := scan(bin, root, c)
 			if err != nil {
 				return r, err
 			}
-			r.times[i] = append(r.times[i], d)
+			r.wall[i] = append(r.wall[i], wall)
+			r.cpu[i] = append(r.cpu[i], cpu)
 		}
 	}
 	return r, nil
@@ -173,7 +174,7 @@ func traceGit(bin, root string, c scanCase) (gitStats, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(traces)
-	if _, err := scan(bin, root, c, "GIT_TRACE2_EVENT="+traces); err != nil {
+	if _, _, err := scan(bin, root, c, "GIT_TRACE2_EVENT="+traces); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(traces)
@@ -222,18 +223,18 @@ func readTrace(path string) (string, time.Duration, error) {
 	return name, time.Duration(seconds * float64(time.Second)), nil
 }
 
-func scan(bin, root string, c scanCase, env ...string) (time.Duration, error) {
+func scan(bin, root string, c scanCase, env ...string) (wall, cpu time.Duration, err error) {
 	cmd := exec.Command(bin, "scan", "--json", c.dir) //nolint:gosec // bin is the lopper this run built
 	cmd.Env = slices.Concat(os.Environ(), gitEnv(root), []string{"LOPPER_NO_CACHE=1", "LOPPER_NO_UPDATE_CHECK=1"}, env)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	start := time.Now()
-	err := cmd.Run()
-	elapsed := time.Since(start)
-	if err != nil {
-		return 0, fmt.Errorf("%s scan %s: %w\n%s", bin, c.dir, err, stderr.Bytes())
+	if err := cmd.Run(); err != nil {
+		return 0, 0, fmt.Errorf("%s scan %s: %w\n%s", bin, c.dir, err, stderr.Bytes())
 	}
-	return elapsed, checkScan(stdout.Bytes(), c.worktrees)
+	wall = time.Since(start)
+	cpu = cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()
+	return wall, cpu, checkScan(stdout.Bytes(), c.worktrees)
 }
 
 func checkScan(out []byte, want int) error {

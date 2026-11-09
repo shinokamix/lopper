@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -19,9 +18,10 @@ type report struct {
 }
 
 type result struct {
-	name  string
-	git   [2]gitStats
-	times [2][]time.Duration
+	name string
+	git  [2]gitStats
+	wall runs
+	cpu  runs
 }
 
 type gitStats map[string]gitCommand
@@ -44,25 +44,8 @@ func (c gitCommand) String() string { return fmt.Sprintf("%d in %s", c.processes
 
 func (r result) moreGit() bool { return r.git[1].total().processes > r.git[0].total().processes }
 
-func (r result) median(i int) time.Duration {
-	sorted := slices.Sorted(slices.Values(r.times[i]))
-	n := len(sorted)
-	if n%2 == 1 {
-		return sorted[n/2]
-	}
-	return (sorted[n/2-1] + sorted[n/2]) / 2
-}
-
-func (r result) overlaps() bool {
-	return slices.Max(r.times[0]) >= slices.Min(r.times[1]) && slices.Max(r.times[1]) >= slices.Min(r.times[0])
-}
-
-func (r result) slowdown() float64 {
-	return 100 * (float64(r.median(1))/float64(r.median(0)) - 1)
-}
-
 func (rep report) tooSlow(r result) bool {
-	return rep.maxSlowdown > 0 && r.slowdown() > rep.maxSlowdown
+	return rep.maxSlowdown > 0 && r.wall.slowdown() > rep.maxSlowdown && r.wall.differ()
 }
 
 func (rep report) failed() bool {
@@ -98,20 +81,15 @@ func (rep report) markdown() string {
 		if r.moreGit() {
 			git += " :x:"
 		}
-		took := "no change"
-		if change := math.Round(r.slowdown()); change != 0 {
-			took = fmt.Sprintf("%+.0f%%", change)
-			if r.overlaps() {
-				took += ", within noise"
-			}
-		}
+		took := r.wall.change()
 		if rep.tooSlow(r) {
 			took += " :x:"
 		}
 		fmt.Fprintf(&b, "| %s: git processes | %d | %d | %s |\n", r.name, before, after, git)
-		fmt.Fprintf(&b, "| %s: time | %s | %s | %s |\n", r.name, inMs(r.median(0)), inMs(r.median(1)), took)
+		fmt.Fprintf(&b, "| %s: time | %s | %s | %s |\n", r.name, inMs(r.wall.median(0)), inMs(r.wall.median(1)), took)
+		fmt.Fprintf(&b, "| %s: CPU time | %s | %s | %s |\n", r.name, inMs(r.cpu.median(0)), inMs(r.cpu.median(1)), r.cpu.change())
 	}
-	fmt.Fprintf(&b, "\nTime is the median of %d runs each. A change is within noise when the fastest and slowest runs of the two builds overlap.\n\n<details><summary>Where the time goes</summary>\n\n", rep.rounds)
+	fmt.Fprintf(&b, "\nEach time is the median of %d runs. CPU time is user plus system time, and on Windows it leaves out the git processes. A change is within noise when a Mann–Whitney test cannot tell the runs of the two builds apart at p < 0.05.\n\n<details><summary>Where the time goes</summary>\n\n", rep.rounds)
 	for _, r := range rep.results {
 		fmt.Fprintf(&b, "| %s | base | this change |\n|---|--:|--:|\n", r.name)
 		fmt.Fprintf(&b, "| scan, fastest to slowest | %s | %s |\n", r.spread(0), r.spread(1))
@@ -126,7 +104,7 @@ func (rep report) markdown() string {
 }
 
 func (r result) spread(i int) string {
-	return fmt.Sprintf("%d–%s", slices.Min(r.times[i]).Milliseconds(), inMs(slices.Max(r.times[i])))
+	return fmt.Sprintf("%d–%s", slices.Min(r.wall[i]).Milliseconds(), inMs(slices.Max(r.wall[i])))
 }
 
 func (r result) commands() []string {

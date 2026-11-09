@@ -38,8 +38,8 @@ func main() {
 }
 
 func run(base string, rep report) error {
-	if rep.rounds < 1 {
-		return errors.New("-rounds must be at least 1")
+	if rep.rounds < 4 {
+		return errors.New("-rounds must be at least 4, the fewest that can tell two builds apart at p < 0.05")
 	}
 	if base == "" {
 		var err error

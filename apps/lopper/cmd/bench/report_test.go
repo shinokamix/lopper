@@ -101,8 +101,8 @@ func TestReportsJoinIntoOneComment(t *testing.T) {
 	}
 }
 
-func around(center time.Duration) []time.Duration {
-	c := center * ms
+func around(center int) []time.Duration {
+	c := time.Duration(center) * ms
 	return []time.Duration{c - 2*ms, c - ms, c, c + ms, c + 2*ms}
 }
 
@@ -131,6 +131,7 @@ func TestMannWhitneyP(t *testing.T) {
 	}{
 		{"apart", around(3), around(8), 0.0122},
 		{"interleaved", []time.Duration{1, 3, 5, 7, 9}, []time.Duration{2, 4, 6, 8, 10}, 0.6761},
+		{"partly tied", []time.Duration{15, 15, 15, 31, 31}, []time.Duration{31, 31, 31, 46, 46}, 0.0412},
 		{"all tied", []time.Duration{5, 5, 5}, []time.Duration{5, 5, 5}, 1},
 	} {
 		if got := mannWhitneyP(tc.a, tc.b); math.Abs(got-tc.want) > 0.0005 {

@@ -103,10 +103,12 @@ allowed only where needed. If it fails, move the code rather than loosening the 
   binary, it says there is nothing to compare instead. CI runs it on every pull
   request that changes lopper, on Linux, macOS (with Homebrew's and with
   Apple's git) and Windows, and posts one comment with the results: the median
-  scan time, its spread, and how many processes each git command ran and for
-  how long. It fails when a scan starts more git processes anywhere, or when
-  its median time grows by more than 20% on Linux. macOS and Windows runners
-  are too noisy for a time limit.
+  scan time and CPU time, the spread, and how many processes each git command
+  ran and for how long. A change that a Mann–Whitney test cannot tell from noise
+  at p < 0.05 is marked as within noise. It fails when a scan starts more git
+  processes anywhere, or on Linux when its median time grows by more than 20%
+  and the test tells that apart from noise. macOS and Windows runners are too
+  noisy for a time limit.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

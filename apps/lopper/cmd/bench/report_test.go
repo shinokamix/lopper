@@ -123,15 +123,30 @@ func TestReportMarksChangesWithinNoise(t *testing.T) {
 	}
 }
 
+func TestReportShowsCPUTimeTooShortToMeasure(t *testing.T) {
+	zero := []time.Duration{0, 0, 0, 0, 0}
+	idle := result{name: "idle", wall: runs{around(20), around(20)}, cpu: runs{zero, zero}}
+	busier := result{name: "busier", wall: runs{around(20), around(20)}, cpu: runs{zero, around(16)}}
+	got := report{results: []result{idle, busier}}.markdown()
+	for _, want := range []string{
+		"| idle: CPU time | 0 ms | 0 ms | no change |",
+		"| busier: CPU time | 0 ms | 16 ms | up from 0 ms |",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("report lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestMannWhitneyP(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		a, b []time.Duration
 		want float64
 	}{
-		{"apart", around(3), around(8), 0.0122},
-		{"interleaved", []time.Duration{1, 3, 5, 7, 9}, []time.Duration{2, 4, 6, 8, 10}, 0.6761},
-		{"partly tied", []time.Duration{15, 15, 15, 31, 31}, []time.Duration{31, 31, 31, 46, 46}, 0.0412},
+		{"apart", around(3), around(8), 0.0079},
+		{"interleaved", []time.Duration{1, 3, 5, 7, 9}, []time.Duration{2, 4, 6, 8, 10}, 0.6905},
+		{"partly tied", []time.Duration{15, 15, 15, 31, 31}, []time.Duration{31, 31, 31, 46, 46}, 0.0794},
 		{"all tied", []time.Duration{5, 5, 5}, []time.Duration{5, 5, 5}, 1},
 	} {
 		if got := mannWhitneyP(tc.a, tc.b); math.Abs(got-tc.want) > 0.0005 {

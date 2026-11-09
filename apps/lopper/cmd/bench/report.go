@@ -146,7 +146,7 @@ func (rep report) verdict() string {
 	case tooSlow:
 		return ":x: This change makes a scan " + limit + "."
 	case rep.maxSlowdown > 0:
-		return ":white_check_mark: No more git processes, and no scan " + limit + "."
+		return ":white_check_mark: No more git processes, and no scan " + limit + " by more than noise."
 	default:
 		return ":white_check_mark: No more git processes. Time is not checked on this runner."
 	}

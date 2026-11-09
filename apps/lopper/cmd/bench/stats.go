@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"fmt"
 	"math"
 	"slices"
@@ -26,6 +25,12 @@ func (r runs) slowdown() float64 {
 func (r runs) differ() bool { return mannWhitneyP(r[0], r[1]) < 0.05 }
 
 func (r runs) change() string {
+	if r.median(0) == 0 {
+		if r.median(1) == 0 {
+			return "no change"
+		}
+		return "up from 0 ms"
+	}
 	change := math.Round(r.slowdown())
 	switch {
 	case change == 0:
@@ -38,46 +43,47 @@ func (r runs) change() string {
 }
 
 func mannWhitneyP(a, b []time.Duration) float64 {
-	type run struct {
-		took  time.Duration
-		first bool
-	}
-	all := make([]run, 0, len(a)+len(b))
-	for _, d := range a {
-		all = append(all, run{d, true})
-	}
-	for _, d := range b {
-		all = append(all, run{d, false})
-	}
-	slices.SortFunc(all, func(x, y run) int { return cmp.Compare(x.took, y.took) })
-
-	var rankSum, ties float64
+	all := slices.Sorted(slices.Values(slices.Concat(a, b)))
+	twiceRank := map[time.Duration]int{}
 	for i := 0; i < len(all); {
 		j := i
-		for j < len(all) && all[j].took == all[i].took {
+		for j < len(all) && all[j] == all[i] {
 			j++
 		}
-		rank := float64(i+j+1) / 2
-		for _, r := range all[i:j] {
-			if r.first {
-				rankSum += rank
-			}
-		}
-		t := float64(j - i)
-		ties += t*t*t - t
+		twiceRank[all[i]] = i + j + 1
 		i = j
 	}
 
-	n1, n2 := float64(len(a)), float64(len(b))
-	n := n1 + n2
-	variance := n1 * n2 / 12 * (n + 1 - ties/(n*(n-1)))
-	if variance <= 0 {
-		return 1
+	n, total := len(a), len(all)
+	most := total * (total + 1)
+	ways := make([][]float64, n+1)
+	for k := range ways {
+		ways[k] = make([]float64, most+1)
 	}
-	u := rankSum - n1*(n1+1)/2
-	z := (math.Abs(u-n1*n2/2) - 0.5) / math.Sqrt(variance)
-	if z <= 0 {
-		return 1
+	ways[0][0] = 1
+	for i, d := range all {
+		r := twiceRank[d]
+		for k := min(i+1, n); k > 0; k-- {
+			for s := most; s >= r; s-- {
+				ways[k][s] += ways[k-1][s-r]
+			}
+		}
 	}
-	return math.Erfc(z / math.Sqrt2)
+
+	observed := 0
+	for _, d := range a {
+		observed += twiceRank[d]
+	}
+	mean := n * (total + 1)
+	far := abs(observed - mean)
+	var tail, every float64
+	for s, w := range ways[n] {
+		every += w
+		if abs(s-mean) >= far {
+			tail += w
+		}
+	}
+	return tail / every
 }
+
+func abs(x int) int { return max(x, -x) }

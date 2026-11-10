@@ -84,6 +84,13 @@ tasks:
     command: go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -race ./...
     inputs: *checked
 
+  test-oldest-go:
+    description: Run the tests with the oldest Go that go.mod allows
+    script: GOTOOLCHAIN="go$(awk '$1 == "go" { print $2 }' go.mod)" go test ./...
+    inputs: *checked
+    options:
+      runInCI: only
+
   coverage:
     description: Run tests and open the coverage report
     script: go tool -modfile tools/go.mod gotestsum --format pkgname-and-test-fails -- -coverprofile=coverage.out ./... && go tool cover -html=coverage.out

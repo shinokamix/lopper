@@ -8,39 +8,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 # `moon ci` diffs against main, so checkouts fetch the full history without file
-# contents. On main every task runs and the Go caches are saved, so a pull
-# request restores caches that hold everything its tasks need.
-jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      go: ${{ steps.diff.outputs.go }}
-      install: ${{ steps.diff.outputs.install }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - id: diff
-        run: |
-          changed() {
-            if [ "$GITHUB_EVENT_NAME" != pull_request ] || git diff --name-only HEAD^1 HEAD | grep -qE "$1"; then
-              echo true
-            else
-              echo false
-            fi
-          }
-          {
-            echo "go=$(changed '^(apps/lopper/|\.moon/|\.prototools$|\.github/)')"
-            echo "install=$(changed '^(install\.(sh|ps1)$|\.github/scripts/test-install\.|\.github/workflows/ci\.yml$)')"
-          } >>"$GITHUB_OUTPUT"
+# contents. On main, Moon diffs against HEAD~1 unless given a base, which would
+# leave out all but the last commit of a push.
+env:
+  MOON_BASE: ${{ github.event_name == 'push' && github.event.before || '' }}
 
+jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -52,21 +29,9 @@ jobs:
           persist-credentials: false
       - id: setup
         uses: $/.github/actions/setup-ci
-      - id: pnpm
-        # The assignment fails the step when pnpm is missing, and echo would not.
-        run: |
-          store=$("$(moon bin pnpm)" store path --silent)
-          echo "store=$store" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.pnpm.outputs.store }}
-          key: pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-${{ runner.arch }}-
-      - run: moon ci --summary minimal ${FORCE:+--force}
-        env:
-          FORCE: ${{ github.event_name == 'push' && '1' || '' }}
+      - run: moon ci --summary minimal
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.setup.outputs.cache-path }}
           key: ${{ steps.setup.outputs.cache-key }}
@@ -77,8 +42,6 @@ jobs:
           skip-comment: true
 
   test:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -96,13 +59,9 @@ jobs:
           persist-credentials: false
       - id: setup
         uses: $/.github/actions/setup-ci
-        with:
-          setup: false
-      - run: moon ci --summary minimal ${FORCE:+--force} lopper:test
-        env:
-          FORCE: ${{ github.event_name == 'push' && '1' || '' }}
+      - run: moon ci --summary minimal lopper:test
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.setup.outputs.cache-path }}
           key: ${{ steps.setup.outputs.cache-key }}
@@ -119,8 +78,7 @@ jobs:
   # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
   # Apple's /usr/bin/git instead.
   bench:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -140,10 +98,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: apps/lopper/tools/go.mod
-          cache-dependency-path: apps/lopper/go.sum
+      - uses: $/.github/actions/setup-ci
       - if: matrix.apple-git
         run: echo /usr/bin >>"$GITHUB_PATH"
       - working-directory: apps/lopper
@@ -161,8 +116,7 @@ jobs:
           path: ${{ runner.temp }}/bench
           if-no-files-found: ignore
 
-  # The token of a pull request from a fork cannot comment. Each run edits the
-  # comment of the run before.
+  # The token of a pull request from a fork cannot comment.
   bench-report:
     needs: bench
     if: (success() || failure()) && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -176,16 +130,17 @@ jobs:
           pattern: bench-*
           path: ${{ runner.temp }}/bench
       - run: |
-          cat "$RUNNER_TEMP"/bench/bench-*/report.md >"$RUNNER_TEMP/report.md" 2>/dev/null || true
-          [ -s "$RUNNER_TEMP/report.md" ] || exit 0
+          shopt -s nullglob
+          reports=("$RUNNER_TEMP"/bench/bench-*/report.md)
+          [ ${#reports[@]} -gt 0 ] || exit 0
+          cat "${reports[@]}" >"$RUNNER_TEMP/report.md"
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/report.md"
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
 
   release-snapshot:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -193,18 +148,14 @@ jobs:
         with:
           fetch-depth: 0 # goreleaser derives the version from tags
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: apps/lopper/tools/go.mod
-          cache: false
+      - uses: $/.github/actions/setup-ci
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "~> v2"
+          version: v2.20.0
           args: release --config apps/lopper/.goreleaser.yaml --snapshot --clean
 
   install:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.install == 'true'
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -229,7 +180,7 @@ jobs:
 
   # A skipped job counts as passed, so this is the one check a branch needs.
   ci-ok:
-    needs: [changes, check, test, bench, release-snapshot, install]
+    needs: [check, test, bench, release-snapshot, install]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

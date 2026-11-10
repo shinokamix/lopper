@@ -41,7 +41,9 @@ jobs:
         run: |
           archive=lopper_$TARGET.tar.gz lopper=bin/lopper
           case $TARGET in windows_*) archive=lopper_$TARGET.zip lopper=bin/lopper.exe ;; esac
-          grep " $archive\$" checksums.txt | shasum -a 256 -c
+          sha256sum=sha256sum
+          [ "$RUNNER_OS" != macOS ] || sha256sum="shasum -a 256"
+          grep " $archive\$" checksums.txt | $sha256sum -c
 
           mkdir bin
           case $archive in

@@ -14,7 +14,7 @@ them, and Moon runs every task with them. Go dev tools are pinned in
 
 ```sh
 moon tasks          # list tasks
-moon check --all    # what CI runs: tidy, lint (all OSes), tests, govulncheck, site
+moon check --all    # tidy, lint (all OSes), tests, govulncheck, site
 moon run :fix       # tidy, format and autofix what the hooks reject
 moon run site:dev   # serve the Astro site in apps/site on localhost:4321
 moon run fixture    # sandbox in apps/lopper/.tmp/fixture
@@ -25,8 +25,9 @@ go run ./cmd/lopper .tmp/fixture
 The first `moon` command installs a pre-commit hook into this checkout: it
 checks the formatting of Go files and of the site, and tidiness of both go.mod
 files, when a commit changes them, in seconds.
-CI runs what `moon check --all` does, skipping tasks no changed file affects;
-run it before pushing to catch the rest early.
+CI runs what `moon check --all` does, skipping tasks no changed file affects,
+plus the tasks that run only in CI; run it before pushing to catch the rest
+early.
 
 Applications live under `apps/` as separate Moon projects. The Go CLI is
 `apps/lopper`, with its own module, tools and build configuration. Moon runs its
@@ -100,6 +101,9 @@ allowed only where needed. If it fails, move the code rather than loosening the 
 - [`cmd/lopper/testdata/script`](apps/lopper/cmd/lopper/testdata/script) holds end-to-end
   [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
   scenarios that build real repositories and run `lopper` against them.
+- CI runs the tests on Linux, Windows, and macOS with both Homebrew's and
+  Apple's git, and once more on Linux with the oldest Go that `go.mod` allows
+  (`lopper:test-oldest-go`, which runs only in CI).
 - `moon run fuzz` fuzzes the `git worktree list` parser.
 - `moon run bench` times `lopper scan` built from where your branch leaves
   `origin/main` and from your checkout on the same generated repositories, and

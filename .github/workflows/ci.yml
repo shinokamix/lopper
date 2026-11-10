@@ -41,11 +41,17 @@ jobs:
           access-token: ${{ github.token }}
           skip-comment: true
 
+  # GitHub's macOS image puts Homebrew's git first in PATH, ahead of Apple's
+  # /usr/bin/git.
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - { name: macOS, os: macos-latest }
+          - { name: macOS with Apple's git, os: macos-latest, apple-git: true }
+          - { name: Windows, os: windows-latest }
+    name: test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
@@ -59,9 +65,11 @@ jobs:
           persist-credentials: false
       - id: setup
         uses: $/.github/actions/setup-ci
+      - if: matrix.apple-git
+        run: echo /usr/bin >>"$GITHUB_PATH"
       - run: moon ci --summary minimal lopper:test
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true' && !matrix.apple-git
         with:
           path: ${{ steps.setup.outputs.cache-path }}
           key: ${{ steps.setup.outputs.cache-key }}
@@ -74,8 +82,6 @@ jobs:
 
   # The checkout is the merge commit, so HEAD^1 is the base branch. macOS and
   # Windows runners are too noisy for a time limit.
-  # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
-  # Apple's /usr/bin/git instead.
   bench:
     if: github.event_name == 'pull_request'
     strategy:

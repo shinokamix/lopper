@@ -165,7 +165,7 @@ jobs:
 
   smoke:
     needs: release-snapshot
-    uses: ./.github/workflows/smoke.yml
+    uses: $/.github/workflows/smoke.yml
     with:
       artifact: snapshot
 

@@ -52,7 +52,7 @@ jobs:
 
   smoke:
     needs: build
-    uses: ./.github/workflows/smoke.yml
+    uses: $/.github/workflows/smoke.yml
     with:
       artifact: release
       version: ${{ github.ref_name }}

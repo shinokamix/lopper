@@ -72,9 +72,8 @@ jobs:
           skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
-  # A job of its own, and outside moon ci, because tasks running alongside
-  # would skew the times. The checkout is the merge commit, so HEAD^1 is the
-  # base branch. macOS and Windows runners are too noisy for a time limit.
+  # The checkout is the merge commit, so HEAD^1 is the base branch. macOS and
+  # Windows runners are too noisy for a time limit.
   # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
   # Apple's /usr/bin/git instead.
   bench:
@@ -153,6 +152,28 @@ jobs:
         with:
           version: v2.20.0
           args: release --config apps/lopper/.goreleaser.yaml --snapshot --clean
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snapshot
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+
+  smoke:
+    needs: release-snapshot
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: $/.github/actions/smoke
+        with:
+          artifact: snapshot
 
   install:
     if: github.event_name == 'pull_request'
@@ -180,7 +201,7 @@ jobs:
 
   # A skipped job counts as passed, so this is the one check a branch needs.
   ci-ok:
-    needs: [check, test, bench, release-snapshot, install]
+    needs: [check, test, bench, release-snapshot, smoke, install]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

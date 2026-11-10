@@ -14,7 +14,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: github-actions
-    directories: [/, /.github/actions/setup-ci]
+    directories: [/, /.github/actions/setup-ci, /.github/actions/smoke]
     schedule:
       interval: weekly
     cooldown:

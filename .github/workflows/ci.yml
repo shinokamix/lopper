@@ -12,7 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 # `moon ci` diffs against main, so checkouts fetch the full history without file
-# contents.
+# contents. On main, Moon diffs against HEAD~1 unless given a base, which would
+# leave out all but the last commit of a push.
+env:
+  MOON_BASE: ${{ github.event_name == 'push' && github.event.before || '' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -112,8 +116,7 @@ jobs:
           path: ${{ runner.temp }}/bench
           if-no-files-found: ignore
 
-  # The token of a pull request from a fork cannot comment. Each run edits the
-  # comment of the run before.
+  # The token of a pull request from a fork cannot comment.
   bench-report:
     needs: bench
     if: (success() || failure()) && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -127,8 +130,10 @@ jobs:
           pattern: bench-*
           path: ${{ runner.temp }}/bench
       - run: |
-          cat "$RUNNER_TEMP"/bench/bench-*/report.md >"$RUNNER_TEMP/report.md" 2>/dev/null || true
-          [ -s "$RUNNER_TEMP/report.md" ] || exit 0
+          shopt -s nullglob
+          reports=("$RUNNER_TEMP"/bench/bench-*/report.md)
+          [ ${#reports[@]} -gt 0 ] || exit 0
+          cat "${reports[@]}" >"$RUNNER_TEMP/report.md"
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/report.md"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -146,7 +151,7 @@ jobs:
       - uses: $/.github/actions/setup-ci
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "~> v2"
+          version: v2.20.0
           args: release --config apps/lopper/.goreleaser.yaml --snapshot --clean
 
   install:

@@ -1,5 +1,5 @@
 name: Set up Moon
-description: Install the tools pinned in .prototools, with proto's shims on PATH, and restore the toolchain and Go caches. Moon's step saves the toolchain on main by itself. A job that saves the Go caches does it with the cache outputs after its tasks ran, on main and only when cache-hit is false.
+description: Restore the Go caches, then install the tools pinned in .prototools with proto's shims on PATH and restore the toolchain cache. Moon's step saves the toolchain on main by itself. A job that saves the Go caches does it with the cache outputs after its tasks ran, on main and only when cache-hit is false.
 inputs:
   cache:
     description: Restore the toolchain and Go caches
@@ -17,12 +17,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
-      with:
-        auto-install: true
-        auto-setup: true
-        cache: ${{ inputs.cache }}
-        cache-base: main
     - id: go-cache
       if: inputs.cache == 'true'
       shell: bash
@@ -41,6 +35,8 @@ runs:
         } >>"$GITHUB_OUTPUT"
       env:
         DEPS: ${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.prototools') }}
+    # Go makes the module cache read-only, so tar cannot extract over modules
+    # a Go command already downloaded.
     - id: go-restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.cache == 'true'
@@ -48,3 +44,9 @@ runs:
         path: ${{ steps.go-cache.outputs.path }}
         key: ${{ steps.go-cache.outputs.key }}
         restore-keys: ${{ steps.go-cache.outputs.prefix }}
+    - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      with:
+        auto-install: true
+        auto-setup: true
+        cache: ${{ inputs.cache }}
+        cache-base: main

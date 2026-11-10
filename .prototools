@@ -1,5 +1,8 @@
 moon = "2.5.6"
+go = "1.27.3"
+node = "24.21.0"
+pnpm = "12.9.1"
 
 [settings]
-# Go is pinned in .moon/toolchains.yml; don't let proto pick another from go.mod.
+# Without it, proto takes Go's version from the nearest go.mod.
 detect-strategy = "only-prototools"

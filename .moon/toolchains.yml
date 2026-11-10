@@ -3,14 +3,11 @@ $schema: ./cache/schemas/toolchains.json
 proto:
   version: '0.62.3'
 
-go:
-  version: '1.27.3'
+go: {}
 
 javascript:
   packageManager: pnpm
 
-node:
-  version: '24.21.0'
+node: {}
 
-pnpm:
-  version: '12.9.1'
+pnpm: {}

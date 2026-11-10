@@ -7,11 +7,9 @@ Security issues go through [SECURITY.md](SECURITY.md), not issues or PRs.
 
 ## Setup
 
-You need [proto](https://moonrepo.dev/proto): `proto install` fetches the
-[Moon](https://moonrepo.dev/moon) version pinned in [`.prototools`](.prototools),
-and Moon runs every task with the Go, Node and pnpm pinned in
-[`.moon/toolchains.yml`](.moon/toolchains.yml), installing them on first use. Go
-dev tools are pinned in
+You need [proto](https://moonrepo.dev/proto): [`.prototools`](.prototools) pins
+[Moon](https://moonrepo.dev/moon), Go, Node and pnpm, `proto install` fetches
+them, and Moon runs every task with them. Go dev tools are pinned in
 [`apps/lopper/tools/go.mod`](apps/lopper/tools/go.mod) and run via `go tool`.
 
 ```sh

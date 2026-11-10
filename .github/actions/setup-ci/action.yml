@@ -1,5 +1,5 @@
 name: Set up Moon
-description: Install proto, Moon and every toolchain in .moon/toolchains.yml, put Moon's Go on PATH for tools that run outside Moon, and restore the toolchain and Go caches. Moon's step saves the toolchain on main by itself. A job that saves the Go caches does it with the cache outputs after its tasks ran, on main and only when cache-hit is false.
+description: Install the tools pinned in .prototools, with proto's shims on PATH, and restore the toolchain and Go caches. Moon's step saves the toolchain on main by itself. A job that saves the Go caches does it with the cache outputs after its tasks ran, on main and only when cache-hit is false.
 inputs:
   cache:
     description: Restore the toolchain and Go caches
@@ -23,10 +23,6 @@ runs:
         auto-setup: true
         cache: ${{ inputs.cache }}
         cache-base: main
-    - shell: bash
-      run: |
-        go=$(moon bin go)
-        echo "${go%[\\/]*}" >>"$GITHUB_PATH"
     - id: go-cache
       if: inputs.cache == 'true'
       shell: bash
@@ -44,7 +40,7 @@ runs:
           echo EOF
         } >>"$GITHUB_OUTPUT"
       env:
-        DEPS: ${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.moon/toolchains.yml') }}
+        DEPS: ${{ hashFiles('apps/lopper/go.sum', 'apps/lopper/tools/go.sum', '.prototools') }}
     - id: go-restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.cache == 'true'

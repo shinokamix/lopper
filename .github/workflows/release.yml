@@ -80,6 +80,10 @@ jobs:
     needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # GitHub cannot set Latest only above a version, so two tags publishing at
+    # once could both read the old Latest and the lower one could win.
+    concurrency:
+      group: release-publish
     permissions:
       contents: write
       id-token: write

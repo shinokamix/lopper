@@ -41,8 +41,8 @@ jobs:
           access-token: ${{ github.token }}
           skip-comment: true
 
-  # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
-  # Apple's /usr/bin/git instead.
+  # GitHub's macOS image puts Homebrew's git first in PATH, ahead of Apple's
+  # /usr/bin/git.
   test:
     strategy:
       fail-fast: false

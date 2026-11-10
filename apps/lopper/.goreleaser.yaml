@@ -1,5 +1,9 @@
 version: 2
 project_name: lopper
+# Without it, GoReleaser takes a module tag such as apps/lopper/v0.7.0 as the
+# version.
+git:
+  ignore_tags: [apps/*]
 builds:
   - dir: apps/lopper
     main: ./cmd/lopper

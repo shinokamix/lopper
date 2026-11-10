@@ -164,9 +164,16 @@ jobs:
 
   smoke:
     needs: release-snapshot
-    uses: $/.github/workflows/smoke.yml
-    with:
-      artifact: snapshot
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: $/.github/actions/smoke
+        with:
+          artifact: snapshot
 
   install:
     if: github.event_name == 'pull_request'

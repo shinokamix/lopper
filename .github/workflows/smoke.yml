@@ -1,0 +1,75 @@
+name: smoke
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: The artifact with the archives and checksums.txt
+        type: string
+        required: true
+      version:
+        description: The version the binaries must report, empty for a snapshot
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux_amd64, os: ubuntu-latest }
+          - { target: linux_arm64, os: ubuntu-24.04-arm }
+          - { target: darwin_amd64, os: macos-15-intel }
+          - { target: darwin_arm64, os: macos-latest }
+          - { target: windows_amd64, os: windows-latest }
+          - { target: windows_arm64, os: windows-11-arm }
+    name: smoke (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/dist
+      - working-directory: ${{ runner.temp }}/dist
+        run: |
+          archive=lopper_$TARGET.tar.gz lopper=bin/lopper
+          case $TARGET in windows_*) archive=lopper_$TARGET.zip lopper=bin/lopper.exe ;; esac
+          grep " $archive\$" checksums.txt | shasum -a 256 -c
+
+          mkdir bin
+          case $archive in
+          *.zip) unzip -q "$archive" -d bin ;;
+          *) tar -xzf "$archive" -C bin ;;
+          esac
+
+          version=$("$lopper" --version)
+          echo "$version"
+          case $version in
+          *"${GITHUB_SHA:0:7}"*) ;;
+          *) echo "::error::$archive is not built from ${GITHUB_SHA:0:7}" && exit 1 ;;
+          esac
+          if [ -n "$VERSION" ]; then
+            case $version in
+            *" ${VERSION#v} "*) ;;
+            *) echo "::error::$archive is not version ${VERSION#v}" && exit 1 ;;
+            esac
+          fi
+
+          git init -q repo
+          git -C repo -c user.name=smoke -c user.email=smoke@localhost commit -q --allow-empty -m init
+          git -C repo worktree add -q ../worktree
+          found=$("$lopper" scan . --paths)
+          case $found in
+          *worktree) ;;
+          *) echo "::error::scan found \"$found\" instead of the worktree" && exit 1 ;;
+          esac
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ inputs.version }}

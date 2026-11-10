@@ -22,6 +22,8 @@ checksum:
     - glob: ./install.ps1
 release:
   prerelease: auto
+  draft: true
+  replace_existing_draft: true
   extra_files:
     - glob: ./install.sh
     - glob: ./install.ps1

@@ -87,10 +87,6 @@ jobs:
     needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # GitHub cannot set Latest only above a version, so two tags publishing at
-    # once could both read the old Latest and the lower one could win.
-    concurrency:
-      group: release-publish
     permissions:
       contents: write
       id-token: write
@@ -120,18 +116,7 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
-      # GitHub makes a published release Latest unless told otherwise, even an
-      # older version.
-      - run: |
-          latest=false
-          case $GITHUB_REF_NAME in
-          *-*) ;;
-          *)
-            current=$(gh release view --json tagName --jq .tagName)
-            [ "$(printf '%s\n' "$current" "$GITHUB_REF_NAME" | sort -V | tail -n 1)" != "$GITHUB_REF_NAME" ] || latest=true
-            ;;
-          esac
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest="$latest"
+      - run: gh release edit "$GITHUB_REF_NAME" --draft=false
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

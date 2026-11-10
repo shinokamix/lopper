@@ -35,13 +35,16 @@ jobs:
             revert
           # Dependabot uses the deps and deps-dev scopes.
           scopes: |
+            archtest
+            bench
+            catalog
             cli
-            config
             discovery
             engine
             gitx
             inspect
             lopper
+            pathx
             tui
             update
             verdict

@@ -45,9 +45,11 @@ Binary releases keep repository tags such as `v0.5.0`. The Go module path is
 by tags such as `apps/lopper/v0.5.0`. The release workflow adds that tag for each
 `v*` tag, so push only `v0.5.0`.
 
-Tag a commit on main once ci has passed on it; the release workflow fails on any
-other commit. It builds a draft release, runs the archive of every target on its
-own OS, attests the archives, tags the module, and only then publishes.
+Tag a commit on main. The release workflow waits for ci to pass on it and fails
+on any other commit. It checks for vulnerabilities, builds a draft release, runs
+the archive of every target on its own OS, attests the archives, tags the
+module, and only then publishes. A last job checks the published assets
+against the tested ones.
 
 To check release artifacts without publishing, run from the repository root:
 

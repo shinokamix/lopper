@@ -67,11 +67,11 @@ jobs:
           git init -q repo
           git -C repo -c user.name=smoke -c user.email=smoke@localhost commit -q --allow-empty -m init
           git -C repo worktree add -q ../worktree
+          want=$PWD/worktree
+          [ "$RUNNER_OS" != Windows ] || want=$(cygpath -w "$want")
           found=$("$lopper" scan . --paths)
-          case $found in
-          *worktree) ;;
-          *) echo "::error::scan found \"$found\" instead of the worktree" && exit 1 ;;
-          esac
+          [ "$found" = "$want" ] ||
+            { echo "::error::scan found \"$found\" instead of $want" && exit 1; }
         env:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ inputs.version }}

@@ -22,19 +22,36 @@ jobs:
           fetch-depth: 0 # goreleaser derives the version and notes from tags
           persist-credentials: false
       # GitHub runs this on any tag, even on a commit CI never passed.
-      - name: Require a green ci run on main
+      - name: Wait for ci on main to pass
         run: |
           git merge-base --is-ancestor HEAD origin/main ||
             { echo "::error::$GITHUB_REF_NAME is not on main" && exit 1; }
-          runs=$(gh run list --workflow ci.yml --branch main --event push --commit "$GITHUB_SHA" --status success --json databaseId --jq length)
-          [ "$runs" -gt 0 ] ||
-            { echo "::error::ci has not passed on main for $GITHUB_SHA yet; rerun this job once it has" && exit 1; }
+          for _ in $(seq 30); do
+            run=$(gh run list --workflow ci.yml --branch main --event push --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq ".[].databaseId")
+            [ -z "$run" ] || break
+            sleep 10
+          done
+          [ -n "$run" ] || { echo "::error::ci never ran on main for $GITHUB_SHA" && exit 1; }
+          gh run watch "$run" --exit-status --interval 30 >/dev/null ||
+            { echo "::error::ci run $run on main did not pass" && exit 1; }
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
       - uses: $/.github/actions/setup-ci
         with:
           cache: false
+      - run: moon run lopper:vuln
+      # Without it, the notes of a release after its candidates list only what
+      # changed since the last candidate.
+      - id: notes
+        run: |
+          case $GITHUB_REF_NAME in
+          *-*) ;;
+          *)
+            previous=$(git describe --tags --abbrev=0 --exclude 'apps/*' --exclude '*-*' HEAD^)
+            echo "previous=$previous" >>"$GITHUB_OUTPUT"
+            ;;
+          esac
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: v2.20.0
@@ -42,6 +59,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          GORELEASER_PREVIOUS_TAG: ${{ steps.notes.outputs.previous }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release
@@ -91,7 +109,18 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: gh release edit "$GITHUB_REF_NAME" --draft=false
+      # GitHub makes a published release Latest unless told otherwise, even an
+      # older version.
+      - run: |
+          latest=false
+          case $GITHUB_REF_NAME in
+          *-*) ;;
+          *)
+            current=$(gh release view --json tagName --jq .tagName)
+            [ "$(printf '%s\n' "$current" "$GITHUB_REF_NAME" | sort -V | tail -n 1)" != "$GITHUB_REF_NAME" ] || latest=true
+            ;;
+          esac
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest="$latest"
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -104,7 +133,29 @@ jobs:
       contents: read
       attestations: read
     steps:
-      - run: |
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: ${{ runner.temp }}/tested
+      - name: The published assets are the tested ones
+        working-directory: ${{ runner.temp }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --dir published
+          cmp tested/checksums.txt published/checksums.txt
+          (cd published && sha256sum -c checksums.txt)
+          for archive in published/*.tar.gz published/*.zip; do
+            gh attestation verify "$archive" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "refs/tags/$GITHUB_REF_NAME" --source-digest "$GITHUB_SHA"
+          done
+          module=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/apps/lopper/$GITHUB_REF_NAME" --jq .object.sha)
+          [ "$module" = "$GITHUB_SHA" ] ||
+            { echo "::error::apps/lopper/$GITHUB_REF_NAME points at $module, not $GITHUB_SHA" && exit 1; }
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+      - name: install.sh installs the release
+        run: |
           curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/install.sh" |
             LOPPER_VERSION="$GITHUB_REF_NAME" LOPPER_INSTALL_DIR="$RUNNER_TEMP/bin" sh
           version=$("$RUNNER_TEMP/bin/lopper" --version)
@@ -112,9 +163,3 @@ jobs:
           *" ${GITHUB_REF_NAME#v} "*) ;;
           *) echo "::error::install.sh installed $version" && exit 1 ;;
           esac
-          gh release download "$GITHUB_REF_NAME" --pattern lopper_linux_amd64.tar.gz --dir "$RUNNER_TEMP"
-          gh attestation verify "$RUNNER_TEMP/lopper_linux_amd64.tar.gz" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/apps/lopper/$GITHUB_REF_NAME" --silent
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}

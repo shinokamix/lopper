@@ -72,9 +72,8 @@ jobs:
           skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
-  # A job of its own, and outside moon ci, because tasks running alongside
-  # would skew the times. The checkout is the merge commit, so HEAD^1 is the
-  # base branch. macOS and Windows runners are too noisy for a time limit.
+  # The checkout is the merge commit, so HEAD^1 is the base branch. macOS and
+  # Windows runners are too noisy for a time limit.
   # GitHub's macOS image puts Homebrew's git first in PATH, and most Macs run
   # Apple's /usr/bin/git instead.
   bench:

@@ -38,3 +38,4 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+        update-types: [minor, patch]

@@ -18,7 +18,6 @@ const module = "github.com/shinokamix/lopper/apps/lopper"
 
 var layers = map[string][]string{
 	"cmd/lopper": {"internal/cli"},
-	"cmd/bench":  {},
 
 	"internal/lopper":   {},
 	"internal/gitx":     {},
@@ -37,7 +36,7 @@ var layers = map[string][]string{
 }
 
 var restricted = map[string][]string{
-	"os/exec":                   {"internal/gitx", "cmd/bench"},
+	"os/exec":                   {"internal/gitx"},
 	"net/http":                  {"internal/update"},
 	"charm.land/":               {"internal/tui/..."},
 	"github.com/charmbracelet/": {"cmd/lopper", "internal/tui/..."},

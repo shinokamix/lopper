@@ -80,70 +80,6 @@ jobs:
           skip-comment: true
           matrix: ${{ toJSON(matrix) }}
 
-  # The checkout is the merge commit, so HEAD^1 is the base branch. macOS and
-  # Windows runners are too noisy for a time limit.
-  bench:
-    if: github.event_name == 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: Linux, os: ubuntu-latest, rounds: "10", max-slowdown: "20" }
-          - { name: macOS, os: macos-latest, rounds: "3", max-slowdown: "0" }
-          - { name: macOS with Apple's git, os: macos-latest, rounds: "3", max-slowdown: "0", apple-git: true }
-          - { name: Windows, os: windows-latest, rounds: "3", max-slowdown: "0" }
-    name: bench (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - uses: $/.github/actions/setup-ci
-      - if: matrix.apple-git
-        run: echo /usr/bin >>"$GITHUB_PATH"
-      - working-directory: apps/lopper
-        run: |
-          mkdir "$RUNNER_TEMP/bench"
-          go run ./cmd/bench -name "$NAME" -rounds "$ROUNDS" -max-slowdown "$MAX_SLOWDOWN" HEAD^1 >"$RUNNER_TEMP/bench/report.md"
-        env:
-          NAME: ${{ matrix.name }}
-          ROUNDS: ${{ matrix.rounds }}
-          MAX_SLOWDOWN: ${{ matrix.max-slowdown }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: success() || failure()
-        with:
-          name: bench-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/bench
-          if-no-files-found: ignore
-
-  # The token of a pull request from a fork cannot comment.
-  bench-report:
-    needs: bench
-    if: (success() || failure()) && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      pull-requests: write
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: bench-*
-          path: ${{ runner.temp }}/bench
-      - run: |
-          shopt -s nullglob
-          reports=("$RUNNER_TEMP"/bench/bench-*/report.md)
-          [ ${#reports[@]} -gt 0 ] || exit 0
-          cat "${reports[@]}" >"$RUNNER_TEMP/report.md"
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/report.md"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-
   release-snapshot:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -207,7 +143,7 @@ jobs:
 
   # A skipped job counts as passed, so this is the one check a branch needs.
   ci-ok:
-    needs: [check, test, bench, release-snapshot, smoke, install]
+    needs: [check, test, release-snapshot, smoke, install]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

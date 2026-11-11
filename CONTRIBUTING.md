@@ -74,7 +74,6 @@ Paths below are relative to `apps/lopper`.
 
 ```
 cmd/lopper        entry point
-cmd/bench         compares scan speed with a base commit, for CI
 internal/
   lopper          core types: Worktree and its State, Facts, Verdict (no dependencies)
   gitx            thin wrapper over the git CLI
@@ -105,16 +104,6 @@ allowed only where needed. If it fails, move the code rather than loosening the 
   Apple's git, and once more on Linux with the oldest Go that `go.mod` allows
   (`lopper:test-oldest-go`, which runs only in CI).
 - `moon run fuzz` fuzzes the `git worktree list` parser.
-- `moon run bench` times `lopper scan` built from where your branch leaves
-  `origin/main` and from your checkout on the same generated repositories, and
-  counts the git processes each scan starts. When both builds are the same
-  binary, it says there is nothing to compare instead. CI runs it on every pull
-  request, on Linux, macOS (with Homebrew's and with Apple's git) and Windows,
-  and posts one comment with the results: the median scan time, its spread,
-  and how many processes each git command ran and for how long. It fails when
-  a scan starts more git processes anywhere, or when its median time grows by
-  more than 20% on Linux. macOS and Windows runners are too noisy for a time
-  limit.
 
 lopper deletes files: any change to what it considers **safe** needs a test that
 fails without it — a `verdict` row, plus a testscript when real git state matters.

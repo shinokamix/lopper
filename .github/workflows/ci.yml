@@ -142,12 +142,20 @@ jobs:
         run: .github/scripts/test-install.ps1
 
   # A skipped job counts as passed, so this is the one check a branch needs.
+  # needs reports a matrix as passed even when GitHub cancelled a leg that never
+  # got a runner, so this reads the result of every job in the run instead.
   ci-ok:
     needs: [check, test, release-snapshot, smoke, install]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
     steps:
-      - run: test "$FAILED" = false
+      - shell: bash
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" >"$RUNNER_TEMP/jobs.json"
+          jq -r '.[].jobs[] | select(.name != "ci-ok" and .conclusion != "success" and .conclusion != "skipped") | "::error::\(.name) ended \(.conclusion // .status)"' "$RUNNER_TEMP/jobs.json"
+          jq -e '[.[].jobs[] | select(.name != "ci-ok")] | length > 0 and all(.conclusion == "success" or .conclusion == "skipped")' "$RUNNER_TEMP/jobs.json" >/dev/null
         env:
-          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+          GH_TOKEN: ${{ github.token }}

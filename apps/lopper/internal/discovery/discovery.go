@@ -1,5 +1,6 @@
-// Package discovery finds git repositories on disk and lists their linked
-// worktrees. It never decides whether a worktree is safe to delete.
+// Package discovery finds git repositories on disk, lists their linked
+// worktrees and measures them. It never decides whether a worktree is safe
+// to delete.
 package discovery
 
 import (
@@ -30,6 +31,8 @@ type Options struct {
 	// later scan's Known. Scan calls it only after a walk that neither failed
 	// nor was cancelled.
 	Met func(places []string)
+	// Sizes, if set, receives the size of every worktree Scan emits.
+	Sizes *Sizes
 }
 
 // Scan walks opts.Roots and calls emit, possibly concurrently, for every
@@ -38,6 +41,10 @@ type Options struct {
 // repository that did not or could not list them. A missing or unreadable
 // root is an error. Scan skips unreadable directories below a root.
 func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.Worktree)) error {
+	if opts.Sizes != nil {
+		defer opts.Sizes.end()
+		emit = opts.Sizes.track(emit)
+	}
 	gitDirs := make(chan string, 64)
 	var listed sync.Map
 
@@ -130,6 +137,9 @@ func Scan(ctx context.Context, git gitx.Runner, opts Options, emit func(lopper.W
 			}
 			emit(unconfirmedWorktree(c.wt.Path, repo, c.gf.admin, why))
 		}
+	}
+	if opts.Sizes != nil && err == nil && ctx.Err() == nil {
+		newWalker(ctx, opts.Sizes, nil, nil).measure(opts.Sizes.unmeasured())
 	}
 	return err
 }

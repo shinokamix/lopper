@@ -7,11 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sync"
-
-	"github.com/charlievieth/fastwalk"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/pathx"
 )
@@ -84,59 +81,13 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		}
 	}
 
-	visited := fastwalk.NewEntryFilter() // by device and inode, across roots
-	// Only links and roots lead to a directory twice. On Unix the check is a
-	// stat, so every directory gets one and a linked directory the walk
-	// reached first is not walked again. On Windows it opens the directory,
-	// so only links and roots are checked.
-	everyDir := runtime.GOOS != "windows"
-	conf := fastwalk.DefaultConfig
-	conf.ToSlash = false // report paths as found, even under MSYS or Git Bash
-
+	w := newWalker(ctx, opts.Sizes, dotGit, report)
 	for _, root := range opts.Roots {
 		root = filepath.Clean(root)
 		if err := checkRoot(root); err != nil {
 			return nil, err
 		}
-		err := fastwalk.Walk(&conf, root, func(path string, d fs.DirEntry, err error) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err != nil {
-				if path == root {
-					return fmt.Errorf("scan %s: %w", root, err)
-				}
-				return nil
-			}
-			typ, link := d.Type(), d.Type()&fs.ModeSymlink != 0
-			if link {
-				info, err := fastwalk.StatDirEntry(path, d)
-				if err != nil {
-					return nil //nolint:nilerr // dangling, or a loop of links: nothing to walk
-				}
-				typ = info.Mode().Type()
-			}
-			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
-				return fs.SkipDir
-			}
-			name := d.Name()
-			if name == ".git" {
-				dotGit(path, typ)
-				if typ.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
-				report(filepath.Dir(path), place{filepath.Dir(path), true})
-				return fs.SkipDir
-			}
-			if link && typ.IsDir() {
-				return fastwalk.ErrTraverseLink
-			}
-			return nil
-		})
-		if err != nil {
+		if err := w.search(root); err != nil {
 			return nil, err
 		}
 	}

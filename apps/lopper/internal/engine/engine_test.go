@@ -195,3 +195,43 @@ func (e *Engine) withGit(g fakeGit) *Engine {
 	e.git = g
 	return e
 }
+
+func TestScanSizesEveryWorktree(t *testing.T) {
+	repo, inside := gitRepo(t)
+	outside := filepath.Join(t.TempDir(), "outside")
+	gone := filepath.Join(filepath.Dir(repo), "gone")
+	git(t, repo, "worktree", "add", "-q", "-b", "outside", outside)
+	git(t, repo, "worktree", "add", "-q", "-b", "gone", gone)
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int64{"gone": 0}
+	for path, size := range map[string]int{inside: 1000, outside: 300} {
+		if err := os.WriteFile(filepath.Join(path, "data.bin"), make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(path, ".git"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[filepath.Base(path)] = int64(size) + info.Size()
+	}
+
+	got := map[string]int64{}
+	for ev := range New().Scan(t.Context(), Options{Roots: []string{filepath.Dir(repo)}}) {
+		switch ev := ev.(type) {
+		case WorktreeFound:
+		case FactsUpdated:
+			if ev.Final && ev.Facts.SizeBytes != nil {
+				got[filepath.Base(string(ev.ID))] = *ev.Facts.SizeBytes
+			}
+		case ScanDone:
+			if ev.Err != nil {
+				t.Fatal(ev.Err)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("sizes = %v, want %v", got, want)
+	}
+}

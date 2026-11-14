@@ -3,8 +3,11 @@ package discovery
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +23,7 @@ type fakeGit struct {
 	lists map[string][]string
 	fail  map[string]error
 	calls []string
+	hold  func(dir string)
 }
 
 func (f *fakeGit) RunRaw(ctx context.Context, dir, _ string, args ...string) (string, error) {
@@ -27,6 +31,9 @@ func (f *fakeGit) RunRaw(ctx context.Context, dir, _ string, args ...string) (st
 }
 
 func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, error) {
+	if f.hold != nil {
+		f.hold(dir)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(args) > 0 && args[0] == "--work-tree="+dir {
@@ -36,7 +43,7 @@ func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, er
 		return "", errors.New("unsupported")
 	}
 	f.calls = append(f.calls, dir)
-	if err := f.fail[dir]; err != nil {
+	if err := byRealPath(f.fail, dir); err != nil {
 		return "", err
 	}
 	sep := "\n"
@@ -44,10 +51,20 @@ func (f *fakeGit) Run(_ context.Context, dir string, args ...string) (string, er
 		sep = "\x00"
 	}
 	var b strings.Builder
-	for _, path := range append([]string{dir}, f.lists[dir]...) {
+	for _, path := range append([]string{dir}, byRealPath(f.lists, dir)...) {
 		b.WriteString("worktree " + path + sep + "HEAD 1" + sep + "branch refs/heads/" + filepath.Base(path) + sep + sep)
 	}
 	return b.String(), nil
+}
+
+func byRealPath[V any](m map[string]V, dir string) V {
+	for path, v := range m {
+		if realPath(path) == realPath(dir) {
+			return v
+		}
+	}
+	var zero V
+	return zero
 }
 
 func write(t *testing.T, path, content string) {
@@ -87,6 +104,29 @@ func gitDir(t *testing.T, dir string) {
 }
 
 func scan(t *testing.T, git *fakeGit, opts Options) []lopper.Worktree {
+	t.Helper()
+	plain := opts
+	plain.Sizes = nil
+	want := scanOnce(t, &fakeGit{lists: git.lists, fail: git.fail}, plain)
+	if opts.Sizes == nil {
+		opts.Sizes = NewSizes()
+	}
+	found := scanOnce(t, git, opts)
+	if !reflect.DeepEqual(normalized(found), normalized(want)) {
+		t.Errorf("measuring, Scan found %v, without measuring %v", found, want)
+	}
+	return found
+}
+
+func normalized(wts []lopper.Worktree) []lopper.Worktree {
+	sorted := slices.SortedFunc(slices.Values(wts), func(a, b lopper.Worktree) int { return strings.Compare(a.Path, b.Path) })
+	for i := range sorted {
+		sorted[i].Repo.Path = realPath(sorted[i].Repo.Path)
+	}
+	return sorted
+}
+
+func scanOnce(t *testing.T, git *fakeGit, opts Options) []lopper.Worktree {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -351,5 +391,163 @@ func TestScanCancelledReportsNothingMet(t *testing.T) {
 	err := Scan(ctx, &fakeGit{}, Options{Roots: []string{root}, Met: func([]string) { called = true }}, func(lopper.Worktree) {})
 	if err == nil || called {
 		t.Errorf("Scan = %v, Met called: %v; want the cancellation and no call", err, called)
+	}
+}
+
+func TestScanFindsWorktreesInsideMeasuredOnes(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	wt := filepath.Join(root, "wt")
+	linkWorktree(t, repo, wt)
+	gone := filepath.Join(outside, "gone", ".git", "worktrees")
+	nested := filepath.Join(wt, ".tmp", "nested")
+	write(t, filepath.Join(nested, ".git"), "gitdir: "+filepath.Join(gone, "nested")+"\n")
+	behind := filepath.Join(outside, "behind")
+	write(t, filepath.Join(behind, ".git"), "gitdir: "+filepath.Join(gone, "behind")+"\n")
+	write(t, filepath.Join(wt, "a.bin"), strings.Repeat("a", 100))
+	write(t, filepath.Join(nested, "b.bin"), strings.Repeat("b", 10))
+	symlink(t, outside, filepath.Join(wt, "link"))
+
+	sizes := NewSizes()
+	found := scan(t, &fakeGit{lists: map[string][]string{repo: {wt}}}, Options{Roots: []string{root}, Sizes: sizes})
+	nestedSize := 10 + fileLen(t, filepath.Join(nested, ".git"))
+	for path, want := range map[string]int64{
+		wt:     100 + fileLen(t, filepath.Join(wt, ".git")) + nestedSize,
+		nested: nestedSize,
+		behind: fileLen(t, filepath.Join(behind, ".git")),
+	} {
+		if got, err := sizes.Wait(t.Context(), path); err != nil || got != want {
+			t.Errorf("size of %s: %d, %v, want %d", path, got, err, want)
+		}
+	}
+	var got []string
+	for _, w := range found {
+		got = append(got, realPath(w.Path))
+	}
+	want := []string{realPath(wt), realPath(nested), realPath(behind)}
+	if !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want))) {
+		t.Errorf("found %v, want %v", got, want)
+	}
+}
+
+func fileLen(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Size()
+}
+
+func TestScanFailsOnUnreadableRootWithGitFile(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("needs a directory its owner cannot read")
+	}
+	root := t.TempDir()
+	write(t, filepath.Join(root, ".git"), "gitdir: "+filepath.Join(t.TempDir(), "gone")+"\n")
+	if err := os.Chmod(root, 0o111); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
+
+	for _, sizes := range []*Sizes{nil, NewSizes()} {
+		err := Scan(t.Context(), &fakeGit{}, Options{Roots: []string{root}, Sizes: sizes}, func(lopper.Worktree) {})
+		if !errors.Is(err, fs.ErrPermission) {
+			t.Errorf("measuring %v: Scan returned %v, want a permission error", sizes != nil, err)
+		}
+	}
+}
+
+func TestScanSizesAWorktreeWhoseSubdirectoryIsAnEarlierRoot(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	wt := filepath.Join(root, "wt")
+	linkWorktree(t, repo, wt)
+	write(t, filepath.Join(wt, "a.bin"), strings.Repeat("a", 100))
+	write(t, filepath.Join(wt, "sub", "b.bin"), strings.Repeat("b", 500))
+
+	sizes := NewSizes()
+	scan(t, &fakeGit{lists: map[string][]string{repo: {wt}}}, Options{Roots: []string{filepath.Join(wt, "sub"), root}, Sizes: sizes})
+	want := 600 + fileLen(t, filepath.Join(wt, ".git"))
+	if got, err := sizes.Wait(t.Context(), wt); err != nil || got != want {
+		t.Errorf("size of %s: %d, %v, want %d", wt, got, err, want)
+	}
+}
+
+func TestScanMeasuresWorktreesOutsideItsRoots(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	wt := filepath.Join(outside, "wt")
+	missing := filepath.Join(outside, "missing")
+	linkWorktree(t, repo, wt)
+	write(t, filepath.Join(wt, "a.bin"), strings.Repeat("a", 100))
+	write(t, filepath.Join(wt, "sub", "b.bin"), strings.Repeat("b", 20))
+
+	sizes := NewSizes()
+	scan(t, &fakeGit{lists: map[string][]string{repo: {wt, missing}}}, Options{Roots: []string{root}, Sizes: sizes})
+	want := 120 + fileLen(t, filepath.Join(wt, ".git"))
+	if got, err := sizes.Wait(t.Context(), wt); err != nil || got != want {
+		t.Errorf("size of %s: %d, %v, want %d", wt, got, err, want)
+	}
+	if got, err := sizes.Wait(t.Context(), missing); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("size of %s: %d, %v, want a not-exist error", missing, got, err)
+	}
+}
+
+func TestScanMeasuresWhatItCanRead(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("needs a directory its owner cannot read")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	readable := filepath.Join(root, "readable")
+	unreadable := filepath.Join(root, "unreadable")
+	linkWorktree(t, repo, readable)
+	linkWorktree(t, repo, unreadable)
+	write(t, filepath.Join(readable, "a.bin"), strings.Repeat("a", 100))
+	write(t, filepath.Join(readable, "blocked", "hidden.bin"), strings.Repeat("h", 1000))
+	for _, dir := range []string{filepath.Join(readable, "blocked"), unreadable} {
+		if err := os.Chmod(dir, 0o111); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	}
+
+	sizes := NewSizes()
+	scan(t, &fakeGit{lists: map[string][]string{repo: {readable, unreadable}}}, Options{Roots: []string{root}, Sizes: sizes})
+	want := 100 + fileLen(t, filepath.Join(readable, ".git"))
+	if got, err := sizes.Wait(t.Context(), readable); err != nil || got != want {
+		t.Errorf("size of %s: %d, %v, want %d without the unreadable directory", readable, got, err, want)
+	}
+	if got, err := sizes.Wait(t.Context(), unreadable); !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("size of %s: %d, %v, want a permission error", unreadable, got, err)
+	}
+}
+
+func TestScanMeasuresAWorktreeBeforeItEnds(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	other := filepath.Join(root, "other")
+	wt := filepath.Join(root, "wt")
+	linkWorktree(t, repo, wt)
+	linkWorktree(t, other, filepath.Join(root, "other-wt"))
+
+	sizes := NewSizes()
+	var measured sync.Once
+	waited := errors.New("other was never listed")
+	git := &fakeGit{lists: map[string][]string{repo: {wt}}, hold: func(dir string) {
+		if realPath(dir) == realPath(other) {
+			measured.Do(func() {
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				_, waited = sizes.Wait(ctx, wt)
+			})
+		}
+	}}
+	scan(t, git, Options{Roots: []string{root}, Sizes: sizes})
+	if waited != nil {
+		t.Errorf("size of %s while the scan still lists %s: %v, want it measured by the walk", wt, other, waited)
 	}
 }

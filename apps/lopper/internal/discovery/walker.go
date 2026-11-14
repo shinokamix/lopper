@@ -21,11 +21,11 @@ type walker struct {
 	dotGit   func(path string, typ fs.FileMode)
 	report   func(gitDir string, at place)
 
-	mu         sync.Mutex
-	more       *sync.Cond
-	queue      []task
-	unfinished int
-	links      []string
+	mu      sync.Mutex
+	more    *sync.Cond
+	queue   []task
+	pending int
+	links   []string
 }
 
 func newWalker(ctx context.Context, sizes *Sizes, dotGit func(path string, typ fs.FileMode), report func(gitDir string, at place)) *walker {
@@ -52,21 +52,22 @@ type task struct {
 }
 
 type owner struct {
-	dir     string
-	parent  *owner
-	size    atomic.Int64
-	pending atomic.Int64
+	dir    string
+	parent *owner
+	size   atomic.Int64
+	tasks  atomic.Int64
+	err    error
 }
 
-func (w *walker) searchAll(root string) error {
-	var err error
+func (w *walker) search(root string) error {
 	if w.claim(root) {
-		if err = w.do(task{dir: root, search: true}); err != nil {
-			err = fmt.Errorf("scan %s: %w", root, err)
-		}
+		err := w.do(task{dir: root, search: true})
 		w.run()
+		if err != nil {
+			return fmt.Errorf("scan %s: %w", root, err)
+		}
 	}
-	for err == nil && len(w.links) > 0 && w.ctx.Err() == nil {
+	for len(w.links) > 0 && w.ctx.Err() == nil {
 		var tasks []task
 		for _, link := range w.links {
 			if w.claim(link) {
@@ -77,10 +78,16 @@ func (w *walker) searchAll(root string) error {
 		w.push(tasks)
 		w.run()
 	}
-	if err != nil {
-		return err
-	}
 	return w.ctx.Err()
+}
+
+func (w *walker) measure(dirs []string) {
+	tasks := make([]task, len(dirs))
+	for i, dir := range dirs {
+		tasks[i] = task{dir: dir, owner: &owner{dir: dir}}
+	}
+	w.push(tasks)
+	w.run()
 }
 
 func (w *walker) claim(dir string) bool {
@@ -105,7 +112,7 @@ func (w *walker) work() {
 	defer w.mu.Unlock()
 	for {
 		for len(w.queue) == 0 {
-			if w.unfinished == 0 {
+			if w.pending == 0 {
 				return
 			}
 			w.more.Wait()
@@ -115,8 +122,8 @@ func (w *walker) work() {
 		w.mu.Unlock()
 		_ = w.do(t)
 		w.mu.Lock()
-		w.unfinished--
-		if w.unfinished == 0 {
+		w.pending--
+		if w.pending == 0 {
 			w.more.Broadcast()
 		}
 	}
@@ -124,13 +131,13 @@ func (w *walker) work() {
 
 func (w *walker) push(tasks []task) {
 	for _, t := range tasks {
-		for o := t.owner; o != nil; o = o.parent {
-			o.pending.Add(1)
+		if t.owner != nil {
+			t.owner.tasks.Add(1)
 		}
 	}
 	w.mu.Lock()
 	w.queue = append(w.queue, tasks...)
-	w.unfinished += len(tasks)
+	w.pending += len(tasks)
 	w.mu.Unlock()
 	for range tasks {
 		w.more.Signal()
@@ -139,14 +146,17 @@ func (w *walker) push(tasks []task) {
 
 func (w *walker) do(t task) error {
 	o := t.owner
-	defer func() { w.release(o) }()
+	defer func() { w.finish(o) }()
 	if w.ctx.Err() != nil {
 		return nil
 	}
 	entries, err := readDir(t.dir)
-	if t.search && w.sizes != nil && err == nil && hasGitFile(entries) {
+	switch {
+	case err != nil && o != nil && o.dir == t.dir:
+		o.err = err
+	case err == nil && t.search && w.sizes != nil && hasGitFile(entries):
 		o = &owner{dir: t.dir, parent: o}
-		o.pending.Store(1)
+		o.tasks.Store(1)
 	}
 	var (
 		size  int64
@@ -179,11 +189,24 @@ func (w *walker) do(t task) error {
 			tasks = append(tasks, task{path, o, true})
 		}
 	}
-	for p := o; p != nil && size > 0; p = p.parent {
-		p.size.Add(size)
+	if o != nil {
+		o.size.Add(size)
 	}
 	w.push(tasks)
 	return err
+}
+
+func (w *walker) finish(o *owner) {
+	for o != nil && o.tasks.Add(-1) == 0 {
+		size := o.size.Load()
+		if w.ctx.Err() == nil {
+			w.sizes.publish(o.dir, size, o.err)
+		}
+		o = o.parent
+		if o != nil {
+			o.size.Add(size)
+		}
+	}
 }
 
 func (w *walker) link(path string, d fs.DirEntry) {
@@ -203,14 +226,6 @@ func (w *walker) link(path string, d fs.DirEntry) {
 		w.mu.Lock()
 		w.links = append(w.links, path)
 		w.mu.Unlock()
-	}
-}
-
-func (w *walker) release(o *owner) {
-	for ; o != nil; o = o.parent {
-		if o.pending.Add(-1) == 0 && w.ctx.Err() == nil {
-			w.sizes.publish(o.dir, o.size.Load())
-		}
 	}
 }
 

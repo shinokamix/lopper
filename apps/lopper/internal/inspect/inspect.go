@@ -10,11 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/charlievieth/fastwalk"
 
 	"github.com/shinokamix/lopper/apps/lopper/internal/gitx"
 	"github.com/shinokamix/lopper/apps/lopper/internal/lopper"
@@ -171,48 +168,6 @@ func exists(path string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
-}
-
-const walkWorkersPerWorktree = 4
-
-// Slow measures the size of the worktree's directory. It leaves out
-// unreadable or vanished entries below the root. An error at the root or a
-// cancellation leaves the size unknown. A gone worktree takes no space.
-func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
-	switch wt.State {
-	case lopper.StateGone:
-		f.SizeBytes = new(int64(0))
-		return f
-	case lopper.StateTracked, lopper.StateOrphaned, lopper.StateMoved, lopper.StateUnconfirmed:
-	}
-	var size atomic.Int64
-	f.SizeBytes = nil
-	conf := fastwalk.DefaultConfig
-	conf.ToSlash = false
-	conf.NumWorkers = walkWorkersPerWorktree
-	err := fastwalk.Walk(&conf, wt.Path, func(path string, d fs.DirEntry, err error) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err != nil {
-			if path == wt.Path {
-				return err
-			}
-			return nil
-		}
-		if d.Type().IsRegular() {
-			if info, err := d.Info(); err == nil {
-				size.Add(info.Size())
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		f.Errors = append(f.Errors, "could not measure size: "+firstLine(err.Error()))
-		return f
-	}
-	f.SizeBytes = new(size.Load())
-	return f
 }
 
 func (in Inspector) count(ctx context.Context, dir string, args ...string) (int, error) {

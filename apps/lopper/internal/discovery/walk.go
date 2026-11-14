@@ -87,7 +87,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		if err := checkRoot(root); err != nil {
 			return nil, err
 		}
-		if err := w.searchAll(root); err != nil {
+		if err := w.search(root); err != nil {
 			return nil, err
 		}
 	}

@@ -90,22 +90,6 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 	insp := inspect.Inspector{Git: e.git}
 	listers, n := budget(opts.Concurrency)
 	sizes := discovery.NewSizes()
-	walks := make(chan struct{}, n)
-	sized := func(wt lopper.Worktree, f lopper.Facts) lopper.Facts {
-		if wt.State != lopper.StateGone {
-			if size, ok := sizes.Wait(ctx, wt.Path); ok {
-				f.SizeBytes = &size
-				return f
-			}
-		}
-		select {
-		case walks <- struct{}{}:
-			defer func() { <-walks }()
-		case <-ctx.Done():
-			return f
-		}
-		return insp.Slow(ctx, wt, f)
-	}
 
 	var workers, sizing sync.WaitGroup
 	for range n {
@@ -114,7 +98,11 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 				f := insp.Quick(ctx, wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f)})
 				sizing.Go(func() {
-					f := sized(wt, f)
+					if size, err := sizes.Wait(ctx, wt.Path); err != nil {
+						f.Errors = append(f.Errors, "could not measure size: "+err.Error())
+					} else {
+						f.SizeBytes = &size
+					}
 					send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
 				})
 			}

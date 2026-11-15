@@ -96,6 +96,10 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		mu        sync.Mutex
 		inspected []inspection
 	)
+	walked := make([]string, 0, len(opts.Roots))
+	for _, root := range opts.Roots {
+		walked = append(walked, physical(root))
+	}
 
 	var workers sync.WaitGroup
 	for range n {
@@ -104,6 +108,9 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 				f := insp.Quick(ctx, wt)
 				f.NestedRepos = repos.inside(wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f)})
+				if err := walkUnwalked(ctx, walked, wt, repos.add); err != nil {
+					f.Errors = append(f.Errors, "could not look for repositories inside: "+err.Error())
+				}
 				f = insp.Slow(ctx, wt, f)
 				f.NestedRepos = repos.inside(wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
@@ -209,8 +216,8 @@ func (r *repoDirs) inside(wt lopper.Worktree) int {
 // reports it, ready for Remove. The roots must reach path, and its
 // repository too if the directory is gone.
 func (e *Engine) Find(ctx context.Context, roots []string, path string) (lopper.Worktree, error) {
-	wt, _, err := e.find(ctx, roots, path)
-	return wt, err
+	listers, _ := budget(0)
+	return discovery.Find(ctx, e.git, discovery.Options{Roots: roots, Listers: listers}, path)
 }
 
 func (e *Engine) find(ctx context.Context, roots []string, path string) (wt lopper.Worktree, nestedRepos int, err error) {
@@ -300,4 +307,17 @@ func send[T any](ctx context.Context, ch chan<- T, v T) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func walkUnwalked(ctx context.Context, walked []string, wt lopper.Worktree, found func(dir string)) error {
+	if wt.State == lopper.StateGone {
+		return nil
+	}
+	dir := physical(wt.Path)
+	for _, root := range walked {
+		if _, ok := pathx.Within(root, dir); ok {
+			return nil
+		}
+	}
+	return discovery.WalkRepos(ctx, []string{wt.Path}, found)
 }

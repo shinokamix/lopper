@@ -230,3 +230,10 @@ func isGone(path string) bool {
 	_, err := os.Lstat(path)
 	return errors.Is(err, fs.ErrNotExist)
 }
+
+// WalkRepos walks roots as Scan does and calls found as Options.Repos
+// describes, without running git.
+func WalkRepos(ctx context.Context, roots []string, found func(dir string)) error {
+	_, err := findRepos(ctx, Options{Roots: roots, Repos: found}, func(string) {}, func(string, gitFile) {})
+	return err
+}

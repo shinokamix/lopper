@@ -31,6 +31,11 @@ stdout '^unsafe\s+broken\s'
 stdout '^safe\s+plain\s'
 ! stderr .
 
+exec lopper scan outer-repo
+stdout '^unsafe\s+outer\s'
+stdout '^unsafe\s+clone\s'
+stdout '^safe\s+plain\s'
+
 exec lopper scan --json $WORK
 stdout '"nested_repos": 1'
 

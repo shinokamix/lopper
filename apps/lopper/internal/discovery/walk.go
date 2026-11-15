@@ -125,9 +125,6 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				}
 				typ = info.Mode().Type()
 			}
-			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
-				return fs.SkipDir
-			}
 			name := d.Name()
 			if name == ".git" {
 				dotGit(path, typ)
@@ -139,6 +136,9 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
 				repoDir(filepath.Dir(path))
 				report(filepath.Dir(path), place{filepath.Dir(path), true})
+				return fs.SkipDir
+			}
+			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
 				return fs.SkipDir
 			}
 			if link && typ.IsDir() {

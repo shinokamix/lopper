@@ -14,6 +14,11 @@ cp work.txt real/wt-outer/.tmp/inner/work.txt
 rm real/inner-repo
 symlink link -> real
 
+exec git -C real/outer-repo worktree add -q -b aliased ../wt-aliased
+exec git init -q real/wt-aliased/.tmp/z-repo
+cp work.txt real/wt-aliased/.tmp/z-repo/work.txt
+symlink real/wt-aliased/.tmp/a-alias -> z-repo/.git
+
 exec git init -q real/elsewhere
 mkdir real/wt-linked/.tmp
 symlink real/wt-linked/.tmp/elsewhere -> ../../elsewhere
@@ -21,10 +26,15 @@ symlink real/wt-linked/.tmp/elsewhere -> ../../elsewhere
 exec lopper scan link
 stdout '^unsafe\s+outer\s'
 stdout '^safe\s+linked\s'
+stdout '^unsafe\s+aliased\s'
 
 exits 2 lopper rm link/wt-outer
 stderr 'not safe to delete: contains another repository$'
 exists real/wt-outer/.tmp/inner/work.txt
+
+exits 2 lopper rm link/wt-aliased
+stderr 'not safe to delete: contains another repository$'
+exists real/wt-aliased/.tmp/z-repo/work.txt
 
 exec lopper rm link/wt-linked
 stdout '^removed link/wt-linked$'

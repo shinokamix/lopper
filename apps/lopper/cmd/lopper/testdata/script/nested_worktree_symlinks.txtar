@@ -1,0 +1,36 @@
+[windows] skip 'needs symbolic links'
+
+exec git init -q real/outer-repo
+cp gitignore real/outer-repo/.gitignore
+exec git -C real/outer-repo add .gitignore
+exec git -C real/outer-repo commit -q -m init
+exec git -C real/outer-repo worktree add -q -b outer ../wt-outer
+exec git -C real/outer-repo worktree add -q -b linked ../wt-linked
+
+exec git init -q real/inner-repo
+exec git -C real/inner-repo commit -q --allow-empty -m init
+exec git -C real/inner-repo worktree add -q -b work ../wt-outer/.tmp/inner
+cp work.txt real/wt-outer/.tmp/inner/work.txt
+rm real/inner-repo
+symlink link -> real
+
+exec git init -q real/elsewhere
+mkdir real/wt-linked/.tmp
+symlink real/wt-linked/.tmp/elsewhere -> ../../elsewhere
+
+exec lopper scan link
+stdout '^unsafe\s+outer\s'
+stdout '^safe\s+linked\s'
+
+exits 2 lopper rm link/wt-outer
+stderr 'not safe to delete: contains another repository$'
+exists real/wt-outer/.tmp/inner/work.txt
+
+exec lopper rm link/wt-linked
+stdout '^removed link/wt-linked$'
+exists real/elsewhere/.git
+
+-- gitignore --
+.tmp/
+-- work.txt --
+important

@@ -37,6 +37,7 @@ type scanFacts struct {
 	LastCommit     *time.Time        `json:"last_commit,omitempty"`
 	UpstreamGone   *bool             `json:"upstream_gone,omitempty"`
 	SizeBytes      *int64            `json:"size_bytes,omitempty"`
+	NestedRepos    int               `json:"nested_repos,omitempty"`
 	Errors         []string          `json:"errors,omitempty"`
 }
 
@@ -49,6 +50,7 @@ func newScanFacts(f lopper.Facts) scanFacts {
 		LastCommit:     f.LastCommit,
 		UpstreamGone:   f.UpstreamGone,
 		SizeBytes:      f.SizeBytes,
+		NestedRepos:    f.NestedRepos,
 		Errors:         f.Errors,
 	}
 }

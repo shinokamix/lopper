@@ -60,7 +60,7 @@ const (
 	StateUnconfirmed
 )
 
-// Facts are what inspect observed about a worktree, in stages. A nil field
+// Facts are what a scan observed about a worktree, in stages. A nil field
 // is unknown, and Errors says why when an observation failed.
 type Facts struct {
 	Dirty          *int       // status entries, where an untracked directory counts as one
@@ -70,6 +70,7 @@ type Facts struct {
 	LastCommit     *time.Time // committer date of HEAD in UTC, in years 0 to 9999 as RFC 3339 allows
 	UpstreamGone   *bool      // the branch tracks an upstream branch that no longer exists
 	SizeBytes      *int64
+	NestedRepos    int // other repositories and worktrees inside this one, which deleting it would delete too
 	Errors         []string
 }
 

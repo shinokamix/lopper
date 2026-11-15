@@ -30,6 +30,10 @@ type Options struct {
 	// later scan's Known. Scan calls it only after a walk that neither failed
 	// nor was cancelled.
 	Met func(places []string)
+	// Repos, if set, receives, possibly concurrently and more than once,
+	// every directory the walk finds that holds a .git file or directory,
+	// readable or not, and every bare repository it finds.
+	Repos func(dir string)
 }
 
 // Scan walks opts.Roots and calls emit, possibly concurrently, for every

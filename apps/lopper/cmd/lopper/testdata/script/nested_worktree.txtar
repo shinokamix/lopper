@@ -1,0 +1,71 @@
+exec git init -q outer-repo
+cp gitignore outer-repo/.gitignore
+exec git -C outer-repo add .gitignore
+exec git -C outer-repo commit -q -m init
+exec git -C outer-repo worktree add -q -b outer ../wt-outer
+exec git -C outer-repo worktree add -q -b clone ../wt-clone
+exec git -C outer-repo worktree add -q -b broken ../wt-broken
+exec git -C outer-repo worktree add -q -b plain ../wt
+mkdir wt/.tmp/cache
+cp work.txt wt/.tmp/cache/build.log
+exec git -C outer-repo worktree add -q -b gone ../wt/.tmp/gone
+rm wt/.tmp/gone
+
+exec git init -q inner-repo
+exec git -C inner-repo commit -q --allow-empty -m init
+exec git -C inner-repo worktree add -q -b work ../wt-outer/.tmp/inner
+cp work.txt wt-outer/.tmp/inner/work.txt
+
+exec git init -q wt-clone/.tmp/scratch
+cp work.txt wt-clone/.tmp/scratch/work.txt
+
+mkdir wt-broken/.tmp/moved
+cp brokengit wt-broken/.tmp/moved/.git
+cp work.txt wt-broken/.tmp/moved/work.txt
+
+exec lopper scan $WORK
+stdout '^unsafe\s+outer\s'
+stdout '^unsafe\s+work\s'
+stdout '^unsafe\s+clone\s'
+stdout '^unsafe\s+broken\s'
+stdout '^safe\s+plain\s'
+! stderr .
+
+exec lopper scan --json $WORK
+stdout '"nested_repos": 1'
+
+exec lopper scan --json --safe $WORK
+stdout '"branch": "plain"'
+! stdout '"branch": "outer"'
+! stdout '"nested_repos"'
+
+exits 2 lopper rm wt-outer
+stderr '^wt-outer: not removed: not safe to delete: contains another repository$'
+exists wt-outer/.tmp/inner/work.txt
+
+exits 2 lopper rm wt-clone
+stderr 'contains another repository$'
+exists wt-clone/.tmp/scratch/work.txt
+
+exits 2 lopper rm wt-broken
+stderr 'contains another repository$'
+exists wt-broken/.tmp/moved/work.txt
+
+exec lopper rm --all-safe $WORK
+stdout -count=1 '^removed '
+stdout '^removed .*[/\\]wt$'
+! stderr .
+exists wt-outer/.tmp/inner/work.txt
+exists wt-clone/.tmp/scratch/work.txt
+exists wt-broken/.tmp/moved/work.txt
+
+exec lopper rm --force wt-outer
+stdout '^removed wt-outer$'
+! exists wt-outer
+
+-- gitignore --
+.tmp/
+-- work.txt --
+important
+-- brokengit --
+gitdir: ../../../no-such-repo/.git/worktrees/moved

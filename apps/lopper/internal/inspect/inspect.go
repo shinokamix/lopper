@@ -188,6 +188,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 	case lopper.StateTracked, lopper.StateOrphaned, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
 	var size, nested atomic.Int64
+	root := filepath.Clean(wt.Path)
 	f.SizeBytes = nil
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false
@@ -202,7 +203,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 			}
 			return nil
 		}
-		if strings.EqualFold(d.Name(), ".git") && path != wt.Path && filepath.Dir(path) != filepath.Clean(wt.Path) {
+		if strings.EqualFold(d.Name(), ".git") && path != wt.Path && filepath.Dir(path) != root {
 			nested.Add(1)
 		}
 		if d.Type().IsRegular() {

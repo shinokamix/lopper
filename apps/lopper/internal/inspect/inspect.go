@@ -175,8 +175,9 @@ func exists(path string) (bool, error) {
 
 const walkWorkersPerWorktree = 4
 
-// Slow measures the size of the worktree's directory and counts the .git
-// files and directories below its root. It leaves out unreadable or vanished
+// Slow measures the size of the worktree's directory and counts the entries
+// below its top level named .git in any case, since a case-insensitive file
+// system lets git use .GIT. It leaves out unreadable or vanished
 // entries below the root and does not follow symlinks. An error at the root
 // or a cancellation leaves the size unknown. A gone worktree takes no space.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
@@ -201,7 +202,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 			}
 			return nil
 		}
-		if d.Name() == ".git" && filepath.Dir(path) != filepath.Clean(wt.Path) && (d.IsDir() || d.Type().IsRegular()) {
+		if strings.EqualFold(d.Name(), ".git") && path != wt.Path && filepath.Dir(path) != filepath.Clean(wt.Path) {
 			nested.Add(1)
 		}
 		if d.Type().IsRegular() {

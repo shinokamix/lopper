@@ -19,6 +19,12 @@ exec git init -q real/wt-aliased/.tmp/z-repo
 cp work.txt real/wt-aliased/.tmp/z-repo/work.txt
 symlink real/wt-aliased/.tmp/a-alias -> z-repo/.git
 
+exec git -C real/outer-repo worktree add -q -b gitlink ../wt-gitlink
+exec git init -q real/wt-gitlink/.tmp/sym
+mv real/wt-gitlink/.tmp/sym/.git real/sym-gitdir
+symlink real/wt-gitlink/.tmp/sym/.git -> ../../../sym-gitdir
+cp work.txt real/wt-gitlink/.tmp/sym/work.txt
+
 exec git init -q real/elsewhere
 mkdir real/wt-linked/.tmp
 symlink real/wt-linked/.tmp/elsewhere -> ../../elsewhere
@@ -35,6 +41,10 @@ exists real/wt-outer/.tmp/inner/work.txt
 exits 2 lopper rm link/wt-aliased
 stderr 'not safe to delete: contains another repository$'
 exists real/wt-aliased/.tmp/z-repo/work.txt
+
+exits 2 lopper rm link/wt-gitlink
+stderr 'not safe to delete: contains another repository$'
+exists real/wt-gitlink/.tmp/sym/work.txt
 
 exec lopper rm link/wt-linked
 stdout '^removed link/wt-linked$'

@@ -23,7 +23,13 @@ mkdir wt-broken/.tmp/moved
 cp brokengit wt-broken/.tmp/moved/.git
 cp work.txt wt-broken/.tmp/moved/work.txt
 
+exec git -C outer-repo worktree add -q -b upper ../wt-upper
+exec git init -q wt-upper/.tmp/scratch
+mv wt-upper/.tmp/scratch/.git wt-upper/.tmp/scratch/.GIT
+cp work.txt wt-upper/.tmp/scratch/work.txt
+
 exec lopper scan $WORK
+stdout '^unsafe\s+upper\s'
 stdout '^unsafe\s+outer\s'
 stdout '^unsafe\s+work\s'
 stdout '^unsafe\s+clone\s'
@@ -55,6 +61,10 @@ exists wt-clone/.tmp/scratch/work.txt
 exits 2 lopper rm wt-broken
 stderr 'contains another repository$'
 exists wt-broken/.tmp/moved/work.txt
+
+exits 2 lopper rm wt-upper
+stderr 'contains another repository$'
+exists wt-upper/.tmp/scratch/work.txt
 
 exec lopper rm --all-safe $WORK
 stdout -count=1 '^removed '

@@ -71,6 +71,23 @@ import Layout from "../components/Layout.astro";
           </p>
         </dd>
 
+        <dt>contains another repository</dt>
+        <dd>
+          <p>
+            A folder inside this worktree holds another worktree or repository,
+            often under an ignored folder. Deleting this worktree deletes it
+            too, with any work it holds, and Git does not stop it. A bare
+            repository is not detected.
+          </p>
+          <p>
+            <code>lopper rm &lt;inner&gt;</code> removes an inner worktree
+            first, and <code>git worktree move</code> in its repository moves it
+            out. Move an inner repository out by hand. A dependency or submodule
+            checkout counts too: delete its build folder or remove the submodule
+            first.
+          </p>
+        </dd>
+
         <dt>not merged</dt>
         <dd>
           <p>

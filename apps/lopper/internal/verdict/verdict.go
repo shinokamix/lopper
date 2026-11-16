@@ -58,6 +58,9 @@ func notes(wt lopper.Worktree, f lopper.Facts) []lopper.Note {
 	if f.Unpushed != nil && *f.Unpushed > 0 && !merged {
 		add(lopper.NoteWork, true, "%d unpushed", *f.Unpushed)
 	}
+	if f.NestedRepos > 0 {
+		add(lopper.NoteWork, true, "contains another repository")
+	}
 	inspected := true
 	switch wt.State {
 	case lopper.StateTracked:

@@ -173,7 +173,8 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 		return errors.New("the current directory is inside it")
 	}
 	if !force {
-		if v := verdict.Of(now, (inspect.Inspector{Git: e.git}).Quick(ctx, now)); !v.Safe {
+		insp := inspect.Inspector{Git: e.git}
+		if v := verdict.Of(now, insp.Slow(ctx, now, insp.Quick(ctx, now))); !v.Safe {
 			return &NotSafeError{Verdict: v}
 		}
 	}

@@ -210,6 +210,16 @@ const example = `[
         </dd>
 
         <dt>
+          nested_repos <span class="dim">integer</span>
+        </dt>
+        <dd>
+          How many <code>.git</code> entries, one per other worktree or
+          repository, lie inside the folder. Removing the worktree would delete
+          them too, so it is not safe. Omitted when there are none or lopper
+          could not measure the folder.
+        </dd>
+
+        <dt>
           errors <span class="dim">array of strings</span>
         </dt>
         <dd>

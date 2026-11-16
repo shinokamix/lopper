@@ -60,7 +60,7 @@ const (
 	StateUnconfirmed
 )
 
-// Facts are what a scan observed about a worktree, in stages. A nil field
+// Facts are what inspect observed about a worktree, in stages. A nil field
 // is unknown, and Errors says why when an observation failed.
 type Facts struct {
 	Dirty          *int       // status entries, where an untracked directory counts as one

@@ -30,10 +30,6 @@ type Options struct {
 	// later scan's Known. Scan calls it only after a walk that neither failed
 	// nor was cancelled.
 	Met func(places []string)
-	// Repos, if set, receives, possibly concurrently and more than once,
-	// every directory the walk finds that holds a .git file or directory,
-	// readable or not, and every bare repository it finds.
-	Repos func(dir string)
 }
 
 // Scan walks opts.Roots and calls emit, possibly concurrently, for every
@@ -229,11 +225,4 @@ func recordKey(gitDir, path string) string {
 func isGone(path string) bool {
 	_, err := os.Lstat(path)
 	return errors.Is(err, fs.ErrNotExist)
-}
-
-// WalkRepos walks roots as Scan does and calls found as Options.Repos
-// describes, without running git.
-func WalkRepos(ctx context.Context, roots []string, found func(dir string)) error {
-	_, err := findRepos(ctx, Options{Roots: roots, Repos: found}, func(string) {}, func(string, gitFile) {})
-	return err
 }

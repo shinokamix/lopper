@@ -86,25 +86,19 @@ func safePaths(cmd *cobra.Command, eng *engine.Engine, roots []string) ([]string
 	}
 	opts := remembered(engine.Options{Roots: roots})
 	found := map[lopper.ID]lopper.Worktree{}
-	safe := map[string]bool{}
+	var paths []string
 	for ev := range eng.Scan(cmd.Context(), opts) {
 		switch ev := ev.(type) {
 		case engine.WorktreeFound:
 			found[ev.Worktree.ID] = ev.Worktree
 		case engine.FactsUpdated:
-			if wt := found[ev.ID]; ev.Final && wt.State != lopper.StateGone && under(infos, wt.Path) {
-				safe[wt.Path] = ev.Verdict.Safe
+			if wt := found[ev.ID]; ev.Final && ev.Verdict.Safe && wt.State != lopper.StateGone && under(infos, wt.Path) {
+				paths = append(paths, wt.Path)
 			}
 		case engine.ScanDone:
 			if ev.Err != nil {
 				return nil, ev.Err
 			}
-		}
-	}
-	var paths []string
-	for path, ok := range safe {
-		if ok {
-			paths = append(paths, path)
 		}
 	}
 	slices.Sort(paths)

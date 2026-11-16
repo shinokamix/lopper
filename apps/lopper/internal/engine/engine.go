@@ -27,9 +27,7 @@ type Event interface{ isEvent() }
 // WorktreeFound is sent when discovery finds a worktree.
 type WorktreeFound struct{ Worktree lopper.Worktree }
 
-// FactsUpdated is sent whenever more facts about a worktree are known. Final
-// marks the last facts inspection gives. One more Final update follows it if
-// the scan finds another repository inside this one afterwards.
+// FactsUpdated is sent whenever more facts about a worktree are known.
 type FactsUpdated struct {
 	ID      lopper.ID
 	Facts   lopper.Facts
@@ -91,32 +89,15 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 	found := make(chan lopper.Worktree, 256)
 	insp := inspect.Inspector{Git: e.git}
 	listers, n := budget(opts.Concurrency)
-	var (
-		repos     repoDirs
-		mu        sync.Mutex
-		inspected []inspection
-	)
-	walked := make([]string, 0, len(opts.Roots))
-	for _, root := range opts.Roots {
-		walked = append(walked, physical(root))
-	}
 
 	var workers sync.WaitGroup
 	for range n {
 		workers.Go(func() {
 			for wt := range found {
 				f := insp.Quick(ctx, wt)
-				f.NestedRepos = repos.inside(wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f)})
-				if err := walkUnwalked(ctx, walked, wt, repos.add); err != nil {
-					f.Errors = append(f.Errors, "could not look for repositories inside: "+err.Error())
-				}
 				f = insp.Slow(ctx, wt, f)
-				f.NestedRepos = repos.inside(wt)
 				send[Event](ctx, events, FactsUpdated{ID: wt.ID, Facts: f, Verdict: verdict.Of(wt, f), Final: true})
-				mu.Lock()
-				inspected = append(inspected, inspection{wt, f})
-				mu.Unlock()
 			}
 		})
 	}
@@ -127,7 +108,6 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 			Listers: listers,
 			Known:   opts.Known,
 			Met:     opts.Remember,
-			Repos:   repos.add,
 		}
 		err := discovery.Scan(ctx, e.git, dopts, func(wt lopper.Worktree) {
 			if send[Event](ctx, events, WorktreeFound{Worktree: wt}) {
@@ -136,12 +116,6 @@ func (e *Engine) Scan(ctx context.Context, opts Options) <-chan Event {
 		})
 		close(found)
 		workers.Wait()
-		for _, in := range inspected {
-			if n := repos.inside(in.wt); n != in.facts.NestedRepos {
-				in.facts.NestedRepos = n
-				send[Event](ctx, events, FactsUpdated{ID: in.wt.ID, Facts: in.facts, Verdict: verdict.Of(in.wt, in.facts), Final: true})
-			}
-		}
 		done := ScanDone{Err: err}
 		select {
 		case events <- done:
@@ -176,59 +150,12 @@ func (e *RecordLeftError) Error() string {
 	return "git's record of it is left in " + e.Repo + ": `git worktree prune` there removes it"
 }
 
-type inspection struct {
-	wt    lopper.Worktree
-	facts lopper.Facts
-}
-
-type repoDirs struct {
-	mu   sync.Mutex
-	dirs map[string]struct{}
-}
-
-func (r *repoDirs) add(dir string) {
-	dir = physical(dir)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.dirs == nil {
-		r.dirs = map[string]struct{}{}
-	}
-	r.dirs[dir] = struct{}{}
-}
-
-func (r *repoDirs) inside(wt lopper.Worktree) int {
-	if wt.State == lopper.StateGone {
-		return 0
-	}
-	root := physical(wt.Path)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	n := 0
-	for dir := range r.dirs {
-		if rel, ok := pathx.Within(root, dir); ok && rel != "." {
-			n++
-		}
-	}
-	return n
-}
-
 // Find returns the linked worktree at path, uninspected, as a scan of roots
 // reports it, ready for Remove. The roots must reach path, and its
 // repository too if the directory is gone.
 func (e *Engine) Find(ctx context.Context, roots []string, path string) (lopper.Worktree, error) {
 	listers, _ := budget(0)
 	return discovery.Find(ctx, e.git, discovery.Options{Roots: roots, Listers: listers}, path)
-}
-
-func (e *Engine) find(ctx context.Context, roots []string, path string) (wt lopper.Worktree, nestedRepos int, err error) {
-	listers, _ := budget(0)
-	var repos repoDirs
-	opts := discovery.Options{Roots: roots, Listers: listers, Repos: repos.add}
-	wt, err = discovery.Find(ctx, e.git, opts, path)
-	if err != nil {
-		return lopper.Worktree{}, 0, err
-	}
-	return wt, repos.inside(wt), nil
 }
 
 // Remove deletes a worktree lopper found, in any state, with its directory
@@ -238,7 +165,7 @@ func (e *Engine) find(ctx context.Context, roots []string, path string) (wt lopp
 // uncommitted work by then. Forced, it goes with whatever it holds. Remove
 // never deletes the directory that contains the current directory.
 func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) error {
-	now, nestedRepos, err := e.current(ctx, wt)
+	now, err := e.current(ctx, wt)
 	if err != nil {
 		return err
 	}
@@ -246,9 +173,8 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 		return errors.New("the current directory is inside it")
 	}
 	if !force {
-		f := (inspect.Inspector{Git: e.git}).Quick(ctx, now)
-		f.NestedRepos = nestedRepos
-		if v := verdict.Of(now, f); !v.Safe {
+		insp := inspect.Inspector{Git: e.git}
+		if v := verdict.Of(now, insp.Slow(ctx, now, insp.Quick(ctx, now))); !v.Safe {
 			return &NotSafeError{Verdict: v}
 		}
 	}
@@ -272,15 +198,14 @@ func (e *Engine) Remove(ctx context.Context, wt lopper.Worktree, force bool) err
 	return gitx.RemoveWorktree(ctx, e.git, now.Repo.Path, now.Path, force)
 }
 
-func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (now lopper.Worktree, nestedRepos int, err error) {
+func (e *Engine) current(ctx context.Context, wt lopper.Worktree) (lopper.Worktree, error) {
 	if _, err := os.Lstat(wt.Path); errors.Is(err, fs.ErrNotExist) {
 		if wt.Repo.Path == "" {
-			return lopper.Worktree{}, 0, discovery.ErrNotFound
+			return lopper.Worktree{}, discovery.ErrNotFound
 		}
-		now, err := discovery.Lookup(ctx, e.git, wt.Repo.Path, wt.Path)
-		return now, 0, err
+		return discovery.Lookup(ctx, e.git, wt.Repo.Path, wt.Path)
 	}
-	return e.find(ctx, []string{wt.Path}, wt.Path)
+	return e.Find(ctx, []string{wt.Path}, wt.Path)
 }
 
 // Windows does not allow removing the directory a process runs in.
@@ -289,15 +214,14 @@ func inside(dir string) bool {
 	if err != nil {
 		return false
 	}
-	_, ok := pathx.Within(physical(dir), physical(cwd))
-	return ok
-}
-
-func physical(path string) string {
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return resolved
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return p
 	}
-	return path
+	_, ok := pathx.Within(resolve(dir), resolve(cwd))
+	return ok
 }
 
 func send[T any](ctx context.Context, ch chan<- T, v T) bool {
@@ -307,17 +231,4 @@ func send[T any](ctx context.Context, ch chan<- T, v T) bool {
 	case <-ctx.Done():
 		return false
 	}
-}
-
-func walkUnwalked(ctx context.Context, walked []string, wt lopper.Worktree, found func(dir string)) error {
-	if wt.State == lopper.StateGone {
-		return nil
-	}
-	dir := physical(wt.Path)
-	for _, root := range walked {
-		if _, ok := pathx.Within(root, dir); ok {
-			return nil
-		}
-	}
-	return discovery.WalkRepos(ctx, []string{wt.Path}, found)
 }

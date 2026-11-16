@@ -175,9 +175,10 @@ func exists(path string) (bool, error) {
 
 const walkWorkersPerWorktree = 4
 
-// Slow measures the size of the worktree's directory. It leaves out
-// unreadable or vanished entries below the root. An error at the root or a
-// cancellation leaves the size unknown. A gone worktree takes no space.
+// Slow measures the size of the worktree's directory and counts the .git
+// files and directories below its root. It leaves out unreadable or vanished
+// entries below the root and does not follow symlinks. An error at the root
+// or a cancellation leaves the size unknown. A gone worktree takes no space.
 func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts) lopper.Facts {
 	switch wt.State {
 	case lopper.StateGone:
@@ -185,7 +186,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 		return f
 	case lopper.StateTracked, lopper.StateOrphaned, lopper.StateMoved, lopper.StateUnconfirmed:
 	}
-	var size atomic.Int64
+	var size, nested atomic.Int64
 	f.SizeBytes = nil
 	conf := fastwalk.DefaultConfig
 	conf.ToSlash = false
@@ -200,6 +201,9 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 			}
 			return nil
 		}
+		if d.Name() == ".git" && filepath.Dir(path) != filepath.Clean(wt.Path) && (d.IsDir() || d.Type().IsRegular()) {
+			nested.Add(1)
+		}
 		if d.Type().IsRegular() {
 			if info, err := d.Info(); err == nil {
 				size.Add(info.Size())
@@ -212,6 +216,7 @@ func (in Inspector) Slow(ctx context.Context, wt lopper.Worktree, f lopper.Facts
 		return f
 	}
 	f.SizeBytes = new(size.Load())
+	f.NestedRepos = int(nested.Load())
 	return f
 }
 

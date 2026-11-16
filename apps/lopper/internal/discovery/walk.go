@@ -50,15 +50,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 			submodules(gitDir, func(sub string) { report(sub, place{}) })
 		}
 	}
-	repoDir := func(dir string) {
-		if opts.Repos != nil {
-			opts.Repos(dir)
-		}
-	}
 	dotGit := func(path string, typ fs.FileMode) {
-		if typ.IsDir() || typ.IsRegular() {
-			repoDir(filepath.Dir(path))
-		}
 		if typ.IsDir() {
 			report(path, place{path, true})
 			return
@@ -88,7 +80,6 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 		case filepath.Base(path) == ".git":
 			dotGit(path, info.Mode().Type())
 		case info.IsDir() && isBare(path):
-			repoDir(path)
 			report(path, place{path, true})
 		}
 	}
@@ -125,6 +116,9 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				}
 				typ = info.Mode().Type()
 			}
+			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
+				return fs.SkipDir
+			}
 			name := d.Name()
 			if name == ".git" {
 				dotGit(path, typ)
@@ -134,11 +128,7 @@ func findRepos(ctx context.Context, opts Options, found func(gitDir string), lin
 				return nil
 			}
 			if name == "worktrees" && typ.IsDir() && isGitDir(filepath.Dir(path)) {
-				repoDir(filepath.Dir(path))
 				report(filepath.Dir(path), place{filepath.Dir(path), true})
-				return fs.SkipDir
-			}
-			if typ.IsDir() && (everyDir || link || path == root) && visited.Entry(path, d) {
 				return fs.SkipDir
 			}
 			if link && typ.IsDir() {
